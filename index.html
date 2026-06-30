@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HomePulse Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Collapsible Left Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div class="brand">
+        <div class="brand-logo">
+          <i data-lucide="activity"></i>
+        </div>
+        <span>HomePulse</span>
+      </div>
+      <button class="toggle-sidebar-btn" id="toggle-sidebar" title="Toggle Sidebar">
+        <i data-lucide="chevron-left" id="sidebar-toggle-icon"></i>
+      </button>
+    </div>
+
+    <nav>
+      <a href="#" class="nav-item active">
+        <div class="nav-item-left">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Dashboards</span>
+        </div>
+      </a>
+      <a href="#" class="nav-item" id="nav-discovery">
+        <div class="nav-item-left">
+          <i data-lucide="radio"></i>
+          <span>Discovery Queue</span>
+        </div>
+        <div class="nav-badge" id="discovery-badge">1</div>
+      </a>
+      <a href="#" class="nav-item">
+        <div class="nav-item-left">
+          <i data-lucide="bell-ring"></i>
+          <span>Automations</span>
+        </div>
+      </a>
+      <a href="#" class="nav-item">
+        <div class="nav-item-left">
+          <i data-lucide="terminal"></i>
+          <span>Developer Tools</span>
+        </div>
+      </a>
+      <a href="#" class="nav-item">
+        <div class="nav-item-left">
+          <i data-lucide="settings"></i>
+          <span>Settings</span>
+        </div>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-avatar">AD</div>
+      <div class="user-info">
+        <span class="user-name">Admin Architect</span>
+        <span class="user-role">Full Administrative Control</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main id="main-content">
+    <header>
+      <div class="header-left">
+        <div class="page-title">Observer View: Core Cluster Alpha</div>
+        <div class="page-subtitle" id="refresh-time-text">Last refreshed: 08:59:29 UTC • Live connection active</div>
+      </div>
+      
+      <div class="header-actions">
+        <!-- Dashboard Tabs -->
+        <div class="tab-bar">
+          <button class="tab-btn active" onclick="switchTab('main')">Main</button>
+          <button class="tab-btn" onclick="switchTab('server')">Server Room</button>
+          <button class="tab-btn" onclick="switchTab('power')">Power</button>
+        </div>
+
+        <!-- Uptime Badge -->
+        <div class="uptime-badge">
+          <span class="dot"></span>
+          <span>STABLE UPTIME: 99.98%</span>
+        </div>
+
+        <!-- Edit Dashboard Button -->
+        <button class="edit-toggle-btn" id="edit-toggle-btn">
+          <i data-lucide="edit-3"></i>
+          <span>Edit Dashboard</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Interactive Discovery Banner (mDNS notification) -->
+    <div class="discovery-banner" id="discovery-banner">
+      <div class="discovery-info">
+        <div class="discovery-icon">
+          <i data-lucide="radio-receiver"></i>
+        </div>
+        <div class="discovery-text">
+          <h4>New Endpoint Discovered</h4>
+          <p>mDNS broadcast detected: <strong>smart-plug-01.local</strong> (Power Control module)</p>
+        </div>
+      </div>
+      <div class="discovery-actions">
+        <button class="btn btn-secondary" onclick="dismissDiscovery()">Dismiss</button>
+        <button class="btn btn-primary" onclick="approveDiscovery()">Approve</button>
+      </div>
+    </div>
+
+    <!-- Dashboard Content Grid -->
+    <div class="dashboard-content">
+      <div class="dashboard-grid" id="dashboard-grid">
+        
+        <!-- Card 1: Core Processor -->
+        <div class="card highlighted" data-tags="main,server">
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings"><i data-lucide="sliders"></i></div>
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">Core Processor</span>
+              <span class="card-subtitle">System-level cycles</span>
+            </div>
+            <span class="status-pill optimal">Optimal</span>
+          </div>
+          <div class="card-body">
+            <div class="card-value" id="cpu-value">
+              42.8<span class="card-unit"> %</span>
+            </div>
+            <div class="card-graphic-container">
+              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="optimal-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--color-optimal)" stop-opacity="0.18"></stop>
+                    <stop offset="100%" stop-color="var(--color-optimal)" stop-opacity="0"></stop>
+                  </linearGradient>
+                </defs>
+                <path d="M 0,35 C 20,38 40,25 60,33 C 80,40 90,15 100,28" fill="none" stroke="var(--color-optimal)" stroke-width="1.5"></path>
+                <path d="M 0,35 C 20,38 40,25 60,33 C 80,40 90,15 100,28 L 100,40 L 0,40 Z" fill="url(#optimal-grad)"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Memory Pool -->
+        <div class="card" data-tags="main,server">
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings"><i data-lucide="sliders"></i></div>
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">Memory Pool</span>
+              <span class="card-subtitle">Allocated resources</span>
+            </div>
+            <span class="status-pill caution">Caution</span>
+          </div>
+          <div class="card-body">
+            <div class="card-value" id="mem-value">
+              88.4<span class="card-unit"> GB</span>
+            </div>
+            <div class="card-graphic-container">
+              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="caution-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--color-caution)" stop-opacity="0.18"></stop>
+                    <stop offset="100%" stop-color="var(--color-caution)" stop-opacity="0"></stop>
+                  </linearGradient>
+                </defs>
+                <path d="M 0,32 C 30,30 50,32 70,25 C 85,20 95,22 100,24" fill="none" stroke="var(--color-caution)" stroke-width="1.5"></path>
+                <path d="M 0,32 C 30,30 50,32 70,25 C 85,20 95,22 100,24 L 100,40 L 0,40 Z" fill="url(#caution-grad)"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Network I/O -->
+        <div class="card" data-tags="main,server">
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings"><i data-lucide="sliders"></i></div>
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">Network I/O</span>
+              <span class="card-subtitle">Traffic throughput</span>
+            </div>
+            <span class="status-pill optimal">Optimal</span>
+          </div>
+          <div class="card-body">
+            <div class="card-value" id="network-value">
+              1.2<span class="card-unit"> Gb/s</span>
+            </div>
+            <div class="card-graphic-container">
+              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
+                <path d="M 0,33 C 25,32 50,31 75,32 C 85,33 95,31 100,32" fill="none" stroke="var(--color-optimal)" stroke-width="1.5"></path>
+                <path d="M 0,33 C 25,32 50,31 75,32 C 85,33 95,31 100,32 L 100,40 L 0,40 Z" fill="url(#optimal-grad)"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4: DB Latency -->
+        <div class="card" data-tags="main,server">
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings"><i data-lucide="sliders"></i></div>
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">DB Latency</span>
+              <span class="card-subtitle">Query response time</span>
+            </div>
+            <span class="status-pill optimal">Optimal</span>
+          </div>
+          <div class="card-body">
+            <div class="card-value" id="db-latency-value">
+              12<span class="card-unit"> ms</span>
+            </div>
+            <div class="card-graphic-container">
+              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
+                <path d="M 0,34 C 25,35 50,30 75,32 C 85,33 95,34 100,33" fill="none" stroke="var(--color-optimal)" stroke-width="1.5"></path>
+                <path d="M 0,34 C 25,35 50,30 75,32 C 85,33 95,34 100,33 L 100,40 L 0,40 Z" fill="url(#optimal-grad)"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 5: Firewall Hits -->
+        <div class="card" data-tags="main,server">
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings"><i data-lucide="sliders"></i></div>
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">Firewall Hits</span>
+              <span class="card-subtitle">Mitigated threats</span>
+            </div>
+            <span class="status-pill active">Active</span>
+          </div>
+          <div class="card-body">
+            <div class="card-value">
+              0<span class="card-unit"> Incidents</span>
+            </div>
+            <div class="flat-bottom-bar red"></div>
+          </div>
+        </div>
+
+        <!-- Card 6: API Gateway -->
+        <div class="card" data-tags="main,server">
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings"><i data-lucide="sliders"></i></div>
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">API Gateway</span>
+              <span class="card-subtitle">External requests</span>
+            </div>
+            <span class="status-pill stable">Stable</span>
+          </div>
+          <div class="card-body">
+            <div class="card-value" id="api-value">
+              2.4k<span class="card-unit"> req/m</span>
+            </div>
+            <div class="card-graphic-container">
+              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="stable-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--accent-blue)" stop-opacity="0.18"></stop>
+                    <stop offset="100%" stop-color="var(--accent-blue)" stop-opacity="0"></stop>
+                  </linearGradient>
+                </defs>
+                <path d="M 0,35 L 15,36 L 25,32 L 35,38 L 45,34 L 55,36 L 70,30 L 85,34 L 100,32" fill="none" stroke="var(--color-optimal)" stroke-width="1.5"></path>
+                <path d="M 0,35 L 15,36 L 25,32 L 35,38 L 45,34 L 55,36 L 70,30 L 85,34 L 100,32 L 100,40 L 0,40 Z" fill="url(#optimal-grad)"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 7: Data Lake -->
+        <div class="card" data-tags="main,server">
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings"><i data-lucide="sliders"></i></div>
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">Data Lake</span>
+              <span class="card-subtitle">Cold storage usage</span>
+            </div>
+            <span class="status-pill healthy">Healthy</span>
+          </div>
+          <div class="card-body">
+            <div class="card-value" id="lake-value">
+              62<span class="card-unit"> %</span>
+            </div>
+            <div class="flat-bottom-bar green"></div>
+          </div>
+        </div>
+
+        <!-- Card 8: Worker Nodes -->
+        <div class="card" data-tags="main,server">
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings"><i data-lucide="sliders"></i></div>
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">Worker Nodes</span>
+              <span class="card-subtitle">Active compute units</span>
+            </div>
+            <span class="status-pill active">Active</span>
+          </div>
+          <div class="card-body">
+            <div class="card-value">
+              128<span class="card-unit"> /128</span>
+            </div>
+            <div class="flat-bottom-bar green"></div>
+          </div>
+        </div>
+
+        <!-- Card 9: Living Room Lights (Interactive Demo Card) -->
+        <div class="card" data-tags="main,power" id="smart-outlet-card">
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings"><i data-lucide="sliders"></i></div>
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">Living Room Lights</span>
+              <span class="card-subtitle">Tuya Smart Outlet</span>
+            </div>
+            <span class="status-pill stable" id="outlet-pill">Stable</span>
+          </div>
+          <div class="card-body">
+            <div class="card-value" id="outlet-status">ON</div>
+            
+            <div class="slider-container">
+              <i data-lucide="sun"></i>
+              <input type="range" class="range-slider" min="10" max="100" value="80" id="brightness-slider">
+            </div>
+
+            <div class="control-row">
+              <div class="status-indicator">
+                <span class="status-dot online"></span>
+                <span>Active</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="outlet-toggle" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Card Placeholder (Visible in Edit Mode) -->
+        <div class="card-placeholder" onclick="addNewCardPlaceholder()">
+          <i data-lucide="plus-circle" style="width: 24px; height: 24px;"></i>
+          <span>Add Lovelace Card</span>
+        </div>
+
+      </div>
+
+      <!-- Bottom Audits & Snapshot Row -->
+      <div class="bottom-section">
+        
+        <!-- Global System Audit -->
+        <div class="audit-box">
+          <div class="section-box-title-bar">
+            <div class="section-box-title">Global System Audit</div>
+            <div class="section-box-filter">Filter: All_Streams</div>
+          </div>
+          <div class="audit-list" id="audit-list">
+            <div class="audit-row">
+              <span class="audit-time">14:21:44</span>
+              <span class="audit-icon success"><i data-lucide="check-circle-2" style="width: 14px; height: 14px;"></i></span>
+              <span class="audit-msg">Primary cluster replication successful across 3 zones.</span>
+            </div>
+            <div class="audit-row">
+              <span class="audit-time">14:20:12</span>
+              <span class="audit-icon warning"><i data-lucide="alert-triangle" style="width: 14px; height: 14px;"></i></span>
+              <span class="audit-msg">Minor latency spike detected in Region US-EAST-1 (88ms).</span>
+            </div>
+            <div class="audit-row">
+              <span class="audit-time">14:18:59</span>
+              <span class="audit-icon info"><i data-lucide="info" style="width: 14px; height: 14px;"></i></span>
+              <span class="audit-msg">Automated garbage collection completed for Memory Bank Beta.</span>
+            </div>
+            <div class="audit-row">
+              <span class="audit-time">14:15:22</span>
+              <span class="audit-icon security"><i data-lucide="key-round" style="width: 14px; height: 14px;"></i></span>
+              <span class="audit-msg">Certificate rotation initialized for internal service mesh.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Health Snapshot -->
+        <div class="snapshot-box">
+          <div class="section-box-title-bar">
+            <div class="section-box-title">Health Snapshot</div>
+          </div>
+          <div class="snapshot-list">
+            <div class="snapshot-item">
+              <div class="snapshot-header">
+                <span class="snapshot-label">Global Availability</span>
+                <span class="snapshot-value green">100%</span>
+              </div>
+              <div class="snapshot-progress-bg">
+                <div class="snapshot-progress-fill green" style="width: 100%;"></div>
+              </div>
+            </div>
+            <div class="snapshot-item">
+              <div class="snapshot-header">
+                <span class="snapshot-label">Resource Saturation</span>
+                <span class="snapshot-value orange">74%</span>
+              </div>
+              <div class="snapshot-progress-bg">
+                <div class="snapshot-progress-fill orange" style="width: 74%;"></div>
+              </div>
+            </div>
+            <div class="snapshot-item">
+              <div class="snapshot-header">
+                <span class="snapshot-label">Security Posture</span>
+                <span class="snapshot-value green">Hardened</span>
+              </div>
+              <div class="snapshot-progress-bg">
+                <div class="snapshot-progress-fill green" style="width: 100%;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="snapshot-notice">
+            Observer mode restricted: Manual configuration and control overrides are currently disabled by administrative policy.
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Main interaction logic -->
+  <script src="app.js"></script>
+</body>
+</html>
