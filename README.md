@@ -1,6 +1,6 @@
 # HomePulse
 
-HomePulse (formerly SYSMON) is a community-focused, highly modular monitoring system designed to handle real-time telemetry from custom local hardware and microcontrollers. It features a modern, responsive user experience inspired by Home Assistant's Lovelace UI.
+HomePulse is a community-focused, highly modular monitoring system designed to handle real-time telemetry from custom local hardware and microcontrollers. It features a modern, responsive user experience inspired by Home Assistant's Lovelace UI.
 
 ## Core Features
 
