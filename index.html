@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HomePulse Dashboard</title>
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
   <!-- Collapsible Left Sidebar -->
@@ -23,7 +25,7 @@
     </div>
 
     <nav>
-      <a href="#" class="nav-item active">
+      <a href="#" class="nav-item active" id="nav-dashboard">
         <div class="nav-item-left">
           <i data-lucide="layout-dashboard"></i>
           <span>Dashboards</span>
@@ -48,7 +50,7 @@
           <span>Developer Tools</span>
         </div>
       </a>
-      <a href="#" class="nav-item">
+      <a href="#" class="nav-item" id="nav-settings">
         <div class="nav-item-left">
           <i data-lucide="settings"></i>
           <span>Settings</span>
@@ -72,13 +74,11 @@
         <div class="page-title">Observer View: Core Cluster Alpha</div>
         <div class="page-subtitle" id="refresh-time-text">Last refreshed: 08:59:29 UTC • Live connection active</div>
       </div>
-      
+
       <div class="header-actions">
         <!-- Dashboard Tabs -->
-        <div class="tab-bar">
-          <button class="tab-btn active" onclick="switchTab('main')">Main</button>
-          <button class="tab-btn" onclick="switchTab('server')">Server Room</button>
-          <button class="tab-btn" onclick="switchTab('power')">Power</button>
+        <div class="tab-bar" id="tab-bar" style="display: flex; align-items: center;">
+          <!-- Dynamically populated from JS -->
         </div>
 
         <!-- Uptime Badge -->
@@ -87,6 +87,13 @@
           <span>STABLE UPTIME: 99.98%</span>
         </div>
 
+        <!-- Raw Config Button -->
+        <button id="yaml-toggle-btn"
+          style="display: none; align-items: center; gap: 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: var(--text-primary); padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 0.85rem;"
+          onclick="openYAMLConfigEditor()">
+          <i data-lucide="code" style="width:14px; height:14px;"></i>
+          <span>Raw Config</span>
+        </button>
         <!-- Edit Dashboard Button -->
         <button class="edit-toggle-btn" id="edit-toggle-btn">
           <i data-lucide="edit-3"></i>
@@ -95,15 +102,15 @@
       </div>
     </header>
 
-    <!-- Interactive Discovery Banner (mDNS notification) -->
-    <div class="discovery-banner" id="discovery-banner">
+    <!-- Interactive Discovery Banner (mDNS notification) - Hidden by default -->
+    <div class="discovery-banner hide" id="discovery-banner">
       <div class="discovery-info">
         <div class="discovery-icon">
           <i data-lucide="radio-receiver"></i>
         </div>
         <div class="discovery-text">
-          <h4>New Endpoint Discovered</h4>
-          <p>mDNS broadcast detected: <strong>smart-plug-01.local</strong> (Power Control module)</p>
+          <h4 id="discovery-title">New Endpoint Discovered</h4>
+          <p id="discovery-subtitle">mDNS broadcast detected</p>
         </div>
       </div>
       <div class="discovery-actions">
@@ -115,233 +122,6 @@
     <!-- Dashboard Content Grid -->
     <div class="dashboard-content">
       <div class="dashboard-grid" id="dashboard-grid">
-        
-        <!-- Card 1: Core Processor -->
-        <div class="card highlighted" data-tags="main,server">
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings"><i data-lucide="sliders"></i></div>
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">Core Processor</span>
-              <span class="card-subtitle">System-level cycles</span>
-            </div>
-            <span class="status-pill optimal">Optimal</span>
-          </div>
-          <div class="card-body">
-            <div class="card-value" id="cpu-value">
-              42.8<span class="card-unit"> %</span>
-            </div>
-            <div class="card-graphic-container">
-              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="optimal-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="var(--color-optimal)" stop-opacity="0.18"></stop>
-                    <stop offset="100%" stop-color="var(--color-optimal)" stop-opacity="0"></stop>
-                  </linearGradient>
-                </defs>
-                <path d="M 0,35 C 20,38 40,25 60,33 C 80,40 90,15 100,28" fill="none" stroke="var(--color-optimal)" stroke-width="1.5"></path>
-                <path d="M 0,35 C 20,38 40,25 60,33 C 80,40 90,15 100,28 L 100,40 L 0,40 Z" fill="url(#optimal-grad)"></path>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 2: Memory Pool -->
-        <div class="card" data-tags="main,server">
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings"><i data-lucide="sliders"></i></div>
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">Memory Pool</span>
-              <span class="card-subtitle">Allocated resources</span>
-            </div>
-            <span class="status-pill caution">Caution</span>
-          </div>
-          <div class="card-body">
-            <div class="card-value" id="mem-value">
-              88.4<span class="card-unit"> GB</span>
-            </div>
-            <div class="card-graphic-container">
-              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="caution-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="var(--color-caution)" stop-opacity="0.18"></stop>
-                    <stop offset="100%" stop-color="var(--color-caution)" stop-opacity="0"></stop>
-                  </linearGradient>
-                </defs>
-                <path d="M 0,32 C 30,30 50,32 70,25 C 85,20 95,22 100,24" fill="none" stroke="var(--color-caution)" stroke-width="1.5"></path>
-                <path d="M 0,32 C 30,30 50,32 70,25 C 85,20 95,22 100,24 L 100,40 L 0,40 Z" fill="url(#caution-grad)"></path>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 3: Network I/O -->
-        <div class="card" data-tags="main,server">
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings"><i data-lucide="sliders"></i></div>
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">Network I/O</span>
-              <span class="card-subtitle">Traffic throughput</span>
-            </div>
-            <span class="status-pill optimal">Optimal</span>
-          </div>
-          <div class="card-body">
-            <div class="card-value" id="network-value">
-              1.2<span class="card-unit"> Gb/s</span>
-            </div>
-            <div class="card-graphic-container">
-              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
-                <path d="M 0,33 C 25,32 50,31 75,32 C 85,33 95,31 100,32" fill="none" stroke="var(--color-optimal)" stroke-width="1.5"></path>
-                <path d="M 0,33 C 25,32 50,31 75,32 C 85,33 95,31 100,32 L 100,40 L 0,40 Z" fill="url(#optimal-grad)"></path>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 4: DB Latency -->
-        <div class="card" data-tags="main,server">
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings"><i data-lucide="sliders"></i></div>
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">DB Latency</span>
-              <span class="card-subtitle">Query response time</span>
-            </div>
-            <span class="status-pill optimal">Optimal</span>
-          </div>
-          <div class="card-body">
-            <div class="card-value" id="db-latency-value">
-              12<span class="card-unit"> ms</span>
-            </div>
-            <div class="card-graphic-container">
-              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
-                <path d="M 0,34 C 25,35 50,30 75,32 C 85,33 95,34 100,33" fill="none" stroke="var(--color-optimal)" stroke-width="1.5"></path>
-                <path d="M 0,34 C 25,35 50,30 75,32 C 85,33 95,34 100,33 L 100,40 L 0,40 Z" fill="url(#optimal-grad)"></path>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 5: Firewall Hits -->
-        <div class="card" data-tags="main,server">
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings"><i data-lucide="sliders"></i></div>
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">Firewall Hits</span>
-              <span class="card-subtitle">Mitigated threats</span>
-            </div>
-            <span class="status-pill active">Active</span>
-          </div>
-          <div class="card-body">
-            <div class="card-value">
-              0<span class="card-unit"> Incidents</span>
-            </div>
-            <div class="flat-bottom-bar red"></div>
-          </div>
-        </div>
-
-        <!-- Card 6: API Gateway -->
-        <div class="card" data-tags="main,server">
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings"><i data-lucide="sliders"></i></div>
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">API Gateway</span>
-              <span class="card-subtitle">External requests</span>
-            </div>
-            <span class="status-pill stable">Stable</span>
-          </div>
-          <div class="card-body">
-            <div class="card-value" id="api-value">
-              2.4k<span class="card-unit"> req/m</span>
-            </div>
-            <div class="card-graphic-container">
-              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="stable-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="var(--accent-blue)" stop-opacity="0.18"></stop>
-                    <stop offset="100%" stop-color="var(--accent-blue)" stop-opacity="0"></stop>
-                  </linearGradient>
-                </defs>
-                <path d="M 0,35 L 15,36 L 25,32 L 35,38 L 45,34 L 55,36 L 70,30 L 85,34 L 100,32" fill="none" stroke="var(--color-optimal)" stroke-width="1.5"></path>
-                <path d="M 0,35 L 15,36 L 25,32 L 35,38 L 45,34 L 55,36 L 70,30 L 85,34 L 100,32 L 100,40 L 0,40 Z" fill="url(#optimal-grad)"></path>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 7: Data Lake -->
-        <div class="card" data-tags="main,server">
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings"><i data-lucide="sliders"></i></div>
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">Data Lake</span>
-              <span class="card-subtitle">Cold storage usage</span>
-            </div>
-            <span class="status-pill healthy">Healthy</span>
-          </div>
-          <div class="card-body">
-            <div class="card-value" id="lake-value">
-              62<span class="card-unit"> %</span>
-            </div>
-            <div class="flat-bottom-bar green"></div>
-          </div>
-        </div>
-
-        <!-- Card 8: Worker Nodes -->
-        <div class="card" data-tags="main,server">
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings"><i data-lucide="sliders"></i></div>
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">Worker Nodes</span>
-              <span class="card-subtitle">Active compute units</span>
-            </div>
-            <span class="status-pill active">Active</span>
-          </div>
-          <div class="card-body">
-            <div class="card-value">
-              128<span class="card-unit"> /128</span>
-            </div>
-            <div class="flat-bottom-bar green"></div>
-          </div>
-        </div>
-
-        <!-- Card 9: Living Room Lights (Interactive Demo Card) -->
-        <div class="card" data-tags="main,power" id="smart-outlet-card">
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings"><i data-lucide="sliders"></i></div>
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">Living Room Lights</span>
-              <span class="card-subtitle">Tuya Smart Outlet</span>
-            </div>
-            <span class="status-pill stable" id="outlet-pill">Stable</span>
-          </div>
-          <div class="card-body">
-            <div class="card-value" id="outlet-status">ON</div>
-            
-            <div class="slider-container">
-              <i data-lucide="sun"></i>
-              <input type="range" class="range-slider" min="10" max="100" value="80" id="brightness-slider">
-            </div>
-
-            <div class="control-row">
-              <div class="status-indicator">
-                <span class="status-dot online"></span>
-                <span>Active</span>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="outlet-toggle" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
 
         <!-- Add Card Placeholder (Visible in Edit Mode) -->
         <div class="card-placeholder" onclick="addNewCardPlaceholder()">
@@ -351,85 +131,351 @@
 
       </div>
 
-      <!-- Bottom Audits & Snapshot Row -->
-      <div class="bottom-section">
-        
-        <!-- Global System Audit -->
-        <div class="audit-box">
-          <div class="section-box-title-bar">
-            <div class="section-box-title">Global System Audit</div>
-            <div class="section-box-filter">Filter: All_Streams</div>
+      <!-- Settings Panel -->
+      <div class="settings-view hide" id="settings-view">
+        <div class="settings-card">
+          <div class="settings-header">
+            <h3>System Settings</h3>
+            <p>Configure dashboard behavior, data logs retention, and UI visual skins</p>
           </div>
-          <div class="audit-list" id="audit-list">
-            <div class="audit-row">
-              <span class="audit-time">14:21:44</span>
-              <span class="audit-icon success"><i data-lucide="check-circle-2" style="width: 14px; height: 14px;"></i></span>
-              <span class="audit-msg">Primary cluster replication successful across 3 zones.</span>
+
+          <div class="settings-form">
+            <!-- Polling Interval -->
+            <div class="settings-group">
+              <label for="setting-interval">Telemetry Polling Frequency</label>
+              <div class="slider-container">
+                <input type="range" id="setting-interval" min="1" max="15" value="3">
+                <span class="slider-badge" id="setting-interval-val">3s</span>
+              </div>
+              <small>Time delay between background host stats collection runs.</small>
             </div>
-            <div class="audit-row">
-              <span class="audit-time">14:20:12</span>
-              <span class="audit-icon warning"><i data-lucide="alert-triangle" style="width: 14px; height: 14px;"></i></span>
-              <span class="audit-msg">Minor latency spike detected in Region US-EAST-1 (88ms).</span>
+
+            <!-- Log Retention -->
+            <div class="settings-group">
+              <label for="setting-retention">Log Retention History</label>
+              <div class="slider-container">
+                <input type="range" id="setting-retention" min="1" max="30" value="7">
+                <span class="slider-badge" id="setting-retention-val">7 days</span>
+              </div>
+              <small>Auto-purge telemetry logs from PostgreSQL after this number of days.</small>
             </div>
-            <div class="audit-row">
-              <span class="audit-time">14:18:59</span>
-              <span class="audit-icon info"><i data-lucide="info" style="width: 14px; height: 14px;"></i></span>
-              <span class="audit-msg">Automated garbage collection completed for Memory Bank Beta.</span>
+
+            <!-- Timezone -->
+            <div class="settings-group">
+              <label for="setting-timezone">Display Timezone</label>
+              <select id="setting-timezone">
+                <option value="UTC">UTC — Universal Coordinated Time</option>
+                <option value="local">⟳ Local Host Time (auto-detect)</option>
+                <optgroup label="── Americas ──">
+                  <option value="America/New_York">EST — New York (UTC-5)</option>
+                  <option value="America/Chicago">CST — Chicago (UTC-6)</option>
+                  <option value="America/Denver">MST — Denver (UTC-7)</option>
+                  <option value="America/Los_Angeles">PST — Los Angeles (UTC-8)</option>
+                  <option value="America/Anchorage">AKST — Anchorage (UTC-9)</option>
+                  <option value="Pacific/Honolulu">HST — Honolulu (UTC-10)</option>
+                  <option value="America/Toronto">EST — Toronto (UTC-5)</option>
+                  <option value="America/Vancouver">PST — Vancouver (UTC-8)</option>
+                  <option value="America/Sao_Paulo">BRT — São Paulo (UTC-3)</option>
+                  <option value="America/Argentina/Buenos_Aires">ART — Buenos Aires (UTC-3)</option>
+                  <option value="America/Mexico_City">CST — Mexico City (UTC-6)</option>
+                </optgroup>
+                <optgroup label="── Europe ──">
+                  <option value="Europe/London">GMT — London (UTC+0/+1)</option>
+                  <option value="Europe/Dublin">IST — Dublin (UTC+0/+1)</option>
+                  <option value="Europe/Lisbon">WET — Lisbon (UTC+0/+1)</option>
+                  <option value="Europe/Paris">CET — Paris (UTC+1/+2)</option>
+                  <option value="Europe/Berlin">CET — Berlin (UTC+1/+2)</option>
+                  <option value="Europe/Amsterdam">CET — Amsterdam (UTC+1/+2)</option>
+                  <option value="Europe/Madrid">CET — Madrid (UTC+1/+2)</option>
+                  <option value="Europe/Rome">CET — Rome (UTC+1/+2)</option>
+                  <option value="Europe/Warsaw">CET — Warsaw (UTC+1/+2)</option>
+                  <option value="Europe/Stockholm">CET — Stockholm (UTC+1/+2)</option>
+                  <option value="Europe/Moscow">MSK — Moscow (UTC+3)</option>
+                  <option value="Europe/Istanbul">TRT — Istanbul (UTC+3)</option>
+                  <option value="Europe/Athens">EET — Athens (UTC+2/+3)</option>
+                  <option value="Europe/Helsinki">EET — Helsinki (UTC+2/+3)</option>
+                  <option value="Europe/Bucharest">EET — Bucharest (UTC+2/+3)</option>
+                  <option value="Europe/Kyiv">EET — Kyiv (UTC+2/+3)</option>
+                </optgroup>
+                <optgroup label="── Africa / Middle East ──">
+                  <option value="Africa/Cairo">EET — Cairo (UTC+2)</option>
+                  <option value="Africa/Johannesburg">SAST — Johannesburg (UTC+2)</option>
+                  <option value="Africa/Lagos">WAT — Lagos (UTC+1)</option>
+                  <option value="Africa/Nairobi">EAT — Nairobi (UTC+3)</option>
+                  <option value="Asia/Dubai">GST — Dubai (UTC+4)</option>
+                  <option value="Asia/Riyadh">AST — Riyadh (UTC+3)</option>
+                  <option value="Asia/Tehran">IRST — Tehran (UTC+3:30)</option>
+                </optgroup>
+                <optgroup label="── Asia / Pacific ──">
+                  <option value="Asia/Kolkata">IST — Kolkata (UTC+5:30)</option>
+                  <option value="Asia/Karachi">PKT — Karachi (UTC+5)</option>
+                  <option value="Asia/Dhaka">BST — Dhaka (UTC+6)</option>
+                  <option value="Asia/Kathmandu">NPT — Kathmandu (UTC+5:45)</option>
+                  <option value="Asia/Bangkok">ICT — Bangkok (UTC+7)</option>
+                  <option value="Asia/Singapore">SGT — Singapore (UTC+8)</option>
+                  <option value="Asia/Shanghai">CST — Shanghai (UTC+8)</option>
+                  <option value="Asia/Hong_Kong">HKT — Hong Kong (UTC+8)</option>
+                  <option value="Asia/Taipei">CST — Taipei (UTC+8)</option>
+                  <option value="Asia/Seoul">KST — Seoul (UTC+9)</option>
+                  <option value="Asia/Tokyo">JST — Tokyo (UTC+9)</option>
+                  <option value="Australia/Sydney">AEDT — Sydney (UTC+10/+11)</option>
+                  <option value="Australia/Melbourne">AEDT — Melbourne (UTC+10/+11)</option>
+                  <option value="Australia/Brisbane">AEST — Brisbane (UTC+10)</option>
+                  <option value="Australia/Perth">AWST — Perth (UTC+8)</option>
+                  <option value="Pacific/Auckland">NZDT — Auckland (UTC+12/+13)</option>
+                  <option value="Pacific/Fiji">FJT — Fiji (UTC+12)</option>
+                </optgroup>
+              </select>
+              <small>Target timezone used to format refreshed and audit event timestamps.</small>
             </div>
-            <div class="audit-row">
-              <span class="audit-time">14:15:22</span>
-              <span class="audit-icon security"><i data-lucide="key-round" style="width: 14px; height: 14px;"></i></span>
-              <span class="audit-msg">Certificate rotation initialized for internal service mesh.</span>
+
+            <!-- Access Token -->
+            <div class="settings-group">
+              <label for="setting-psk">Pre-Shared Pairing Key</label>
+              <input type="text" id="setting-psk" class="settings-input" value="device_pin_12345">
+              <small>Access PIN required to approve and authenticate new mDNS nodes.</small>
+            </div>
+
+            <!-- Themes Select -->
+            <div class="settings-group">
+              <label>Visual Skin Theme</label>
+              <div class="theme-grid">
+                <button class="theme-btn active" data-theme="midnight">Midnight</button>
+                <button class="theme-btn" data-theme="glass">Nebula Glass</button>
+                <button class="theme-btn" data-theme="cozy">Cozy Amber</button>
+                <button class="theme-btn" data-theme="cyber">Cyberpunk</button>
+              </div>
+            </div>
+
+            <!-- Grid Style Compact -->
+            <div class="settings-group checkbox-group">
+              <label class="switch">
+                <input type="checkbox" id="setting-compact">
+                <span class="slider-checkbox round"></span>
+              </label>
+              <div class="checkbox-label-area">
+                <span class="checkbox-title">Enable Compact Grid Layout</span>
+                <span class="checkbox-desc">Decompress card margins and compress text spacing for high density
+                  screens.</span>
+              </div>
+            </div>
+
+
+            <div class="settings-actions">
+              <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
             </div>
           </div>
         </div>
-
-        <!-- Health Snapshot -->
-        <div class="snapshot-box">
-          <div class="section-box-title-bar">
-            <div class="section-box-title">Health Snapshot</div>
-          </div>
-          <div class="snapshot-list">
-            <div class="snapshot-item">
-              <div class="snapshot-header">
-                <span class="snapshot-label">Global Availability</span>
-                <span class="snapshot-value green">100%</span>
-              </div>
-              <div class="snapshot-progress-bg">
-                <div class="snapshot-progress-fill green" style="width: 100%;"></div>
-              </div>
-            </div>
-            <div class="snapshot-item">
-              <div class="snapshot-header">
-                <span class="snapshot-label">Resource Saturation</span>
-                <span class="snapshot-value orange">74%</span>
-              </div>
-              <div class="snapshot-progress-bg">
-                <div class="snapshot-progress-fill orange" style="width: 74%;"></div>
-              </div>
-            </div>
-            <div class="snapshot-item">
-              <div class="snapshot-header">
-                <span class="snapshot-label">Security Posture</span>
-                <span class="snapshot-value green">Hardened</span>
-              </div>
-              <div class="snapshot-progress-bg">
-                <div class="snapshot-progress-fill green" style="width: 100%;"></div>
-              </div>
-            </div>
-          </div>
-          <div class="snapshot-notice">
-            Observer mode restricted: Manual configuration and control overrides are currently disabled by administrative policy.
-          </div>
-        </div>
-
       </div>
+
+      <!-- Bottom section spacer -->
+      <div style="height: 40px;"></div>
+
+    </div>
     </div>
   </main>
 
+  <!-- Widget Editor Modal Overlay -->
+  <div class="modal-overlay" id="widget-editor-modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Widget Editor</h3>
+        <button class="modal-close-btn" onclick="closeModal('widget-editor-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-widget-id">
+
+        <div class="modal-group">
+          <label for="edit-widget-title">Widget Label</label>
+          <input type="text" class="modal-input" id="edit-widget-title">
+        </div>
+
+        <div class="modal-group">
+          <label for="edit-widget-unit">Display Unit</label>
+          <input type="text" class="modal-input" id="edit-widget-unit">
+        </div>
+
+        <div class="modal-group">
+          <label for="edit-widget-tab">Dashboard Tab View</label>
+          <select id="edit-widget-tab" class="modal-input"
+            style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+            <!-- Dynamically populated -->
+          </select>
+        </div>
+
+        <div class="modal-group select-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="edit-widget-width">Card Width</label>
+            <select id="edit-widget-width" class="modal-input"
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+              <option value="1">Normal (1x)</option>
+              <option value="2">Wide (2x)</option>
+              <option value="3">Full Dashboard (3x)</option>
+            </select>
+          </div>
+          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="edit-widget-height">Card Height</label>
+            <select id="edit-widget-height" class="modal-input"
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+              <option value="1">Normal (1x)</option>
+              <option value="2">Tall (2x)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-group select-row edit-scale-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="edit-scale-min">Scale Min</label>
+            <input type="number" class="modal-input" id="edit-scale-min" value="0">
+          </div>
+          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="edit-scale-max">Scale Max</label>
+            <input type="number" class="modal-input" id="edit-scale-max" value="100">
+          </div>
+        </div>
+
+        <div class="modal-group">
+          <label for="edit-widget-color">Theme Accent</label>
+          <select id="edit-widget-color" class="modal-input"
+            style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+            <option value="var(--color-optimal)">Emerald green (Optimal)</option>
+            <option value="var(--accent-blue)">Ice blue (Info)</option>
+            <option value="var(--color-caution)">Amber (Caution)</option>
+            <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
+            <option value="#c084fc">Amethyst purple</option>
+            <option value="#f472b6">Pink glow</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" onclick="deleteWidgetSettings()">Remove Widget</button>
+        <button class="btn btn-secondary" onclick="closeModal('widget-editor-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveWidgetSettings()">Save Widget</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Widget Creator/Catalog Modal Overlay -->
+  <div class="modal-overlay" id="widget-catalog-modal" style="display: none;">
+    <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header">
+        <h3>Create Lovelace Card</h3>
+        <button class="modal-close-btn" onclick="closeModal('widget-catalog-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-group">
+          <label for="catalog-card-type">Card Type</label>
+          <select id="catalog-card-type" class="modal-input" onchange="onCreatorTypeChange(this.value)"
+            style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+            <option value="sensor">Standard Telemetry Sensor</option>
+            <option value="control">Interactive Control Widget</option>
+            <option value="value">Value Display Badge</option>
+            <option value="gauge">Circular Gauge Card</option>
+            <option value="entities">Multi-Entity Row List</option>
+            <option value="glance">Glance Columns Grid</option>
+            <option value="health">System Health Snapshot</option>
+            <option value="audit">Global System Audit Log</option>
+          </select>
+        </div>
+
+        <div class="modal-group" id="creator-entity-select-group"
+          style="display: flex; flex-direction: column; gap: 6px;">
+          <!-- Filled dynamically: dropdown or checkboxes -->
+        </div>
+
+        <div class="modal-group">
+          <label for="catalog-widget-title">Widget Label</label>
+          <input type="text" class="modal-input" id="catalog-widget-title" placeholder="Leave empty for default">
+        </div>
+
+        <div class="modal-group" style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="catalog-widget-unit">Display Unit (Optional)</label>
+          <input type="text" class="modal-input" id="catalog-widget-unit" placeholder="e.g. °C, %">
+        </div>
+
+        <div class="modal-group select-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="catalog-widget-width">Card Width</label>
+            <select id="catalog-widget-width" class="modal-input"
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+              <option value="1">Normal (1x)</option>
+              <option value="2">Wide (2x)</option>
+              <option value="3">Full Dashboard (3x)</option>
+            </select>
+          </div>
+          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="catalog-widget-height">Card Height</label>
+            <select id="catalog-widget-height" class="modal-input"
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+              <option value="1">Normal (1x)</option>
+              <option value="2">Tall (2x)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-group select-row creator-scale-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="creator-scale-min">Scale Min</label>
+            <input type="number" class="modal-input" id="creator-scale-min" value="0">
+          </div>
+          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+            <label for="creator-scale-max">Scale Max</label>
+            <input type="number" class="modal-input" id="creator-scale-max" value="100">
+          </div>
+        </div>
+
+        <div class="modal-group">
+          <label for="catalog-widget-color">Theme Accent</label>
+          <select id="catalog-widget-color" class="modal-input"
+            style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+            <option value="var(--color-optimal)">Emerald green (Optimal)</option>
+            <option value="var(--accent-blue)">Ice blue (Info)</option>
+            <option value="var(--color-caution)">Amber (Caution)</option>
+            <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
+            <option value="#c084fc">Amethyst purple</option>
+            <option value="#f472b6">Pink glow</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('widget-catalog-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="addWidgetToGrid()">Create Card</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- YAML Configuration Editor Modal Overlay -->
+  <div class="modal-overlay" id="yaml-config-modal" style="display: none;">
+    <div class="modal-content"
+      style="width: 85%; max-width: 900px; height: 80vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <h3>Raw YAML Configuration Editor</h3>
+        <button class="modal-close-btn" onclick="closeModal('yaml-config-modal')">&times;</button>
+      </div>
+      <div class="modal-body"
+        style="flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 12px; overflow: hidden;">
+        <span style="font-size:0.75rem; color:var(--text-secondary);">Directly edit tabs and card properties using
+          Lovelace syntax layout. Use 2 spaces for nested indentation.</span>
+        <div id="yaml-error-banner"
+          style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 10px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
+        </div>
+        <textarea id="yaml-editor-textarea"
+          style="flex: 1; background: #121214; border: 1px solid var(--border-soft); border-radius: 6px; color: #e4e4e7; font-family: monospace; font-size: 0.8rem; padding: 14px; line-height: 1.5; resize: none; outline: none;"></textarea>
+      </div>
+      <div class="modal-footer"
+        style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 12px;">
+        <button class="btn btn-secondary" onclick="closeModal('yaml-config-modal')">Close</button>
+        <button class="btn btn-primary" onclick="saveYAMLConfigSettings()">Save Config</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Lucide Icons CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- js-yaml CDN -->
+  <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
   <!-- Main interaction logic -->
   <script src="app.js"></script>
 </body>
+
 </html>

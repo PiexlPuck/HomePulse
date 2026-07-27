@@ -1,4 +1,15 @@
 # Document directories ignored as per user request
 Reference/
 brainstorm/
-.agent/
+.agents/
+api_documentation/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Installers and binaries
+*.deb
+
+# OS artifacts
+.DS_Store

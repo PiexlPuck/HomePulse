@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  homepulse-db:
+    image: postgres:15-alpine
+    container_name: homepulse-db
+    environment:
+      POSTGRES_DB: homepulse
+      POSTGRES_USER: hp_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-hpsafe_dbpass123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    restart: always
+
+  homepulse-app:
+    build: .
+    container_name: homepulse-app
+    depends_on:
+      - homepulse-db
+    environment:
+      - DATABASE_URL=postgresql://hp_admin:${DB_PASSWORD:-hpsafe_dbpass123}@127.0.0.1:5432/homepulse
+      - SECRET_KEY=${JWT_SECRET_KEY:-default_secret_key_834927}
+    volumes:
+      - .:/app
+    restart: always
+    network_mode: "host"
+
+volumes:
+  postgres_data:
