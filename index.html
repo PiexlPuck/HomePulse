@@ -69,6 +69,13 @@
 
   <!-- Main Content Area -->
   <main id="main-content">
+    <!-- Edit Mode Active Warning Banner -->
+    <div id="edit-mode-banner"
+      style="display: none; align-items: center; justify-content: center; gap: 8px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; padding: 12px; margin: 16px 32px 0 32px; border-radius: 8px; font-size: 0.88rem; font-weight: 600; text-align: center;">
+      <i data-lucide="alert-triangle" style="width:16px; height:16px;"></i>
+      <span>DASHBOARD EDITOR ACTIVE — You are editing the dashboard layout. Click "Exit Edit Mode" in the header to save
+        layout or view live details.</span>
+    </div>
     <header>
       <div class="header-left">
         <div class="page-title">Observer View: Core Cluster Alpha</div>
@@ -92,7 +99,7 @@
           style="display: none; align-items: center; gap: 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: var(--text-primary); padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 0.85rem;"
           onclick="openYAMLConfigEditor()">
           <i data-lucide="code" style="width:14px; height:14px;"></i>
-          <span>Raw Config</span>
+          <span>Raw Config (Advanced)</span>
         </button>
         <!-- Edit Dashboard Button -->
         <button class="edit-toggle-btn" id="edit-toggle-btn">
@@ -277,74 +284,101 @@
 
   <!-- Widget Editor Modal Overlay -->
   <div class="modal-overlay" id="widget-editor-modal" style="display: none;">
-    <div class="modal-content">
+    <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-header">
         <h3>Widget Editor</h3>
         <button class="modal-close-btn" onclick="closeModal('widget-editor-modal')">&times;</button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body"
+        style="overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px;">
         <input type="hidden" id="edit-widget-id">
 
-        <div class="modal-group">
-          <label for="edit-widget-title">Widget Label</label>
-          <input type="text" class="modal-input" id="edit-widget-title">
+        <!-- Editor Tabs -->
+        <div class="editor-tabs-group"
+          style="display: flex; border-bottom: 1px solid var(--border-soft); margin-bottom: 8px;">
+          <button type="button" class="editor-tab active-tab" id="editor-tab-ui" onclick="toggleWidgetEditorMode('ui')"
+            style="background:none; border:none; border-bottom:2px solid var(--accent-blue); color:var(--text-primary); padding:8px 16px; cursor:pointer; font-weight:600; font-size:0.82rem; outline:none;">UI
+            Editor</button>
+          <button type="button" class="editor-tab" id="editor-tab-yaml" onclick="toggleWidgetEditorMode('yaml')"
+            style="background:none; border:none; border-bottom:2px solid transparent; color:var(--text-secondary); padding:8px 16px; cursor:pointer; font-weight:600; font-size:0.82rem; outline:none;">YAML
+            Code</button>
         </div>
 
-        <div class="modal-group">
-          <label for="edit-widget-unit">Display Unit</label>
-          <input type="text" class="modal-input" id="edit-widget-unit">
-        </div>
+        <!-- UI Fields Container -->
+        <div id="editor-ui-fields" style="display: flex; flex-direction: column; gap: 14px;">
 
-        <div class="modal-group">
-          <label for="edit-widget-tab">Dashboard Tab View</label>
-          <select id="edit-widget-tab" class="modal-input"
-            style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-            <!-- Dynamically populated -->
-          </select>
-        </div>
+          <div class="modal-group">
+            <label for="edit-widget-title">Widget Label</label>
+            <input type="text" class="modal-input" id="edit-widget-title">
+          </div>
 
-        <div class="modal-group select-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-            <label for="edit-widget-width">Card Width</label>
-            <select id="edit-widget-width" class="modal-input"
+          <div class="modal-group">
+            <label for="edit-widget-unit">Display Unit</label>
+            <input type="text" class="modal-input" id="edit-widget-unit">
+          </div>
+
+          <div class="modal-group">
+            <label for="edit-widget-tab">Dashboard Tab View</label>
+            <select id="edit-widget-tab" class="modal-input"
               style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-              <option value="1">Normal (1x)</option>
-              <option value="2">Wide (2x)</option>
-              <option value="3">Full Dashboard (3x)</option>
+              <!-- Dynamically populated -->
             </select>
           </div>
-          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-            <label for="edit-widget-height">Card Height</label>
-            <select id="edit-widget-height" class="modal-input"
+
+          <div class="modal-group select-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+              <label for="edit-widget-width">Card Width</label>
+              <select id="edit-widget-width" class="modal-input"
+                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+                <option value="1">Normal (1x)</option>
+                <option value="2">Wide (2x)</option>
+                <option value="3">Full Dashboard (3x)</option>
+              </select>
+            </div>
+            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+              <label for="edit-widget-height">Card Height</label>
+              <select id="edit-widget-height" class="modal-input"
+                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+                <option value="1">Normal (1x)</option>
+                <option value="2">Tall (2x)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="modal-group select-row edit-scale-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+              <label for="edit-scale-min">Scale Min</label>
+              <input type="number" class="modal-input" id="edit-scale-min" value="0">
+            </div>
+            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
+              <label for="edit-scale-max">Scale Max</label>
+              <input type="number" class="modal-input" id="edit-scale-max" value="100">
+            </div>
+          </div>
+
+          <div class="modal-group">
+            <label for="edit-widget-color">Theme Accent</label>
+            <select id="edit-widget-color" class="modal-input"
               style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-              <option value="1">Normal (1x)</option>
-              <option value="2">Tall (2x)</option>
+              <option value="var(--color-optimal)">Emerald green (Optimal)</option>
+              <option value="var(--accent-blue)">Ice blue (Info)</option>
+              <option value="var(--color-caution)">Amber (Caution)</option>
+              <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
+              <option value="#c084fc">Amethyst purple</option>
+              <option value="#f472b6">Pink glow</option>
             </select>
           </div>
         </div>
 
-        <div class="modal-group select-row edit-scale-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-            <label for="edit-scale-min">Scale Min</label>
-            <input type="number" class="modal-input" id="edit-scale-min" value="0">
+        <!-- YAML Container -->
+        <div id="editor-yaml-container" style="display: none; flex-direction: column; gap: 8px;">
+          <span style="font-size:0.7rem; color:var(--text-secondary);">Directly edit this card's Lovelace parameters
+            using YAML:</span>
+          <div id="edit-widget-yaml-error"
+            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 8px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
           </div>
-          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-            <label for="edit-scale-max">Scale Max</label>
-            <input type="number" class="modal-input" id="edit-scale-max" value="100">
-          </div>
-        </div>
-
-        <div class="modal-group">
-          <label for="edit-widget-color">Theme Accent</label>
-          <select id="edit-widget-color" class="modal-input"
-            style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-            <option value="var(--color-optimal)">Emerald green (Optimal)</option>
-            <option value="var(--accent-blue)">Ice blue (Info)</option>
-            <option value="var(--color-caution)">Amber (Caution)</option>
-            <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
-            <option value="#c084fc">Amethyst purple</option>
-            <option value="#f472b6">Pink glow</option>
-          </select>
+          <textarea id="edit-widget-yaml-textarea"
+            style="background:#121214; border: 1px solid var(--border-soft); border-radius: 6px; color:#e4e4e7; font-family:monospace; font-size:0.8rem; padding:12px; height:220px; resize:none; outline:none; line-height:1.4;"></textarea>
         </div>
       </div>
       <div class="modal-footer">

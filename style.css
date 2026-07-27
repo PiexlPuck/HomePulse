@@ -509,7 +509,8 @@ header {
 
 /* Edit Mode Overlay Controls */
 .edit-handle,
-.edit-settings {
+.edit-settings,
+.edit-code {
   position: absolute;
   top: 14px;
   background: var(--bg-primary);
@@ -529,24 +530,54 @@ header {
 }
 
 .edit-handle {
-  right: 42px;
+  right: 70px;
   cursor: grab;
 }
 
+.edit-handle * {
+  pointer-events: none;
+}
+
 .edit-settings {
+  right: 42px;
+}
+
+.edit-code {
   right: 14px;
 }
 
+main.edit-mode .edit-handle,
+main.edit-mode .edit-settings,
+main.edit-mode .edit-code {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .edit-handle:hover,
-.edit-settings:hover {
+.edit-settings:hover,
+.edit-code:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);
 }
 
-main.edit-mode .edit-handle,
-main.edit-mode .edit-settings {
-  opacity: 1;
-  pointer-events: auto;
+/* Edit Mode Visual Outlines & Grid Overlay */
+main.edit-mode .dashboard-grid {
+  background-image: radial-gradient(rgba(245, 158, 11, 0.05) 1.5px, transparent 0);
+  background-size: 24px 24px;
+  border: 1px dashed rgba(245, 158, 11, 0.15);
+  border-radius: 8px;
+  padding: 24px;
+  margin-top: 10px;
+}
+
+main.edit-mode .card {
+  border: 1px dashed rgba(245, 158, 11, 0.35) !important;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+main.edit-mode .card:hover {
+  border-color: var(--accent-blue) !important;
+  border-style: solid !important;
 }
 
 /* Card Header Layout */

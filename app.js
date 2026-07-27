@@ -1,6 +1,148 @@
 // HomePulse Dashboard Client Interaction Logic
 // Integrates with FastAPI REST endpoints & WebSocket Client Stream APIs
 
+// Zero-dependency offline fallback for js-yaml
+if (typeof jsyaml === 'undefined') {
+  window.jsyaml = {
+    dump: function (obj, options) {
+      function dumpValue(val, indent = 0) {
+        const spacing = " ".repeat(indent);
+        if (val === null || val === undefined) return "null";
+        if (typeof val === 'boolean' || typeof val === 'number') return String(val);
+        if (typeof val === 'string') {
+          return `"${val.replace(/"/g, '\\"')}"`;
+        }
+        if (Array.isArray(val)) {
+          if (val.length === 0) return "[]";
+          let lines = [];
+          val.forEach(item => {
+            if (typeof item === 'object' && item !== null) {
+              const subLines = [];
+              const keys = Object.keys(item);
+              keys.forEach((k, idx) => {
+                const prefix = idx === 0 ? "- " : "  ";
+                subLines.push(`${spacing}${prefix}${k}: ${dumpValue(item[k], 0)}`);
+              });
+              lines.push(subLines.join('\n'));
+            } else {
+              lines.push(`${spacing}- ${dumpValue(item, 0)}`);
+            }
+          });
+          return "\n" + lines.join('\n');
+        }
+        if (typeof val === 'object') {
+          let lines = [];
+          for (const key in val) {
+            if (!val.hasOwnProperty(key)) continue;
+            const subVal = val[key];
+            if (subVal === undefined) continue;
+            if (typeof subVal === 'object' && subVal !== null) {
+              lines.push(`${spacing}${key}:${dumpValue(subVal, indent + 2)}`);
+            } else {
+              lines.push(`${spacing}${key}: ${dumpValue(subVal, 0)}`);
+            }
+          }
+          return "\n" + lines.join('\n');
+        }
+        return `"${String(val)}"`;
+      }
+      return dumpValue(obj, 0).trim();
+    },
+    load: function (str) {
+      const lines = str.split(/\r?\n/);
+      const root = {};
+      let currentPath = [];
+      let currentArray = null;
+      let currentArrayKey = null;
+      let arrayItemObj = null;
+
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+
+        const indent = line.length - line.trimStart().length;
+
+        if (trimmed.startsWith('-')) {
+          if (currentArray) {
+            const rest = trimmed.slice(1).trim();
+            const colonIdx = rest.indexOf(':');
+            if (colonIdx !== -1) {
+              const subK = rest.slice(0, colonIdx).trim();
+              const subRawVal = rest.slice(colonIdx + 1).trim();
+              let subVal = subRawVal.replace(/^["']|["']$/g, '');
+              if (subRawVal === 'true') subVal = true;
+              else if (subRawVal === 'false') subVal = false;
+              else if (!isNaN(subRawVal) && subRawVal !== '') subVal = parseFloat(subRawVal);
+
+              arrayItemObj = {};
+              arrayItemObj[subK] = subVal;
+              currentArray.push(arrayItemObj);
+            } else {
+              let val = rest.replace(/^["']|["']$/g, '');
+              if (rest === 'true') val = true;
+              else if (rest === 'false') val = false;
+              else if (!isNaN(rest) && rest !== '') val = parseFloat(rest);
+              currentArray.push(val);
+            }
+          }
+          return;
+        }
+
+        const colonIdx = trimmed.indexOf(':');
+        if (colonIdx === -1) return;
+
+        const k = trimmed.slice(0, colonIdx).trim();
+        const rawVal = trimmed.slice(colonIdx + 1).trim();
+
+        if (indent > 2 && arrayItemObj) {
+          let val = rawVal.replace(/^["']|["']$/g, '');
+          if (rawVal === 'true') val = true;
+          else if (rawVal === 'false') val = false;
+          else if (!isNaN(rawVal) && rawVal !== '') val = parseFloat(rawVal);
+          arrayItemObj[k] = val;
+          return;
+        }
+
+        if (indent === 0) {
+          currentPath = [root];
+          currentArray = null;
+          arrayItemObj = null;
+        } else {
+          const level = Math.floor(indent / 2);
+          while (currentPath.length > level) {
+            currentPath.pop();
+          }
+        }
+
+        const activeObj = currentPath[currentPath.length - 1] || root;
+
+        if (rawVal === '') {
+          if (k === 'entities' || k === 'widgets' || k === 'dashboards') {
+            currentArray = [];
+            activeObj[k] = currentArray;
+            currentArrayKey = k;
+          } else {
+            const newObj = {};
+            activeObj[k] = newObj;
+            currentPath.push(newObj);
+            currentArray = null;
+            arrayItemObj = null;
+          }
+        } else {
+          let val = rawVal.replace(/^["']|["']$/g, '');
+          if (rawVal === 'true') val = true;
+          else if (rawVal === 'false') val = false;
+          else if (!isNaN(rawVal) && rawVal !== '') val = parseFloat(rawVal);
+
+          activeObj[k] = val;
+        }
+      });
+
+      return root;
+    }
+  };
+}
+
 let activeTab = 'main';
 let token = localStorage.getItem('hp_token') || 'Architect_JWT_String'; // Fallback token
 let socket = null;
@@ -94,6 +236,11 @@ function initializeSidebar() {
       const yamlToggleBtn = document.getElementById('yaml-toggle-btn');
       if (yamlToggleBtn) {
         yamlToggleBtn.style.display = isEditMode ? 'flex' : 'none';
+      }
+
+      const editBanner = document.getElementById('edit-mode-banner');
+      if (editBanner) {
+        editBanner.style.display = isEditMode ? 'flex' : 'none';
       }
 
       const spanText = editToggleBtn.querySelector('span');
@@ -364,7 +511,8 @@ function buildDashboardCards(entitiesMap) {
 
         cardEl.innerHTML = headerHTML + bodyHTML + `
           <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}')"><i data-lucide="sliders"></i></div>
+          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
+          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
         `;
       }
     }
@@ -413,7 +561,8 @@ function buildDashboardCards(entitiesMap) {
             </div>
           </div>
           <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}')"><i data-lucide="sliders"></i></div>
+          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
+          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
         `;
       }
     }
@@ -474,7 +623,8 @@ function buildDashboardCards(entitiesMap) {
           </div>
         </div>
         <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}')"><i data-lucide="sliders"></i></div>
+        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
+        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
       `;
     }
 
@@ -512,7 +662,8 @@ function buildDashboardCards(entitiesMap) {
           </div>
         </div>
         <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}')"><i data-lucide="sliders"></i></div>
+        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
+        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
       `;
     }
 
@@ -560,7 +711,8 @@ function buildDashboardCards(entitiesMap) {
           </div>
         </div>
         <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}')"><i data-lucide="sliders"></i></div>
+        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
+        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
       `;
     }
 
@@ -579,7 +731,8 @@ function buildDashboardCards(entitiesMap) {
           </div>
         </div>
         <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}')"><i data-lucide="sliders"></i></div>
+        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
+        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
       `;
     }
 
@@ -1218,12 +1371,19 @@ let draggedCard = null;
 function enableDragAndDrop() {
   const cards = document.querySelectorAll('#dashboard-grid > .card:not(.card-placeholder)');
   cards.forEach(card => {
-    card.setAttribute('draggable', 'true');
+    card.setAttribute('draggable', 'false');
     card.addEventListener('dragstart', handleDragStart);
     card.addEventListener('dragover', handleDragOver);
     card.addEventListener('dragleave', handleDragLeave);
     card.addEventListener('drop', handleDrop);
     card.addEventListener('dragend', handleDragEnd);
+
+    // Enable dragging only when clicking the edit-handle
+    const handle = card.querySelector('.edit-handle');
+    if (handle) {
+      handle.onmousedown = () => card.setAttribute('draggable', 'true');
+      handle.ontouchstart = () => card.setAttribute('draggable', 'true');
+    }
   });
 }
 
@@ -1237,16 +1397,16 @@ function disableDragAndDrop() {
     card.removeEventListener('drop', handleDrop);
     card.removeEventListener('dragend', handleDragEnd);
     card.classList.remove('drag-over');
+
+    const handle = card.querySelector('.edit-handle');
+    if (handle) {
+      handle.onmousedown = null;
+      handle.ontouchstart = null;
+    }
   });
 }
 
 function handleDragStart(e) {
-  // Only trigger drag if drag handle was clicked
-  const handle = this.querySelector('.edit-handle');
-  if (handle && !handle.contains(e.target)) {
-    e.preventDefault();
-    return false;
-  }
   draggedCard = this;
   this.style.opacity = '0.5';
   e.dataTransfer.effectAllowed = 'move';
@@ -1283,6 +1443,7 @@ function handleDrop(e) {
 
 function handleDragEnd(e) {
   this.style.opacity = '1';
+  this.setAttribute('draggable', 'false');
   document.querySelectorAll('#dashboard-grid > .card').forEach(c => c.classList.remove('drag-over'));
 }
 
@@ -1524,7 +1685,7 @@ function closeModal(modalId) {
   }
 }
 
-function openCardEditor(widgetId) {
+function openCardEditor(widgetId, initialMode = 'ui') {
   let widgets = [];
   try {
     widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
@@ -1567,42 +1728,181 @@ function openCardEditor(widgetId) {
     modal.style.display = 'flex';
     setTimeout(() => modal.classList.add('active'), 10);
   }
+
+  // Bind initial tab state to UI
+  toggleWidgetEditorMode(initialMode);
 }
 
 function saveWidgetSettings() {
   const id = document.getElementById('edit-widget-id').value;
-  const title = document.getElementById('edit-widget-title').value.trim();
-  const unit = document.getElementById('edit-widget-unit').value.trim();
-  const color = document.getElementById('edit-widget-color').value;
-  const tab = document.getElementById('edit-widget-tab').value;
-  const w = parseInt(document.getElementById('edit-widget-width').value) || 1;
-  const h = parseInt(document.getElementById('edit-widget-height').value) || 1;
-  const min = parseFloat(document.getElementById('edit-scale-min').value);
-  const max = parseFloat(document.getElementById('edit-scale-max').value);
+  const errorBanner = document.getElementById('edit-widget-yaml-error');
+  if (errorBanner) errorBanner.style.display = 'none';
 
   let widgets = [];
   try {
     widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
   } catch (e) { }
 
-  const widget = widgets.find(w => w.id === id);
-  if (widget) {
-    widget.title = title;
-    widget.tab = tab;
-    widget.options.unit = unit;
-    widget.options.color = color;
-    widget.options.gridWidth = w;
-    widget.options.gridHeight = h;
-    widget.options.min = min;
-    widget.options.max = max;
+  const widgetIdx = widgets.findIndex(w => w.id === id);
+  if (widgetIdx === -1) return;
 
+  // Sync UI form editor fields to YAML representation if saving from form editor
+  if (widgetEditorMode === 'ui') {
+    syncFormFieldsToYAML();
+  }
+
+  const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+  if (!yamlTextarea) return;
+
+  try {
+    const parsedWidget = jsyaml.load(yamlTextarea.value);
+    if (!parsedWidget || typeof parsedWidget !== 'object') {
+      throw new Error("YAML must represent a valid Lovelace card object structure.");
+    }
+    if (!parsedWidget.id || parsedWidget.id !== id) {
+      throw new Error("Do not modify the card's unique 'id' field.");
+    }
+    if (!parsedWidget.type) {
+      throw new Error("Card configuration is missing a 'type' field.");
+    }
+    if (!parsedWidget.tab) {
+      throw new Error("Card configuration is missing a destination 'tab' field.");
+    }
+
+    widgets[widgetIdx] = parsedWidget;
     localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
+
+  } catch (e) {
+    console.error("Card YAML editor parse warning: ", e);
+    // Switch tabs to show valid code errors
+    toggleWidgetEditorMode('yaml');
+
+    if (errorBanner) {
+      errorBanner.textContent = "Validation Failure: " + e.message;
+      errorBanner.style.display = 'block';
+      const modalBody = document.querySelector('#widget-editor-modal .modal-body');
+      if (modalBody) modalBody.scrollTop = 0;
+    } else {
+      alert("Validation error: " + e.message);
+    }
+    return; // Block save
   }
 
   closeModal('widget-editor-modal');
   buildDashboardCards(cachedEntities);
   if (document.getElementById('main-content').classList.contains('edit-mode')) {
     enableDragAndDrop();
+  }
+}
+
+// --- Card-Level Lovelace Code Editor Helper Tabs API ---
+
+let widgetEditorMode = 'ui';
+
+function toggleWidgetEditorMode(mode) {
+  widgetEditorMode = mode;
+  const uiTab = document.getElementById('editor-tab-ui');
+  const yamlTab = document.getElementById('editor-tab-yaml');
+  const uiFields = document.getElementById('editor-ui-fields');
+  const yamlContainer = document.getElementById('editor-yaml-container');
+  const yamlError = document.getElementById('edit-widget-yaml-error');
+
+  if (yamlError) yamlError.style.display = 'none';
+
+  if (mode === 'ui') {
+    if (uiTab) {
+      uiTab.style.borderBottom = '2px solid var(--accent-blue)';
+      uiTab.style.color = 'var(--text-primary)';
+    }
+    if (yamlTab) {
+      yamlTab.style.borderBottom = '2px solid transparent';
+      yamlTab.style.color = 'var(--text-secondary)';
+    }
+
+    if (uiFields) uiFields.style.display = 'flex';
+    if (yamlContainer) yamlContainer.style.display = 'none';
+
+    // Sync structural form fields values from YAML draft code parameters
+    syncYAMLToFormFields();
+  } else {
+    if (yamlTab) {
+      yamlTab.style.borderBottom = '2px solid var(--accent-blue)';
+      yamlTab.style.color = 'var(--text-primary)';
+    }
+    if (uiTab) {
+      uiTab.style.borderBottom = '2px solid transparent';
+      uiTab.style.color = 'var(--text-secondary)';
+    }
+
+    if (uiFields) uiFields.style.display = 'none';
+    if (yamlContainer) yamlContainer.style.display = 'flex';
+
+    // Dump active form field settings into YAML textarea value
+    syncFormFieldsToYAML();
+  }
+}
+
+function syncFormFieldsToYAML() {
+  const widgetId = document.getElementById('edit-widget-id').value;
+  const widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
+  const widget = widgets.find(w => w.id === widgetId);
+  if (!widget) return;
+
+  const draftWidget = {
+    id: widget.id,
+    type: widget.type,
+    title: document.getElementById('edit-widget-title').value,
+    tab: document.getElementById('edit-widget-tab').value,
+    entities: widget.entities || [],
+    options: {
+      ...(widget.options || {}),
+      unit: document.getElementById('edit-widget-unit').value,
+      color: document.getElementById('edit-widget-color').value,
+      gridWidth: parseInt(document.getElementById('edit-widget-width').value),
+      gridHeight: parseInt(document.getElementById('edit-widget-height').value)
+    }
+  };
+
+  const minInput = document.getElementById('edit-scale-min');
+  const maxInput = document.getElementById('edit-scale-max');
+  if (minInput && maxInput && (widget.type === 'gauge' || widget.type === 'sensor')) {
+    draftWidget.options.min = parseFloat(minInput.value);
+    draftWidget.options.max = parseFloat(maxInput.value);
+  }
+
+  try {
+    const yamlVal = jsyaml.dump(draftWidget, { indent: 2, noRefs: true });
+    const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+    if (yamlTextarea) yamlTextarea.value = yamlVal;
+  } catch (err) {
+    console.error("Widget YAML dump failed: ", err);
+  }
+}
+
+function syncYAMLToFormFields() {
+  const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+  if (!yamlTextarea) return;
+
+  try {
+    const parsed = jsyaml.load(yamlTextarea.value);
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.title !== undefined) document.getElementById('edit-widget-title').value = parsed.title;
+      if (parsed.tab !== undefined) document.getElementById('edit-widget-tab').value = parsed.tab;
+      if (parsed.options) {
+        if (parsed.options.unit !== undefined) document.getElementById('edit-widget-unit').value = parsed.options.unit;
+        if (parsed.options.color !== undefined) document.getElementById('edit-widget-color').value = parsed.options.color;
+        if (parsed.options.gridWidth !== undefined) document.getElementById('edit-widget-width').value = parsed.options.gridWidth;
+        if (parsed.options.gridHeight !== undefined) document.getElementById('edit-widget-height').value = parsed.options.gridHeight;
+        if (parsed.options.min !== undefined && document.getElementById('edit-scale-min')) {
+          document.getElementById('edit-scale-min').value = parsed.options.min;
+        }
+        if (parsed.options.max !== undefined && document.getElementById('edit-scale-max')) {
+          document.getElementById('edit-scale-max').value = parsed.options.max;
+        }
+      }
+    }
+  } catch (err) {
+    // Ignore draft parse errors during typing switches
   }
 }
 
