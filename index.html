@@ -38,16 +38,22 @@
         </div>
         <div class="nav-badge" id="discovery-badge">1</div>
       </a>
-      <a href="#" class="nav-item">
+      <a href="#" class="nav-item" id="nav-automations">
         <div class="nav-item-left">
           <i data-lucide="bell-ring"></i>
           <span>Automations</span>
         </div>
       </a>
-      <a href="#" class="nav-item">
+      <a href="#" class="nav-item" id="nav-devtools">
         <div class="nav-item-left">
           <i data-lucide="terminal"></i>
           <span>Developer Tools</span>
+        </div>
+      </a>
+      <a href="#" class="nav-item" id="nav-probes">
+        <div class="nav-item-left">
+          <i data-lucide="shield-check"></i>
+          <span>Service Monitors</span>
         </div>
       </a>
       <a href="#" class="nav-item" id="nav-settings">
@@ -88,11 +94,7 @@
           <!-- Dynamically populated from JS -->
         </div>
 
-        <!-- Uptime Badge -->
-        <div class="uptime-badge">
-          <span class="dot"></span>
-          <span>STABLE UPTIME: 99.98%</span>
-        </div>
+
 
         <!-- Raw Config Button -->
         <button id="yaml-toggle-btn"
@@ -273,6 +275,227 @@
             </div>
           </div>
         </div>
+
+      </div>
+
+      <!-- Monitors/Probes Panel -->
+      <div class="settings-view hide" id="probes-view">
+
+        <!-- Standalone Launchers Row (Top Left Corner) -->
+        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px; padding: 4px 0 0 4px;">
+          <button id="btn-configure-new-probe" class="btn btn-primary" onclick="openAddMonitorModal()"
+            style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
+            Configure New Probe
+          </button>
+          <button id="btn-install-custom-monitors" class="btn btn-secondary" onclick="openMarketplaceModal()"
+            style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <i data-lucide="shopping-bag" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
+            Install Custom Monitors
+          </button>
+        </div>
+
+        <!-- LEVEL 1: Engines Grid -->
+        <div id="probes-level-1" class="settings-card">
+          <div class="settings-form" style="padding-top: 10px;">
+            <div id="engines-grid" class="monitor-picker-grid"
+              style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+              <!-- Filled dynamically by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- LEVEL 2: Engine Sources List -->
+        <div id="probes-level-2" class="settings-card" style="display: none;">
+          <div class="settings-header"
+            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h3 id="lvl2-engine-title">Ping Engine</h3>
+              <p id="lvl2-engine-desc">Configure active IP reachability probes.</p>
+            </div>
+            <button class="btn btn-secondary" onclick="navigateProbesLevel(1)"
+              style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Engines
+            </button>
+          </div>
+
+          <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
+            <!-- Sources List -->
+            <div id="probes-source-list" style="display:flex; flex-direction:column; gap:10px;">
+              <!-- Filled dynamically by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- LEVEL 3: Source Detail View -->
+        <div id="probes-level-3" class="settings-card" style="display: none;">
+          <div class="settings-header"
+            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h3 id="lvl3-probe-title">Probe Info</h3>
+              <p id="lvl3-probe-meta">Metadata details</p>
+            </div>
+            <button class="btn btn-secondary" onclick="navigateProbesLevel(2)"
+              style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Probes
+            </button>
+          </div>
+
+          <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
+            <!-- Stats -->
+            <div
+              style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
+              <div
+                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
+                <small
+                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Current
+                  Status</small>
+                <h4 id="lvl3-stat-status" style="font-size:1.4rem; font-weight:700; margin:0;">UNKNOWN</h4>
+              </div>
+              <div
+                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
+                <small
+                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Last
+                  Response Latency</small>
+                <h4 id="lvl3-stat-latency" style="font-size:1.4rem; font-weight:700; margin:0;">-- ms</h4>
+              </div>
+              <div
+                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
+                <small
+                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Check
+                  Frequency</small>
+                <h4 id="lvl3-stat-interval" style="font-size:1.4rem; font-weight:700; margin:0;">-- s</h4>
+              </div>
+            </div>
+
+            <!-- History log -->
+            <h4
+              style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; margin-top:20px;">
+              Check Telemetry History (Last 10 events)</h4>
+            <div id="lvl3-history-table-container" style="overflow-x:auto;">
+              <table
+                style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; border:1px solid var(--border-soft); border-radius:6px;">
+                <thead>
+                  <tr
+                    style="background:rgba(255,255,255,0.01); border-bottom:1px solid var(--border-soft); color:var(--text-secondary);">
+                    <th style="padding:10px 14px;">Timestamp Tag</th>
+                    <th style="padding:10px 14px;">Status Result</th>
+                    <th style="padding:10px 14px;">Response Latency Query</th>
+                  </tr>
+                </thead>
+                <tbody id="lvl3-history-table-body">
+                  <!-- Dynamic rows dynamically appended -->
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Automations View Panel -->
+      <div class="settings-view hide" id="automations-view">
+        <div class="settings-card">
+          <div class="settings-header">
+            <h3>Automations Engine</h3>
+            <p>Define automated rules and alert responses based on system thresholds</p>
+          </div>
+          <div class="settings-form">
+            <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px;">
+              Create active telemetry triggers. If any configured metrics exceed set thresholds (e.g. CPU temperature
+              &gt; 80°C), HomePulse will log a warning or execute alert callbacks automatically.
+            </div>
+            <!-- Mock Event Triggers -->
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <div
+                style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0 0 4px 0;">
+                    Trigger Core CPU Saturn Warning</h4>
+                  <span style="font-size: 0.72rem; color: var(--text-secondary);">If `cpu-utilization` &gt; 90.0% for 3
+                    cycles ➔ log System Audit Warning.</span>
+                </div>
+                <span class="status-pill optimal" style="font-size: 0.68rem;">ACTIVE</span>
+              </div>
+              <div
+                style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0 0 4px 0;">Host
+                    High Temp Alert</h4>
+                  <span style="font-size: 0.72rem; color: var(--text-secondary);">If `server-room-temp` &gt; 75.0°C ➔
+                    log critical event in Audit Stream.</span>
+                </div>
+                <span class="status-pill optimal" style="font-size: 0.68rem;">ACTIVE</span>
+              </div>
+              <div
+                style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center; opacity: 0.6;">
+                <div>
+                  <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0 0 4px 0;">DB
+                    Replication Check Retry</h4>
+                  <span style="font-size: 0.72rem; color: var(--text-secondary);">If `database-status` != "CONNECTED" ➔
+                    retry query up to 5 times.</span>
+                </div>
+                <span class="status-pill default"
+                  style="font-size: 0.68rem; color: var(--text-secondary);">DISABLED</span>
+              </div>
+            </div>
+            <div style="margin-top: 24px;">
+              <button class="btn btn-primary"
+                style="font-size: 0.75rem; padding: 6px 14px; cursor: not-allowed; opacity: 0.6;" disabled>+ Create
+                Rule</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Developer Tools View Panel -->
+      <div class="settings-view hide" id="developer-tools-view">
+        <div class="settings-card" style="max-width: 800px;">
+          <div class="settings-header">
+            <h3>Developer Tools &amp; Web Shell</h3>
+            <p>Access background system diagnostics, debug logs, and execute terminal test queries.</p>
+          </div>
+          <div class="settings-form">
+            <!-- Simulated Diagnostic Shell -->
+            <div
+              style="background: #09090b; border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; font-family: monospace;">
+              <div
+                style="background: #18181b; padding: 8px 16px; font-size: 0.72rem; color: var(--text-secondary); border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px;">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></span>
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></span>
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></span>
+                <span style="margin-left: 8px; font-weight: 600;">bash — core-mon.local</span>
+              </div>
+              <div
+                style="padding: 16px; font-size: 0.78rem; line-height: 1.5; color: #a1a1aa; height: 280px; overflow-y: auto;">
+                <div style="color: #3b82f6;">HomePulse Diagnostic Console (V1.2.0-stable)</div>
+                <div style="color: var(--text-secondary); margin-bottom: 10px;">Type 'help' to view available commands.
+                </div>
+                <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span style="color: #f4f4f5;">pulse-status
+                    --verify-metrics</span></div>
+                <div style="color: #10b981; margin-bottom: 10px;">[SUCCESS] telemetry stream link validated. All active
+                  listeners (4) connected.</div>
+                <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span style="color: #f4f4f5;">cat
+                    /etc/homepulse/config.json</span></div>
+                <div style="color: #71717a; margin-bottom: 10px;">{ "db_pool_size": 10, "mdns_broadcast": true,
+                  "token_auth": "enabled" }</div>
+                <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span
+                    style="position: relative; display: inline-block;">
+                    <input type="text" id="shell-mock-input" value="pulse-ping gateway.local" readonly
+                      style="background:transparent; border:none; color:#f0e6d3; font-family:monospace; font-size:0.78rem; outline:none; padding:0; width:300px;">
+                  </span></div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 16px;">
+              <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 6px 14px; cursor: pointer;">Clear
+                Terminal</button>
+              <button class="btn btn-primary"
+                style="font-size: 0.75rem; padding: 6px 14px; cursor: not-allowed; opacity: 0.6;" disabled>Execute
+                Command</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Bottom section spacer -->
@@ -287,86 +510,158 @@
     <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-header">
         <h3>Widget Editor</h3>
-        <button class="modal-close-btn" onclick="closeModal('widget-editor-modal')">&times;</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <!-- 3-Dots Menu Dropdown -->
+          <div style="position: relative; display: inline-block;">
+            <button class="btn-icon" onclick="toggleWidgetEditorMenu(event)"
+              style="background:none; border:none; padding:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:50%; width:28px; height:28px; transition: background 0.2s;"
+              onmouseover="this.style.background='rgba(255, 255, 255, 0.08)'" onmouseout="this.style.background='none'"
+              title="Options">
+              <i data-lucide="more-vertical" style="width: 18px; height: 18px; color: var(--text-secondary);"></i>
+            </button>
+            <div id="widget-editor-menu-dropdown"
+              style="display: none; position: absolute; right: 0; top: 32px; background: #181614; border: 1px solid var(--border-soft); border-radius: 6px; z-index: 1001; min-width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); padding: 4px 0;">
+              <a href="#" id="menu-toggle-editor-mode" onclick="clickedToggleEditorMode(event)"
+                style="display: block; color: var(--text-primary); padding: 8px 16px; font-size: 0.78rem; text-decoration: none; transition: background 0.2s;"
+                onmouseover="this.style.background='rgba(255, 255, 255, 0.08)'"
+                onmouseout="this.style.background='none'">
+                Edit in YAML
+              </a>
+            </div>
+          </div>
+          <button class="modal-close-btn" onclick="closeModal('widget-editor-modal')">&times;</button>
+        </div>
       </div>
       <div class="modal-body"
         style="overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px;">
         <input type="hidden" id="edit-widget-id">
 
-        <!-- Editor Tabs -->
-        <div class="editor-tabs-group"
-          style="display: flex; border-bottom: 1px solid var(--border-soft); margin-bottom: 8px;">
-          <button type="button" class="editor-tab active-tab" id="editor-tab-ui" onclick="toggleWidgetEditorMode('ui')"
-            style="background:none; border:none; border-bottom:2px solid var(--accent-blue); color:var(--text-primary); padding:8px 16px; cursor:pointer; font-weight:600; font-size:0.82rem; outline:none;">UI
-            Editor</button>
-          <button type="button" class="editor-tab" id="editor-tab-yaml" onclick="toggleWidgetEditorMode('yaml')"
-            style="background:none; border:none; border-bottom:2px solid transparent; color:var(--text-secondary); padding:8px 16px; cursor:pointer; font-weight:600; font-size:0.82rem; outline:none;">YAML
-            Code</button>
-        </div>
-
         <!-- UI Fields Container -->
-        <div id="editor-ui-fields" style="display: flex; flex-direction: column; gap: 14px;">
+        <div id="editor-ui-fields" style="display: flex; flex-direction: column; gap: 16px;">
 
-          <div class="modal-group">
-            <label for="edit-widget-title">Widget Label</label>
-            <input type="text" class="modal-input" id="edit-widget-title">
-          </div>
+          <!-- Section 1: Basic -->
+          <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
+            <h4 class="form-section-header"
+              style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+              🎛️ Basic Properties</h4>
 
-          <div class="modal-group">
-            <label for="edit-widget-unit">Display Unit</label>
-            <input type="text" class="modal-input" id="edit-widget-unit">
-          </div>
+            <div class="modal-group">
+              <label for="edit-widget-title"
+                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Widget
+                Label</label>
+              <input type="text" class="modal-input" id="edit-widget-title" placeholder="e.g. Gateway Status"
+                style="width: 100%; box-sizing: border-box;">
+              <span class="form-field-help"
+                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">The title
+                text shown at the top of this card.</span>
+            </div>
 
-          <div class="modal-group">
-            <label for="edit-widget-tab">Dashboard Tab View</label>
-            <select id="edit-widget-tab" class="modal-input"
-              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-              <!-- Dynamically populated -->
-            </select>
-          </div>
-
-          <div class="modal-group select-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-              <label for="edit-widget-width">Card Width</label>
-              <select id="edit-widget-width" class="modal-input"
-                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-                <option value="1">Normal (1x)</option>
-                <option value="2">Wide (2x)</option>
-                <option value="3">Full Dashboard (3x)</option>
+            <div class="modal-group">
+              <label for="edit-widget-color"
+                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Theme
+                Accent</label>
+              <select id="edit-widget-color" class="modal-input"
+                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                <option value="var(--color-optimal)">Emerald green (Optimal)</option>
+                <option value="var(--accent-blue)">Ice blue (Info)</option>
+                <option value="var(--color-caution)">Amber (Caution)</option>
+                <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
+                <option value="#c084fc">Amethyst purple</option>
+                <option value="#f472b6">Pink glow</option>
               </select>
+              <span class="form-field-help"
+                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Primary color
+                used for gauges, highlights, and icons.</span>
             </div>
-            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-              <label for="edit-widget-height">Card Height</label>
-              <select id="edit-widget-height" class="modal-input"
-                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-                <option value="1">Normal (1x)</option>
-                <option value="2">Tall (2x)</option>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
+
+          <!-- Section 2: Layout -->
+          <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
+            <h4 class="form-section-header"
+              style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+              📐 Layout & Placement</h4>
+
+            <div class="modal-group">
+              <label for="edit-widget-tab"
+                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Dashboard
+                Tab View</label>
+              <select id="edit-widget-tab" class="modal-input"
+                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                <!-- Dynamically populated -->
               </select>
+              <span class="form-field-help"
+                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">The tab on
+                which this card is displayed.</span>
+            </div>
+
+            <div class="modal-group select-row" style="display: flex; gap: 12px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
+                <label for="edit-widget-width"
+                  style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Card Width</label>
+                <select id="edit-widget-width" class="modal-input"
+                  style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                  <option value="1">Normal (1x)</option>
+                  <option value="2">Wide (2x)</option>
+                  <option value="3">Full Dashboard (3x)</option>
+                </select>
+                <span class="form-field-help"
+                  style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Grid columns to
+                  span.</span>
+              </div>
+              <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
+                <label for="edit-widget-height"
+                  style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Card Height</label>
+                <select id="edit-widget-height" class="modal-input"
+                  style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                  <option value="1">Normal (1x)</option>
+                  <option value="2">Tall (2x)</option>
+                </select>
+                <span class="form-field-help"
+                  style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Grid rows to span.</span>
+              </div>
             </div>
           </div>
 
-          <div class="modal-group select-row edit-scale-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-              <label for="edit-scale-min">Scale Min</label>
-              <input type="number" class="modal-input" id="edit-scale-min" value="0">
-            </div>
-            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-              <label for="edit-scale-max">Scale Max</label>
-              <input type="number" class="modal-input" id="edit-scale-max" value="100">
-            </div>
-          </div>
+          <!-- Section 3: Metric Details (Shown only for Gauges and Sensors) -->
+          <div class="form-section edit-scale-group" style="display: flex; flex-direction: column; gap: 12px;">
+            <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
+            <h4 class="form-section-header"
+              style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+              📊 Metric Options</h4>
 
-          <div class="modal-group">
-            <label for="edit-widget-color">Theme Accent</label>
-            <select id="edit-widget-color" class="modal-input"
-              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-              <option value="var(--color-optimal)">Emerald green (Optimal)</option>
-              <option value="var(--accent-blue)">Ice blue (Info)</option>
-              <option value="var(--color-caution)">Amber (Caution)</option>
-              <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
-              <option value="#c084fc">Amethyst purple</option>
-              <option value="#f472b6">Pink glow</option>
-            </select>
+            <div class="modal-group">
+              <label for="edit-widget-unit"
+                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Display
+                Unit</label>
+              <input type="text" class="modal-input" id="edit-widget-unit" placeholder="e.g. %, °C, GB, ms"
+                style="width: 100%; box-sizing: border-box;">
+              <span class="form-field-help"
+                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Value
+                measurement suffix label.</span>
+            </div>
+
+            <div class="modal-group select-row" style="display: flex; gap: 12px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
+                <label for="edit-scale-min"
+                  style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Scale Min</label>
+                <input type="number" class="modal-input" id="edit-scale-min" value="0"
+                  style="width: 100%; box-sizing: border-box;">
+                <span class="form-field-help"
+                  style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Minimum gauge value
+                  limit.</span>
+              </div>
+              <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
+                <label for="edit-scale-max"
+                  style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Scale Max</label>
+                <input type="number" class="modal-input" id="edit-scale-max" value="100"
+                  style="width: 100%; box-sizing: border-box;">
+                <span class="form-field-help"
+                  style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Maximum gauge value
+                  limit.</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -378,7 +673,7 @@
             style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 8px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
           </div>
           <textarea id="edit-widget-yaml-textarea"
-            style="background:#121214; border: 1px solid var(--border-soft); border-radius: 6px; color:#e4e4e7; font-family:monospace; font-size:0.8rem; padding:12px; height:220px; resize:none; outline:none; line-height:1.4;"></textarea>
+            style="background:#121214; border: 1px solid var(--border-soft); border-radius: 6px; color:#e4e4e7; font-family:monospace; font-size:0.8rem; padding:12px; height:320px; resize:none; outline:none; line-height:1.4;"></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -396,79 +691,161 @@
         <h3>Create Lovelace Card</h3>
         <button class="modal-close-btn" onclick="closeModal('widget-catalog-modal')">&times;</button>
       </div>
-      <div class="modal-body">
-        <div class="modal-group">
-          <label for="catalog-card-type">Card Type</label>
-          <select id="catalog-card-type" class="modal-input" onchange="onCreatorTypeChange(this.value)"
-            style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-            <option value="sensor">Standard Telemetry Sensor</option>
-            <option value="control">Interactive Control Widget</option>
-            <option value="value">Value Display Badge</option>
-            <option value="gauge">Circular Gauge Card</option>
-            <option value="entities">Multi-Entity Row List</option>
-            <option value="glance">Glance Columns Grid</option>
-            <option value="health">System Health Snapshot</option>
-            <option value="audit">Global System Audit Log</option>
-          </select>
-        </div>
+      <div class="modal-body"
+        style="overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 16px;">
 
-        <div class="modal-group" id="creator-entity-select-group"
-          style="display: flex; flex-direction: column; gap: 6px;">
-          <!-- Filled dynamically: dropdown or checkboxes -->
-        </div>
+        <!-- Target Selection -->
+        <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
+          <h4 class="form-section-header"
+            style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+            📋 Card Selector</h4>
 
-        <div class="modal-group">
-          <label for="catalog-widget-title">Widget Label</label>
-          <input type="text" class="modal-input" id="catalog-widget-title" placeholder="Leave empty for default">
-        </div>
-
-        <div class="modal-group" style="display: flex; flex-direction: column; gap: 6px;">
-          <label for="catalog-widget-unit">Display Unit (Optional)</label>
-          <input type="text" class="modal-input" id="catalog-widget-unit" placeholder="e.g. °C, %">
-        </div>
-
-        <div class="modal-group select-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-            <label for="catalog-widget-width">Card Width</label>
-            <select id="catalog-widget-width" class="modal-input"
-              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-              <option value="1">Normal (1x)</option>
-              <option value="2">Wide (2x)</option>
-              <option value="3">Full Dashboard (3x)</option>
+          <div class="modal-group">
+            <select id="catalog-card-type" class="modal-input" onchange="onCreatorTypeChange(this.value)"
+              style="display: none;">
+              <option value="sensor">Standard Telemetry Sensor</option>
+              <option value="control">Interactive Control Widget</option>
+              <option value="value">Value Display Badge</option>
+              <option value="gauge">Circular Gauge Card</option>
+              <option value="entities">Multi-Entity Row List</option>
+              <option value="glance">Glance Columns Grid</option>
+              <option value="health">System Health Snapshot</option>
+              <option value="audit">Global System Audit Log</option>
             </select>
+
+            <label
+              style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; display: block;">Select
+              Card Type</label>
+            <input type="text" id="catalog-search" class="modal-input" placeholder="🔍 Search card templates..."
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box; margin-bottom: 12px; font-size: 0.8rem;">
+
+            <div id="catalog-blocks-grid"
+              style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-height: 240px; overflow-y: auto; padding-right: 4px; margin-bottom: 12px;">
+              <!-- Filled dynamically by JS -->
+            </div>
+
+            <span class="form-field-help"
+              style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Select the
+              visual card layout template.</span>
           </div>
-          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-            <label for="catalog-widget-height">Card Height</label>
-            <select id="catalog-widget-height" class="modal-input"
-              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-              <option value="1">Normal (1x)</option>
-              <option value="2">Tall (2x)</option>
+
+          <div class="modal-group" id="creator-entity-select-group"
+            style="display: flex; flex-direction: column; gap: 6px;">
+            <!-- Filled dynamically: dropdown or checkboxes -->
+          </div>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
+
+        <!-- Basic Properties -->
+        <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
+          <h4 class="form-section-header"
+            style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+            🎛️ Basic Properties</h4>
+
+          <div class="modal-group">
+            <label for="catalog-widget-title"
+              style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Widget
+              Label</label>
+            <input type="text" class="modal-input" id="catalog-widget-title" placeholder="Leave empty for default"
+              style="width: 100%; box-sizing: border-box;">
+            <span class="form-field-help"
+              style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">The title text
+              shown at the top of this card.</span>
+          </div>
+
+          <div class="modal-group">
+            <label for="catalog-widget-color"
+              style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Theme
+              Accent</label>
+            <select id="catalog-widget-color" class="modal-input"
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+              <option value="var(--color-optimal)">Emerald green (Optimal)</option>
+              <option value="var(--accent-blue)">Ice blue (Info)</option>
+              <option value="var(--color-caution)">Amber (Caution)</option>
+              <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
+              <option value="#c084fc">Amethyst purple</option>
+              <option value="#f472b6">Pink glow</option>
             </select>
+            <span class="form-field-help"
+              style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Primary accent
+              color used for gauges, highlights, and icons.</span>
           </div>
         </div>
 
-        <div class="modal-group select-row creator-scale-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-            <label for="creator-scale-min">Scale Min</label>
-            <input type="number" class="modal-input" id="creator-scale-min" value="0">
-          </div>
-          <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 6px;">
-            <label for="creator-scale-max">Scale Max</label>
-            <input type="number" class="modal-input" id="creator-scale-max" value="100">
+        <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
+
+        <!-- Layout Options -->
+        <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
+          <h4 class="form-section-header"
+            style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+            📐 Layout Options</h4>
+
+          <div class="modal-group select-row" style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
+              <label for="catalog-widget-width"
+                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Card Width</label>
+              <select id="catalog-widget-width" class="modal-input"
+                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                <option value="1">Normal (1x)</option>
+                <option value="2">Wide (2x)</option>
+                <option value="3">Full Dashboard (3x)</option>
+              </select>
+              <span class="form-field-help"
+                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Grid columns to span.</span>
+            </div>
+            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
+              <label for="catalog-widget-height"
+                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Card Height</label>
+              <select id="catalog-widget-height" class="modal-input"
+                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+                <option value="1">Normal (1x)</option>
+                <option value="2">Tall (2x)</option>
+              </select>
+              <span class="form-field-help"
+                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Grid rows to span.</span>
+            </div>
           </div>
         </div>
 
-        <div class="modal-group">
-          <label for="catalog-widget-color">Theme Accent</label>
-          <select id="catalog-widget-color" class="modal-input"
-            style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
-            <option value="var(--color-optimal)">Emerald green (Optimal)</option>
-            <option value="var(--accent-blue)">Ice blue (Info)</option>
-            <option value="var(--color-caution)">Amber (Caution)</option>
-            <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
-            <option value="#c084fc">Amethyst purple</option>
-            <option value="#f472b6">Pink glow</option>
-          </select>
+        <!-- Metric Details (Conditional Scale group) -->
+        <div class="form-section creator-scale-group" style="display: flex; flex-direction: column; gap: 12px;">
+          <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
+          <h4 class="form-section-header"
+            style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+            📊 Metric Options</h4>
+
+          <div class="modal-group">
+            <label for="catalog-widget-unit"
+              style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Display
+              Unit (Optional)</label>
+            <input type="text" class="modal-input" id="catalog-widget-unit" placeholder="e.g. %, °C, GB, ms"
+              style="width: 100%; box-sizing: border-box;">
+            <span class="form-field-help"
+              style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Value
+              measurement suffix label.</span>
+          </div>
+
+          <div class="modal-group select-row" style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
+              <label for="creator-scale-min"
+                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Scale Min</label>
+              <input type="number" class="modal-input" id="creator-scale-min" value="0"
+                style="width: 100%; box-sizing: border-box;">
+              <span class="form-field-help"
+                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Minimum gauge value
+                limit.</span>
+            </div>
+            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
+              <label for="creator-scale-max"
+                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Scale Max</label>
+              <input type="number" class="modal-input" id="creator-scale-max" value="100"
+                style="width: 100%; box-sizing: border-box;">
+              <span class="form-field-help"
+                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Maximum gauge value
+                limit.</span>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -476,40 +853,212 @@
         <button class="btn btn-primary" onclick="addWidgetToGrid()">Create Card</button>
       </div>
     </div>
-  </div>
 
-  <!-- YAML Configuration Editor Modal Overlay -->
-  <div class="modal-overlay" id="yaml-config-modal" style="display: none;">
-    <div class="modal-content"
-      style="width: 85%; max-width: 900px; height: 80vh; display: flex; flex-direction: column;">
-      <div class="modal-header">
-        <h3>Raw YAML Configuration Editor</h3>
-        <button class="modal-close-btn" onclick="closeModal('yaml-config-modal')">&times;</button>
-      </div>
-      <div class="modal-body"
-        style="flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 12px; overflow: hidden;">
-        <span style="font-size:0.75rem; color:var(--text-secondary);">Directly edit tabs and card properties using
-          Lovelace syntax layout. Use 2 spaces for nested indentation.</span>
-        <div id="yaml-error-banner"
-          style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 10px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
+    <!-- YAML Configuration Editor Modal Overlay -->
+    <div class="modal-overlay" id="yaml-config-modal" style="display: none;">
+      <div class="modal-content"
+        style="width: 85%; max-width: 900px; height: 80vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h3>Raw YAML Configuration Editor</h3>
+          <button class="modal-close-btn" onclick="closeModal('yaml-config-modal')">&times;</button>
         </div>
-        <textarea id="yaml-editor-textarea"
-          style="flex: 1; background: #121214; border: 1px solid var(--border-soft); border-radius: 6px; color: #e4e4e7; font-family: monospace; font-size: 0.8rem; padding: 14px; line-height: 1.5; resize: none; outline: none;"></textarea>
-      </div>
-      <div class="modal-footer"
-        style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 12px;">
-        <button class="btn btn-secondary" onclick="closeModal('yaml-config-modal')">Close</button>
-        <button class="btn btn-primary" onclick="saveYAMLConfigSettings()">Save Config</button>
+        <div class="modal-body"
+          style="flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 12px; overflow: hidden;">
+          <span style="font-size:0.75rem; color:var(--text-secondary);">Directly edit tabs and card properties using
+            Lovelace syntax layout. Use 2 spaces for nested indentation.</span>
+          <div id="yaml-error-banner"
+            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 10px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
+          </div>
+          <textarea id="yaml-editor-textarea"
+            style="flex: 1; background: #121214; border: 1px solid var(--border-soft); border-radius: 6px; color: #e4e4e7; font-family: monospace; font-size: 0.8rem; padding: 14px; line-height: 1.5; resize: none; outline: none;"></textarea>
+        </div>
+        <div class="modal-footer"
+          style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 12px;">
+          <button class="btn btn-secondary" onclick="closeModal('yaml-config-modal')">Close</button>
+          <button class="btn btn-primary" onclick="saveYAMLConfigSettings()">Save Config</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- js-yaml CDN -->
-  <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
-  <!-- Main interaction logic -->
-  <script src="app.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- js-yaml CDN -->
+    <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <!-- Main interaction logic -->
+    <script src="app.js?v=1.6"></script>
+
+    <!-- Modals moved to body-level to escape overflow stacking context -->
+    <!-- Add Monitor Modal Overlay -->
+    <div class="modal-overlay" id="add-monitor-modal" style="display: none;">
+      <div class="modal-content" style="max-width: 480px; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h3>Add Background Monitor</h3>
+          <button class="modal-close-btn" onclick="closeModal('add-monitor-modal')">&times;</button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; padding: 16px;">
+          <div class="modal-group">
+            <label for="mon-name">Monitor Name</label>
+            <input type="text" class="modal-input" id="mon-name" placeholder="e.g. Google Public DNS">
+          </div>
+          <div class="modal-group">
+            <label for="mon-type">Monitor Type</label>
+            <select id="mon-type" class="modal-input" onchange="onMonitorTypeChange(this.value)"
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+              <option value="http">HTTP/HTTPS Endpoint</option>
+              <option value="websocket">WebSocket Endpoint</option>
+              <option value="ping">ICMP Network Ping</option>
+              <option value="port">TCP Port Query</option>
+              <option value="dns">DNS Resolution Target</option>
+            </select>
+          </div>
+          <!-- HTTP Protocol Selector Under Monitor Type -->
+          <div class="modal-group" id="modal-http-protocol-select-container"
+            style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="mon-proto" style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Check
+              Protocol/Port</label>
+            <select id="mon-proto" class="modal-input"
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+              <option value="http">HTTP (Port 80)</option>
+              <option value="https">HTTPS (Port 443)</option>
+              <option value="both">Both (Port 80 & 443)</option>
+            </select>
+          </div>
+          <div class="modal-group">
+            <label for="mon-target">Target Address</label>
+            <input type="text" class="modal-input" id="mon-target"
+              placeholder="e.g. 1.1.1.1 or https://httpbin.org/status/200">
+          </div>
+          <div class="modal-group select-row" style="display: flex; gap: 10px;">
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <label for="mon-interval">Check Interval (s)</label>
+              <input type="number" class="modal-input" id="mon-interval" value="30" min="5" max="3600">
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <label for="mon-timeout">Timeout (s)</label>
+              <input type="number" class="modal-input" id="mon-timeout" value="5" min="1" max="60">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeModal('add-monitor-modal')">Cancel</button>
+          <button class="btn btn-primary" onclick="submitAddMonitor()">Create Monitor</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Integrations Marketplace Modal Overlay -->
+    <div class="modal-overlay" id="marketplace-modal" style="display: none;">
+      <div class="modal-content" style="max-width: 600px; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h3>Install Custom Monitor Integrations</h3>
+          <button class="modal-close-btn" onclick="closeModal('marketplace-modal')">&times;</button>
+        </div>
+        <div class="modal-body"
+          style="display: flex; flex-direction: column; gap: 16px; padding: 20px; overflow-y: auto; max-height: 70vh;">
+          <!-- Marketplace Alert Status Banner -->
+          <div
+            style="display: flex; align-items: center; gap: 10px; background: rgba(200, 140, 60, 0.08); border: 1px solid rgba(200, 140, 60, 0.2); border-radius: 6px; padding: 12px; font-size: 0.82rem; color: var(--accent-orange);">
+            <i data-lucide="info" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+            <span><strong>Marketplace Integration (Beta)</strong>: Import custom probers to natively monitor your
+              Proxmox, TrueNAS SCALE, PBS, or PMG systems.</span>
+          </div>
+
+          <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
+            Expand HomePulse's capabilities beyond simple endpoint network pings. The integrations below will connect to
+            hypervisors, NAS nodes, and orchestration clusters to retrieve CPU, memory, storage pools, and health
+            metrics directly.
+          </div>
+
+          <!-- Mock Marketplace Integration Cards -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <!-- Proxmox VE -->
+            <div
+              style="background: rgba(20, 20, 22, 0.6); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; opacity: 0.8; position: relative; overflow: hidden;">
+              <div
+                style="position: absolute; top:0; right:0; background: var(--border-soft); color: var(--text-secondary); font-size:0.6rem; padding: 2px 8px; border-bottom-left-radius: 6px; font-weight:700;">
+                COMING SOON</div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                  <i data-lucide="server" style="color: var(--accent-orange); width: 20px; height: 20px;"></i>
+                  <span style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">Proxmox VE</span>
+                </div>
+                <div style="font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 12px;">
+                  Natively fetch node loads, active virtual machines, container heartbeats, status graphs, and backup
+                  jobs status.
+                </div>
+              </div>
+              <button class="btn btn-secondary"
+                style="font-size: 0.7rem; padding: 4px; pointer-events: none; width: 100%;">In Development</button>
+            </div>
+
+            <!-- TrueNAS SCALE -->
+            <div
+              style="background: rgba(20, 20, 22, 0.6); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; opacity: 0.8; position: relative; overflow: hidden;">
+              <div
+                style="position: absolute; top:0; right:0; background: var(--border-soft); color: var(--text-secondary); font-size:0.6rem; padding: 2px 8px; border-bottom-left-radius: 6px; font-weight:700;">
+                COMING SOON</div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                  <i data-lucide="database" style="color: var(--accent-orange); width: 20px; height: 20px;"></i>
+                  <span style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">TrueNAS SCALE</span>
+                </div>
+                <div style="font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 12px;">
+                  Monitor ZFS pool health, drive temperatures, disk layouts, memory caches, network traffic, and active
+                  app services.
+                </div>
+              </div>
+              <button class="btn btn-secondary"
+                style="font-size: 0.7rem; padding: 4px; pointer-events: none; width: 100%;">In Development</button>
+            </div>
+
+            <!-- Kubernetes Cluster -->
+            <div
+              style="background: rgba(20, 20, 22, 0.6); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; opacity: 0.8; position: relative; overflow: hidden;">
+              <div
+                style="position: absolute; top:0; right:0; background: var(--border-soft); color: var(--text-secondary); font-size:0.6rem; padding: 2px 8px; border-bottom-left-radius: 6px; font-weight:700;">
+                COMING SOON</div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                  <i data-lucide="terminal" style="color: var(--accent-orange); width: 20px; height: 20px;"></i>
+                  <span style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">Kubernetes API</span>
+                </div>
+                <div style="font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 12px;">
+                  Poll active namespaces status, deployment counts, node memory limits, ingress router loads, and failed
+                  container restarts.
+                </div>
+              </div>
+              <button class="btn btn-secondary"
+                style="font-size: 0.7rem; padding: 4px; pointer-events: none; width: 100%;">In Development</button>
+            </div>
+
+            <!-- PBS Backup Server -->
+            <div
+              style="background: rgba(20, 20, 22, 0.6); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; opacity: 0.8; position: relative; overflow: hidden;">
+              <div
+                style="position: absolute; top:0; right:0; background: var(--border-soft); color: var(--text-secondary); font-size:0.6rem; padding: 2px 8px; border-bottom-left-radius: 6px; font-weight:700;">
+                COMING SOON</div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                  <i data-lucide="shield-alert" style="color: var(--accent-orange); width: 20px; height: 20px;"></i>
+                  <span style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary);">Proxmox Backup</span>
+                </div>
+                <div style="font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 12px;">
+                  Track PBS backup pool health, disk tasks, verify integrity checks, and backup speeds.
+                </div>
+              </div>
+              <button class="btn btn-secondary"
+                style="font-size: 0.7rem; padding: 4px; pointer-events: none; width: 100%;">In Development</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer"
+          style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end;">
+          <button class="btn btn-secondary" onclick="closeModal('marketplace-modal')">Close</button>
+        </div>
+      </div>
+    </div>
+
+
 </body>
 
 </html>

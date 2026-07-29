@@ -719,10 +719,18 @@ function buildDashboardCards(entitiesMap) {
     // TYPE E: System Audit list panel widget
     else if (widget.type === 'audit') {
       cardEl.innerHTML = `
-        <div class="card-header">
+        <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
           <div class="card-title-area">
             <span class="card-title">${widget.title || "Global System Audit"}</span>
             <span class="card-subtitle">Realtime DB event tracking</span>
+          </div>
+          <!-- Severity Filtering Controls -->
+          <div style="display: flex; gap: 4px;">
+            <button class="audit-filter-btn active" data-filter="all" onclick="filterAuditLogs('all')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: var(--bg-secondary); color: var(--text-primary); border-radius: 4px; cursor: pointer;">All</button>
+            <button class="audit-filter-btn" data-filter="info" onclick="filterAuditLogs('info')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Info</button>
+            <button class="audit-filter-btn" data-filter="success" onclick="filterAuditLogs('success')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Success</button>
+            <button class="audit-filter-btn" data-filter="warning" onclick="filterAuditLogs('warning')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Warning</button>
+            <button class="audit-filter-btn" data-filter="error" onclick="filterAuditLogs('error')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Error</button>
           </div>
         </div>
         <div class="card-body" style="padding:0 16px 16px 16px;">
@@ -971,6 +979,7 @@ function addAuditEntry(type, message) {
 
   const auditRow = document.createElement('div');
   auditRow.className = `audit-row`;
+  auditRow.dataset.severity = type;
 
   let iconName = 'info';
   let iconClass = 'info';
@@ -985,11 +994,15 @@ function addAuditEntry(type, message) {
     <span class="audit-msg">${message}</span>
   `;
 
+  if (window.activeAuditFilter && window.activeAuditFilter !== 'all' && type !== window.activeAuditFilter) {
+    auditRow.style.display = 'none';
+  }
+
   auditList.insertBefore(auditRow, auditList.firstChild);
   lucide.createIcons();
 
-  // Enforce scroll history item limit
-  while (auditList.children.length > 8) {
+  // Enforce scroll history item limit (only count entries that match current filter/all to prevent overflow)
+  while (auditList.children.length > 25) {
     auditList.removeChild(auditList.lastChild);
   }
 }
@@ -1190,33 +1203,234 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function showSettingsView() {
-  // Toggle dashboard grid off, settings on
+  // Exit edit mode if active
+  const mainContent = document.getElementById('main-content');
+  if (mainContent && mainContent.classList.contains('edit-mode')) {
+    const editToggleBtn = document.getElementById('edit-toggle-btn');
+    if (editToggleBtn) editToggleBtn.click();
+  }
+
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'none';
+
   const dashGrid = document.getElementById('dashboard-grid');
   const bottomSection = document.querySelector('.bottom-section');
   const settingsView = document.getElementById('settings-view');
+  const probesView = document.getElementById('probes-view');
+  const automationsView = document.getElementById('automations-view');
+  const devtoolsView = document.getElementById('developer-tools-view');
 
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
+  if (probesView) probesView.classList.add('hide');
+  if (automationsView) automationsView.classList.add('hide');
+  if (devtoolsView) devtoolsView.classList.add('hide');
   if (settingsView) settingsView.classList.remove('hide');
 
-  // Highlight nav item
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navSettings = document.getElementById('nav-settings');
   if (navSettings) navSettings.classList.add('active');
 
-  // Load from API and bind controls
   loadSettings();
 }
 
 function showDashboardView() {
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'flex';
+
   const dashGrid = document.getElementById('dashboard-grid');
   const bottomSection = document.querySelector('.bottom-section');
   const settingsView = document.getElementById('settings-view');
+  const probesView = document.getElementById('probes-view');
+  const automationsView = document.getElementById('automations-view');
+  const devtoolsView = document.getElementById('developer-tools-view');
 
   if (dashGrid) dashGrid.style.display = '';
   if (bottomSection) bottomSection.style.display = '';
   if (settingsView) settingsView.classList.add('hide');
+  if (probesView) probesView.classList.add('hide');
+  if (automationsView) automationsView.classList.add('hide');
+  if (devtoolsView) devtoolsView.classList.add('hide');
 }
+
+function showProbesView() {
+  // Exit edit mode if active
+  const mainContent = document.getElementById('main-content');
+  if (mainContent && mainContent.classList.contains('edit-mode')) {
+    const editToggleBtn = document.getElementById('edit-toggle-btn');
+    if (editToggleBtn) editToggleBtn.click();
+  }
+
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'none';
+
+  const dashGrid = document.getElementById('dashboard-grid');
+  const bottomSection = document.querySelector('.bottom-section');
+  const settingsView = document.getElementById('settings-view');
+  const probesView = document.getElementById('probes-view');
+  const automationsView = document.getElementById('automations-view');
+  const devtoolsView = document.getElementById('developer-tools-view');
+
+  if (dashGrid) dashGrid.style.display = 'none';
+  if (bottomSection) bottomSection.style.display = 'none';
+  if (settingsView) settingsView.classList.add('hide');
+  if (automationsView) automationsView.classList.add('hide');
+  if (devtoolsView) devtoolsView.classList.add('hide');
+  if (probesView) probesView.classList.remove('hide');
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navProbes = document.getElementById('nav-probes');
+  if (navProbes) navProbes.classList.add('active');
+
+  navigateProbesLevel(1);
+}
+
+function showAutomationsView() {
+  // Exit edit mode if active
+  const mainContent = document.getElementById('main-content');
+  if (mainContent && mainContent.classList.contains('edit-mode')) {
+    const editToggleBtn = document.getElementById('edit-toggle-btn');
+    if (editToggleBtn) editToggleBtn.click();
+  }
+
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'none';
+
+  const dashGrid = document.getElementById('dashboard-grid');
+  const bottomSection = document.querySelector('.bottom-section');
+  const settingsView = document.getElementById('settings-view');
+  const probesView = document.getElementById('probes-view');
+  const automationsView = document.getElementById('automations-view');
+  const devtoolsView = document.getElementById('developer-tools-view');
+
+  if (dashGrid) dashGrid.style.display = 'none';
+  if (bottomSection) bottomSection.style.display = 'none';
+  if (settingsView) settingsView.classList.add('hide');
+  if (probesView) probesView.classList.add('hide');
+  if (devtoolsView) devtoolsView.classList.add('hide');
+  if (automationsView) automationsView.classList.remove('hide');
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navAutomations = document.getElementById('nav-automations');
+  if (navAutomations) navAutomations.classList.add('active');
+}
+
+function showDeveloperToolsView() {
+  // Exit edit mode if active
+  const mainContent = document.getElementById('main-content');
+  if (mainContent && mainContent.classList.contains('edit-mode')) {
+    const editToggleBtn = document.getElementById('edit-toggle-btn');
+    if (editToggleBtn) editToggleBtn.click();
+  }
+
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'none';
+
+  const dashGrid = document.getElementById('dashboard-grid');
+  const bottomSection = document.querySelector('.bottom-section');
+  const settingsView = document.getElementById('settings-view');
+  const probesView = document.getElementById('probes-view');
+  const automationsView = document.getElementById('automations-view');
+  const devtoolsView = document.getElementById('developer-tools-view');
+
+  if (dashGrid) dashGrid.style.display = 'none';
+  if (bottomSection) bottomSection.style.display = 'none';
+  if (settingsView) settingsView.classList.add('hide');
+  if (probesView) probesView.classList.add('hide');
+  if (automationsView) automationsView.classList.add('hide');
+  if (devtoolsView) devtoolsView.classList.remove('hide');
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navDevtools = document.getElementById('nav-devtools');
+  if (navDevtools) navDevtools.classList.add('active');
+}
+
+// Bind nav triggers during initialization
+document.addEventListener('DOMContentLoaded', () => {
+  const navDashboard = document.getElementById('nav-dashboard');
+  if (navDashboard) {
+    navDashboard.addEventListener('click', (e) => {
+      e.preventDefault();
+      showDashboardView();
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      navDashboard.classList.add('active');
+    });
+  }
+
+  const navProbes = document.getElementById('nav-probes');
+  if (navProbes) {
+    navProbes.addEventListener('click', (e) => {
+      e.preventDefault();
+      showProbesView();
+    });
+  }
+
+  const navAutomations = document.getElementById('nav-automations');
+  if (navAutomations) {
+    navAutomations.addEventListener('click', (e) => {
+      e.preventDefault();
+      showAutomationsView();
+    });
+  }
+
+  const navDevtools = document.getElementById('nav-devtools');
+  if (navDevtools) {
+    navDevtools.addEventListener('click', (e) => {
+      e.preventDefault();
+      showDeveloperToolsView();
+    });
+  }
+
+  // Bind catalog search box input listener
+  const catalogSearch = document.getElementById('catalog-search');
+  if (catalogSearch) {
+    catalogSearch.addEventListener('input', (e) => {
+      renderCatalogBlocks(e.target.value);
+    });
+  }
+
+  // Bind Service Monitors launcher buttons
+  const btnConfigProbe = document.getElementById('btn-configure-new-probe');
+  if (btnConfigProbe) {
+    btnConfigProbe.addEventListener('click', (e) => {
+      e.preventDefault();
+      openAddMonitorModal();
+    });
+  }
+
+  const btnInstallMonitors = document.getElementById('btn-install-custom-monitors');
+  if (btnInstallMonitors) {
+    btnInstallMonitors.addEventListener('click', (e) => {
+      e.preventDefault();
+      openMarketplaceModal();
+    });
+  }
+});
+
+async function toggleMonitorEnabled(id, enabled, event) {
+  if (event) event.stopPropagation();
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/monitors/${id}/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    // Reload local engine states list
+    loadProbesLevel2(activeProbeEngineType);
+  } catch (err) {
+    console.error("Failed to toggle monitor:", err);
+    alert(`Failed to update monitor status: ${err.message}`);
+  }
+}
+
+window.openMarketplaceModal = function () {
+  console.log("openMarketplaceModal triggered");
+  openModal('marketplace-modal');
+  if (window.lucide) window.lucide.createIcons();
+};
 
 // Fetch settings from API and populate UI controls
 async function loadSettings() {
@@ -1332,12 +1546,7 @@ function initSettingsControls() {
           body: JSON.stringify(payload)
         });
         if (res.ok) {
-          saveBtn.textContent = '✓ Saved';
-          saveBtn.style.opacity = '0.7';
-          setTimeout(() => {
-            saveBtn.textContent = 'Save Settings';
-            saveBtn.style.opacity = '1';
-          }, 2000);
+          showToast('Settings saved successfully', 'success');
           // Navigate back to dashboard
           setTimeout(showDashboardView, 800);
         } else {
@@ -1673,17 +1882,34 @@ function initializeWidgets() {
   return widgets;
 }
 
-function closeModal(modalId) {
+window.openModal = function (modalId) {
+  console.log("openModal triggered for:", modalId);
+  let modal = document.getElementById(modalId);
+  if (!modal) {
+    console.error("Modal not found:", modalId);
+    return;
+  }
+
+  // Move modal to document.body to escape any stacking context
+  if (modal.parentNode !== document.body) {
+    document.body.appendChild(modal);
+  }
+
+  modal.style.cssText = 'display:flex !important; opacity:1 !important; pointer-events:auto !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; z-index:999999 !important; background:rgba(0,0,0,0.75) !important; align-items:center !important; justify-content:center !important;';
+  modal.classList.add('active');
+  if (window.lucide) window.lucide.createIcons();
+};
+
+window.closeModal = function (modalId) {
+  console.log("closeModal triggered for:", modalId);
   const modal = document.getElementById(modalId);
   if (modal) {
     modal.classList.remove('active');
-    setTimeout(() => {
-      if (!modal.classList.contains('active')) {
-        modal.style.display = 'none';
-      }
-    }, 200);
+    modal.style.display = 'none';
+    modal.style.opacity = '0';
+    modal.style.pointerEvents = 'none';
   }
-}
+};
 
 function openCardEditor(widgetId, initialMode = 'ui') {
   let widgets = [];
@@ -1799,41 +2025,53 @@ function saveWidgetSettings() {
 
 let widgetEditorMode = 'ui';
 
+function toggleWidgetEditorMenu(e) {
+  if (e) e.stopPropagation();
+  const dropdown = document.getElementById('widget-editor-menu-dropdown');
+  if (!dropdown) return;
+  const isShown = dropdown.style.display === 'block';
+  dropdown.style.display = isShown ? 'none' : 'block';
+}
+
+function clickedToggleEditorMode(e) {
+  if (e) e.preventDefault();
+  const newMode = (widgetEditorMode === 'ui') ? 'yaml' : 'ui';
+  toggleWidgetEditorMode(newMode);
+  const dropdown = document.getElementById('widget-editor-menu-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+}
+
+// Close 3-dots widget editor menu when clicking outside
+document.addEventListener('click', function (e) {
+  const dropdown = document.getElementById('widget-editor-menu-dropdown');
+  if (dropdown && dropdown.style.display === 'block') {
+    const parentContainer = e.target.closest('#widget-editor-modal');
+    if (parentContainer && !e.target.closest('.btn-icon')) {
+      dropdown.style.display = 'none';
+    }
+  }
+});
+
 function toggleWidgetEditorMode(mode) {
   widgetEditorMode = mode;
-  const uiTab = document.getElementById('editor-tab-ui');
-  const yamlTab = document.getElementById('editor-tab-yaml');
   const uiFields = document.getElementById('editor-ui-fields');
   const yamlContainer = document.getElementById('editor-yaml-container');
   const yamlError = document.getElementById('edit-widget-yaml-error');
+  const menuLink = document.getElementById('menu-toggle-editor-mode');
 
   if (yamlError) yamlError.style.display = 'none';
 
-  if (mode === 'ui') {
-    if (uiTab) {
-      uiTab.style.borderBottom = '2px solid var(--accent-blue)';
-      uiTab.style.color = 'var(--text-primary)';
-    }
-    if (yamlTab) {
-      yamlTab.style.borderBottom = '2px solid transparent';
-      yamlTab.style.color = 'var(--text-secondary)';
-    }
+  if (menuLink) {
+    menuLink.textContent = (mode === 'ui') ? 'Edit in YAML' : 'Edit in visual editor';
+  }
 
+  if (mode === 'ui') {
     if (uiFields) uiFields.style.display = 'flex';
     if (yamlContainer) yamlContainer.style.display = 'none';
 
     // Sync structural form fields values from YAML draft code parameters
     syncYAMLToFormFields();
   } else {
-    if (yamlTab) {
-      yamlTab.style.borderBottom = '2px solid var(--accent-blue)';
-      yamlTab.style.color = 'var(--text-primary)';
-    }
-    if (uiTab) {
-      uiTab.style.borderBottom = '2px solid transparent';
-      uiTab.style.color = 'var(--text-secondary)';
-    }
-
     if (uiFields) uiFields.style.display = 'none';
     if (yamlContainer) yamlContainer.style.display = 'flex';
 
@@ -1934,6 +2172,10 @@ function addNewCardPlaceholder() {
     onCreatorTypeChange('sensor');
   }
 
+  const searchInput = document.getElementById('catalog-search');
+  if (searchInput) searchInput.value = '';
+  renderCatalogBlocks('');
+
   document.getElementById('catalog-widget-title').value = '';
   document.getElementById('catalog-widget-unit').value = '';
   document.getElementById('catalog-widget-width').value = '1';
@@ -1946,6 +2188,54 @@ function addNewCardPlaceholder() {
     modal.style.display = 'flex';
     setTimeout(() => modal.classList.add('active'), 10);
   }
+}
+
+const catalogTemplates = [
+  { value: 'sensor', name: 'Standard Telemetry Sensor', desc: 'Display a single real-time sensor value with dynamic charts.', icon: 'activity' },
+  { value: 'control', name: 'Interactive Control Widget', desc: 'Add interactive toggle switches, sliders, or action triggers.', icon: 'sliders' },
+  { value: 'value', name: 'Value Display Badge', desc: 'A minimal compact badge highlighting numeric or text states.', icon: 'pocket' },
+  { value: 'gauge', name: 'Circular Gauge Card', desc: 'A beautiful radial circular gauge for resource limit tracking.', icon: 'compass' },
+  { value: 'entities', name: 'Multi-Entity Row List', desc: 'Display multiple entity values stacked cleanly in list rows.', icon: 'list' },
+  { value: 'glance', name: 'Glance Columns Grid', desc: 'An layout displaying several status badges side-by-side.', icon: 'grid' },
+  { value: 'health', name: 'System Health Snapshot', desc: 'View global system averages, load status, and issues count.', icon: 'heart' },
+  { value: 'audit', name: 'Global System Audit Log', desc: 'A real-time historical event stream of system logs.', icon: 'file-text' }
+];
+
+function renderCatalogBlocks(filterText = '') {
+  const gridEl = document.getElementById('catalog-blocks-grid');
+  if (!gridEl) return;
+
+  const query = filterText.toLowerCase().trim();
+  const typeSelect = document.getElementById('catalog-card-type');
+  const currentValue = typeSelect ? typeSelect.value : 'sensor';
+
+  let html = '';
+  catalogTemplates.forEach(tpl => {
+    const matches = tpl.name.toLowerCase().includes(query) || tpl.desc.toLowerCase().includes(query);
+    if (!matches) return;
+
+    const isActive = tpl.value === currentValue;
+    html += `
+      <div class="creator-block-card ${isActive ? 'active' : ''}" onclick="selectCatalogBlock('${tpl.value}')">
+        <div class="creator-block-header">
+          <i data-lucide="${tpl.icon}"></i>
+          <span class="creator-block-title">${tpl.name}</span>
+        </div>
+        <span class="creator-block-desc">${tpl.desc}</span>
+      </div>`;
+  });
+
+  gridEl.innerHTML = html;
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function selectCatalogBlock(value) {
+  const typeSelect = document.getElementById('catalog-card-type');
+  if (typeSelect) {
+    typeSelect.value = value;
+    onCreatorTypeChange(value);
+  }
+  renderCatalogBlocks(document.getElementById('catalog-search')?.value || '');
 }
 
 function onCreatorTypeChange(type) {
@@ -2167,3 +2457,452 @@ function saveYAMLConfigSettings() {
     }
   }
 }
+
+// Built-in Background Monitor Client Functions
+// Multi-Level Standalone Probes Manager JS Engine
+let activeProbeEngineType = null;
+let activeProbeMonitorId = null;
+
+function navigateProbesLevel(level, param) {
+  const lvl1 = document.getElementById('probes-level-1');
+  const lvl2 = document.getElementById('probes-level-2');
+  const lvl3 = document.getElementById('probes-level-3');
+
+  if (!lvl1 || !lvl2 || !lvl3) return;
+
+  if (level === 1) {
+    lvl1.style.display = 'block';
+    lvl2.style.display = 'none';
+    lvl3.style.display = 'none';
+    loadProbesLevel1();
+  } else if (level === 2) {
+    lvl1.style.display = 'none';
+    lvl2.style.display = 'block';
+    lvl3.style.display = 'none';
+    if (param) activeProbeEngineType = param;
+    loadProbesLevel2(activeProbeEngineType);
+  } else if (level === 3) {
+    lvl1.style.display = 'none';
+    lvl2.style.display = 'none';
+    lvl3.style.display = 'block';
+    if (param) {
+      activeProbeMonitorId = param;
+      loadProbesLevel3(activeProbeMonitorId);
+    }
+  }
+}
+
+async function loadProbesLevel1() {
+  const { httpUrl } = getApiUrls();
+  const gridEl = document.getElementById('engines-grid');
+  if (!gridEl) return;
+
+  try {
+    const res = await fetch(`${httpUrl}/api/monitors`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const monitors = await res.json();
+
+    const counts = { http: 0, websocket: 0, ping: 0, port: 0, dns: 0 };
+    monitors.forEach(m => {
+      if (counts[m.type] !== undefined) counts[m.type]++;
+    });
+
+    const engines = [
+      { type: 'http', name: 'HTTP/HTTPS Prober', desc: 'Web endpoints and REST APIs', icon: 'globe' },
+      { type: 'websocket', name: 'WebSocket Prober', desc: 'Active socket handshakes', icon: 'message-square' },
+      { type: 'ping', name: 'ICMP Ping Prober', desc: 'Simple host reachability checks', icon: 'shield' },
+      { type: 'port', name: 'TCP Port Prober', desc: 'Open database or SSH port queries', icon: 'server' },
+      { type: 'dns', name: 'DNS Resolver Prober', desc: 'Hostname IP resolution query checks', icon: 'globe-2' }
+    ];
+
+    const visibleEngines = engines.filter(eng => counts[eng.type] > 0);
+
+    if (visibleEngines.length === 0) {
+      gridEl.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; background: rgba(20, 20, 22, 0.4); border: 1px dashed var(--border-soft); border-radius: 8px;">
+          <i data-lucide="shield-alert" style="width: 32px; height: 32px; color: var(--text-secondary); margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;"></i>
+          <p style="font-size: 0.82rem; color: var(--text-primary); font-weight: 600; margin: 0 0 4px 0;">No Background Probes Configured</p>
+          <p style="font-size: 0.72rem; color: var(--text-secondary); margin: 0 0 16px 0;">Configure your first check to compile monitoring metrics.</p>
+          <button class="btn btn-primary" onclick="openAddMonitorModal()" style="font-size: 0.75rem; padding: 6px 14px; margin: 0 auto; display: block; cursor: pointer;">Configure New Probe</button>
+        </div>`;
+      if (gridEl.style.display === 'none') {
+        gridEl.style.display = 'grid';
+      }
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
+
+    let html = '';
+    visibleEngines.forEach(eng => {
+      const activeCount = counts[eng.type];
+      const countLabel = activeCount === 1 ? '1 active probe' : `${activeCount} active probes`;
+
+      html += `
+        <div class="mon-picker-card" onclick="navigateProbesLevel(2, '${eng.type}')">
+          <i data-lucide="${eng.icon}"></i>
+          <span class="title">${eng.name}</span>
+          <span class="desc">${eng.desc}</span>
+          <span style="font-size:0.65rem; color:var(--accent-orange); margin-top:10px; font-weight:600; background:rgba(200, 140, 60, 0.08); padding:2px 8px; border-radius:4px; max-width:80%; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">
+            ${countLabel}
+          </span>
+        </div>`;
+    });
+
+    gridEl.innerHTML = html;
+    if (window.lucide) window.lucide.createIcons();
+  } catch (err) {
+    gridEl.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem;">Failure compiling engines stats: ${err.message}</p>`;
+  }
+}
+
+async function loadProbesLevel2(type) {
+  const { httpUrl } = getApiUrls();
+  const listEl = document.getElementById('probes-source-list');
+  if (!listEl) return;
+
+  const titles = {
+    http: { title: "HTTP/HTTPS Prober Engine", desc: "Monitors HTTP/HTTPS website load status codes and latency." },
+    websocket: { title: "WebSocket Connection Engine", desc: "Monitors WebSockets connectivity logs." },
+    ping: { title: "ICMP Ping reachability Engine", desc: "Monitors response durations of network gateways." },
+    port: { title: "TCP Port query Engine", desc: "Monitors open ports for database, socket, or HTTP systems." },
+    dns: { title: "DNS Query Name Resolver", desc: "Monitors DNS lookup values for key servers." }
+  };
+
+
+  const info = titles[type] || { title: "Probes Engine", desc: "Manage Probes" };
+  document.getElementById('lvl2-engine-title').textContent = info.title;
+  document.getElementById('lvl2-engine-desc').textContent = info.desc;
+
+  try {
+    const res = await fetch(`${httpUrl}/api/monitors`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const monitors = await res.json();
+
+    const filtered = monitors.filter(m => m.type === type);
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = `
+        <p style="font-size:0.8rem; color:var(--text-secondary); text-align:center; padding:24px; border:1px dashed var(--border-soft); border-radius:6px; margin:0;">
+          No active probes for this monitor engine. Click "+ Add Probe" to configure one.
+        </p>`;
+      return;
+    }
+
+    let html = '';
+    filtered.forEach(mon => {
+      const isEnabled = mon.enabled !== false;
+      const isUp = isEnabled && (mon.last_status === 'up' || mon.last_status === 'UP');
+      const statusColor = !isEnabled ? '#6b7280' : (isUp ? 'var(--color-optimal)' : '#f43f5e');
+      const statusLabel = !isEnabled ? 'DISABLED' : (isUp ? 'ONLINE' : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE'));
+      const latencyStr = isEnabled && mon.last_latency !== null ? `${mon.last_latency} ms` : '--';
+
+      html += `
+        <div style="background:#1d1b18; border:1px solid var(--border-soft); border-radius:6px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="goLvl3('${mon.id}', event)">
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <span style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">${mon.name}</span>
+            <span style="font-size:0.72rem; color:var(--text-secondary); font-family:monospace; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${mon.target}</span>
+          </div>
+          
+          <div style="display:flex; align-items:center; gap:16px;">
+            <div style="text-align:right; display:flex; flex-direction:column; gap:2px;">
+              <span style="font-size:0.75rem; font-weight:700; color:${statusColor};">${statusLabel}</span>
+              <span style="font-size:0.65rem; color:var(--text-secondary); font-family:monospace;">${latencyStr}</span>
+            </div>
+            
+            <label class="switch" title="Enable/Disable Monitor" onclick="event.stopPropagation()">
+              <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMonitorEnabled(${mon.id}, this.checked, event)">
+              <span class="slider"></span>
+            </label>
+
+            <button class="btn-icon" onclick="deleteMonitorSource(${mon.id}, event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Delete Monitor">
+              <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
+            </button>
+          </div>
+        </div>`;
+    });
+
+    listEl.innerHTML = html;
+    if (window.lucide) window.lucide.createIcons();
+  } catch (err) {
+    listEl.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem;">Failure loading probes: ${err.message}</p>`;
+  }
+}
+
+function goLvl3(monId, e) {
+  if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
+  navigateProbesLevel(3, monId);
+}
+
+async function loadProbesLevel3(monId) {
+  const { httpUrl } = getApiUrls();
+  const tableBody = document.getElementById('lvl3-history-table-body');
+  if (!tableBody) return;
+
+  tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">Querying logs...</td></tr>`;
+
+  try {
+    const resMon = await fetch(`${httpUrl}/api/monitors`);
+    if (!resMon.ok) throw new Error(`HTTP ${resMon.status}`);
+    const monitors = await resMon.json();
+    const mon = monitors.find(m => String(m.id) === String(monId));
+
+    if (!mon) {
+      alert("Probe details not found.");
+      navigateProbesLevel(2);
+      return;
+    }
+
+    document.getElementById('lvl3-probe-title').textContent = mon.name;
+    document.getElementById('lvl3-probe-meta').textContent = `Engine: ${mon.type.toUpperCase()} | Address: ${mon.target}`;
+
+    const isUp = mon.last_status === 'up' || mon.last_status === 'UP';
+    const statusColor = isUp ? 'var(--color-optimal)' : '#f43f5e';
+    const statusLabel = isUp ? 'ONLINE' : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE');
+    const latencyStr = mon.last_latency !== null ? `${mon.last_latency} ms` : '-- ms';
+
+    document.getElementById('lvl3-stat-status').textContent = statusLabel;
+    document.getElementById('lvl3-stat-status').style.color = statusColor;
+    document.getElementById('lvl3-stat-latency').textContent = latencyStr;
+    document.getElementById('lvl3-stat-interval').textContent = `${mon.check_interval} seconds`;
+
+    const resStatus = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-status`);
+    if (!resStatus.ok) throw new Error(`Status Logs HTTP ${resStatus.status}`);
+    const statusLogs = await resStatus.json();
+
+    const resLatency = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-latency`);
+    if (!resLatency.ok) throw new Error(`Latency Logs HTTP ${resLatency.status}`);
+    const latencyLogs = await resLatency.json();
+
+    if (statusLogs.length === 0) {
+      tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
+      return;
+    }
+
+    let logsHtml = '';
+    for (let i = 0; i < statusLogs.length; i++) {
+      const sLog = statusLogs[i];
+      const lLog = latencyLogs[i] || { value: '0.0' };
+
+      const dt = new Date(sLog.timestamp).toLocaleString();
+      const statusVal = sLog.value; // e.g. "200", "404", "TIMEOUT", "ICMP_OK", "up", "down", "OFFLINE"
+
+      let isLvlUp = false;
+      let displayStatus = statusVal;
+
+      if (statusVal === 'up' || statusVal === 'UP' || statusVal === 'ONLINE') {
+        isLvlUp = true;
+        displayStatus = 'ONLINE';
+      } else if (statusVal === 'down' || statusVal === 'DOWN' || statusVal === 'OFFLINE') {
+        isLvlUp = false;
+        displayStatus = 'OFFLINE';
+      } else {
+        const codeNum = parseInt(statusVal);
+        if (!isNaN(codeNum)) {
+          isLvlUp = codeNum < 400;
+          displayStatus = `HTTP ${statusVal}`;
+        } else {
+          isLvlUp = statusVal.includes('OK') || statusVal === '101' || statusVal === 'ONLINE';
+          displayStatus = statusVal.replace(/_/g, ' ');
+        }
+      }
+
+      const resultColor = isLvlUp ? 'var(--color-optimal)' : '#f43f5e';
+      const latencyVal = parseFloat(lLog.value) || 0;
+
+      logsHtml += `
+        <tr style="border-bottom:1px solid var(--border-soft);">
+          <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
+          <td style="padding:10px 14px; font-weight:700; color:${resultColor};">${displayStatus}</td>
+          <td style="padding:10px 14px; font-family:monospace;">${latencyVal.toFixed(2)} ms</td>
+        </tr>`;
+    }
+    tableBody.innerHTML = logsHtml;
+
+  } catch (err) {
+    tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:#f43f5e;">Failed to load logs details: ${err.message}</td></tr>`;
+  }
+}
+
+window.openAddMonitorModal = function () {
+  console.log("openAddMonitorModal triggered");
+  const nameInput = document.getElementById('mon-name');
+  if (nameInput) nameInput.value = '';
+  const typeInput = document.getElementById('mon-type');
+  if (typeInput) typeInput.value = 'http';
+  const targetInput = document.getElementById('mon-target');
+  if (targetInput) targetInput.value = '';
+  const intervalInput = document.getElementById('mon-interval');
+  if (intervalInput) intervalInput.value = '30';
+  const timeoutInput = document.getElementById('mon-timeout');
+  if (timeoutInput) timeoutInput.value = '5';
+
+  onMonitorTypeChange('http');
+
+  openModal('add-monitor-modal');
+};
+
+function onMonitorTypeChange(type) {
+  const container = document.getElementById('modal-http-protocol-select-container');
+  if (container) {
+    container.style.display = (type === 'http') ? 'flex' : 'none';
+  }
+}
+
+async function submitAddMonitor() {
+  const name = document.getElementById('mon-name').value.trim();
+  const type = document.getElementById('mon-type').value;
+  const target = document.getElementById('mon-target').value.trim();
+  const interval = parseInt(document.getElementById('mon-interval').value) || 30;
+  const timeout = parseInt(document.getElementById('mon-timeout').value) || 5;
+
+  if (!name || !target) {
+    alert("Required fields Name and Target Address must be filled!");
+    return;
+  }
+
+  const { httpUrl } = getApiUrls();
+  try {
+    if (type === 'http') {
+      const proto = document.getElementById('mon-proto')?.value || 'http';
+      const cleanTarget = target.replace(/^(https?:\/\/)+/i, '');
+
+      if (proto === 'both') {
+        const resHttp = await fetch(`${httpUrl}/api/monitors`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: `${name} (HTTP)`,
+            type: type,
+            target: `http://${cleanTarget}`,
+            check_interval: interval,
+            timeout
+          })
+        });
+        if (!resHttp.ok) {
+          const errData = await resHttp.json();
+          throw new Error(`HTTP Save failed: ${errData.detail || resHttp.status}`);
+        }
+
+        const resHttps = await fetch(`${httpUrl}/api/monitors`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: `${name} (HTTPS)`,
+            type: type,
+            target: `https://${cleanTarget}`,
+            check_interval: interval,
+            timeout
+          })
+        });
+        if (!resHttps.ok) {
+          const errData = await resHttps.json();
+          throw new Error(`HTTPS Save failed: ${errData.detail || resHttps.status}`);
+        }
+      } else {
+        const urlPrefix = proto === 'https' ? 'https://' : 'http://';
+        const res = await fetch(`${httpUrl}/api/monitors`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            type: type,
+            target: urlPrefix + cleanTarget,
+            check_interval: interval,
+            timeout
+          })
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || `HTTP ${res.status}`);
+        }
+      }
+    } else {
+      const res = await fetch(`${httpUrl}/api/monitors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, type: type, target, check_interval: interval, timeout })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || `HTTP ${res.status}`);
+      }
+    }
+
+    closeModal('add-monitor-modal');
+    loadProbesLevel1();
+    if (activeProbeEngineType) {
+      loadProbesLevel2(activeProbeEngineType);
+    }
+  } catch (err) {
+    alert(`Failed to save monitor probe config: ${err.message}`);
+  }
+}
+
+async function deleteMonitorSource(monId, e) {
+  if (e) e.stopPropagation();
+  if (!confirm("Are you sure you want to remove this probe?")) return;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/monitors/${monId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    loadProbesLevel2(activeProbeEngineType);
+  } catch (err) {
+    alert(`Could not delete prober source: ${err.message}`);
+  }
+}
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast-msg ${type}`;
+  toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : type === 'error' ? 'alert-triangle' : 'info'}" style="width: 18px; height: 18px;"></i><span>${message}</span>`;
+  container.appendChild(toast);
+
+  if (window.lucide) {
+    lucide.createIcons({
+      node: toast
+    });
+  }
+
+  setTimeout(() => {
+    toast.classList.add('show');
+  }, 50);
+
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => {
+      toast.remove();
+    }, 300);
+  }, 3000);
+}
+
+window.activeAuditFilter = 'all';
+
+function filterAuditLogs(severity) {
+  window.activeAuditFilter = severity;
+
+  document.querySelectorAll('.audit-filter-btn').forEach(btn => {
+    if (btn.getAttribute('data-filter') === severity) {
+      btn.classList.add('active');
+      btn.style.background = 'var(--bg-secondary)';
+      btn.style.color = 'var(--text-primary)';
+    } else {
+      btn.classList.remove('active');
+      btn.style.background = 'transparent';
+      btn.style.color = 'var(--text-secondary)';
+    }
+  });
+
+  document.querySelectorAll('.audit-row').forEach(row => {
+    const rowSev = row.dataset.severity;
+    if (severity === 'all' || rowSev === severity) {
+      row.style.display = 'flex';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+

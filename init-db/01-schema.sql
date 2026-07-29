@@ -55,3 +55,18 @@ INSERT INTO system_settings (key, value) VALUES
 ('layout_compact', 'false')
 ON CONFLICT (key) DO NOTHING;
 
+-- Built-in Service and Network Monitors
+CREATE TABLE IF NOT EXISTS system_monitors (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(32) NOT NULL, -- 'http', 'websocket', 'ping', 'port', 'dns'
+    target VARCHAR(255) NOT NULL,
+    check_interval INT DEFAULT 30, -- seconds
+    timeout INT DEFAULT 5, -- seconds
+    last_status VARCHAR(32) DEFAULT 'unknown',
+    last_latency FLOAT,
+    last_checked TIMESTAMP,
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+

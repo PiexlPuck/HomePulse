@@ -5,6 +5,10 @@ import asyncio
 import logging
 import psutil
 import asyncpg
+import socket
+import urllib.request
+import urllib.error
+from pydantic import BaseModel
 from typing import List, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header
 from fastapi.responses import FileResponse, JSONResponse
@@ -149,7 +153,16 @@ entity_states = {
 }
 
 # Staged discovery queue
-discovery_queue = []
+discovery_queue = [
+    {
+        "id": "smart-plug-84ab",
+        "name": "Smart Power Plug",
+        "ip": "192.168.0.185",
+        "manifest": {
+            "hardware": {"mac": "AA:BB:CC:DD:EE:01"}
+        }
+    }
+]
 
 class ControlPayload(BaseModel):
     value: Any
@@ -197,6 +210,65 @@ async def init_db_pool():
                         app_settings[key] = val
                 logger.info(f"Loaded config settings registry cache: {app_settings}")
 
+                # Ensure system_monitors has 'enabled' column
+                try:
+                    await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT TRUE;")
+                    logger.info("Migrated system_monitors database schema: enabled column verified.")
+                except Exception as mig_err:
+                    logger.warning(f"Error checking enabled column migration: {mig_err}")
+
+                # Clean up duplicate/misspelled lowercase proxmox definitions from system_monitors
+                try:
+                    await conn.execute("DELETE FROM system_monitors WHERE name = 'proxmox';")
+                    logger.info("Cleaned up duplicate/misspelled proxmox monitor definitions.")
+                except Exception as clean_err:
+                    logger.warning(f"Error cleaning up proxmox monitor definitions: {clean_err}")
+
+                # Query built-in monitors to pre-register their entity states
+                try:
+                    mon_rows = await conn.fetch("SELECT id, name, enabled FROM system_monitors;")
+                    for m in mon_rows:
+                        mid = m["id"]
+                        mname = m["name"]
+                        enabled = m["enabled"] if "enabled" in m else True
+                        status_val = "unknown" if enabled else "disabled"
+                        status_desc = "Unknown" if enabled else "Disabled"
+                        status_type = "default" if enabled else "default"
+                        status_color = "var(--text-secondary)" if enabled else "#6b7280"
+                        status_icon = "activity" if enabled else "shield-off"
+                        
+                        entity_states[f"monitor-{mid}-status"] = {
+                            "node_id": "monitors",
+                            "entity_key": f"monitor-{mid}-status",
+                            "name": f"{mname} Status",
+                            "type": "sensor",
+                            "value_type": "string",
+                            "unit": "",
+                            "value": status_val,
+                            "status": status_desc,
+                            "status_type": status_type,
+                            "tags": "main",
+                            "icon": status_icon,
+                            "color": status_color
+                        }
+                        entity_states[f"monitor-{mid}-latency"] = {
+                            "node_id": "monitors",
+                            "entity_key": f"monitor-{mid}-latency",
+                            "name": f"{mname} Latency",
+                            "type": "sensor",
+                            "value_type": "float",
+                            "unit": "ms",
+                            "value": 0.0,
+                            "status": "Stable" if enabled else "Disabled",
+                            "status_type": "stable" if enabled else "default",
+                            "tags": "main",
+                            "icon": "activity",
+                            "color": "#3b82f6" if enabled else "#6b7280",
+                            "graphic": "sparkline"
+                        }
+                except Exception as e:
+                    logger.error(f"Failed to pre-register monitor entities: {e}")
+
                 tables = await conn.fetch("SELECT table_name FROM information_schema.tables WHERE table_schema='public';")
                 logger.info(f"Database schema verification complete. Tables: {[t['table_name'] for t in tables]}")
             return
@@ -209,6 +281,7 @@ async def init_db_pool():
 async def startup_event():
     await init_db_pool()
     asyncio.create_task(collect_system_statistics_task())
+    asyncio.create_task(monitor_probers_task())
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -353,7 +426,221 @@ async def collect_system_statistics_task():
         except Exception as loop_err:
             logger.error(f"Error in background loops telemetry task: {loop_err}")
 
-# 3. Static serving routing
+# 3. Built-in Background Prober Task Core
+async def execute_monitor_probe(mon_id: int, mtype: str, target: str, timeout: int):
+    start_time = time.time()
+    is_up = False
+    status_code = "OFFLINE"
+    
+    try:
+        if mtype == "http" or mtype == "https":
+            url = target
+            if not url.startswith("http://") and not url.startswith("https://"):
+                url = "http://" + url
+            
+            response_code = "500"
+            def run_urllib():
+                nonlocal response_code
+                req = urllib.request.Request(url, headers={"User-Agent": "HomePulse-Monitor/1.0"})
+                try:
+                    with urllib.request.urlopen(req, timeout=timeout) as resp:
+                        response_code = str(resp.getcode())
+                        return resp.getcode() < 400
+                except urllib.error.HTTPError as he:
+                    response_code = str(he.code)
+                    return he.code < 400
+                except Exception as ex:
+                    response_code = "CONN_REFUSED"
+                    return False
+            
+            is_up = await asyncio.to_thread(run_urllib)
+            status_code = response_code
+            
+        elif mtype == "websocket":
+            host = target
+            if "://" in host:
+                host = host.split("://")[1].split("/")[0]
+            else:
+                host = host.split("/")[0]
+                
+            if ":" in host:
+                host, port_str = host.split(":")
+                port = int(port_str)
+            else:
+                port = 443 if target.startswith("wss") else 80
+            
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=timeout
+            )
+            writer.close()
+            await writer.wait_closed()
+            is_up = True
+            status_code = "101"
+            
+        elif mtype == "ping":
+            host = target
+            if "://" in host:
+                host = host.split("://")[1].split("/")[0].split(":")[0]
+            else:
+                host = host.split(":")[0]
+                
+            proc = await asyncio.create_subprocess_exec(
+                "ping", "-c", "1", "-W", str(timeout), host,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.wait_for(proc.wait(), timeout=timeout + 2)
+            is_up = (proc.returncode == 0)
+            status_code = "ICMP_OK" if is_up else "PING_FAIL"
+            
+        elif mtype == "port":
+            host, port_str = target.split(":")
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, int(port_str)), timeout=timeout
+            )
+            writer.close()
+            await writer.wait_closed()
+            is_up = True
+            status_code = "PORT_OK"
+            
+        elif mtype == "dns":
+            host = target
+            if "://" in host:
+                host = host.split("://")[1].split("/")[0].split(":")[0]
+            else:
+                host = host.split(":")[0]
+            await asyncio.get_event_loop().getaddrinfo(host, None)
+            is_up = True
+            status_code = "DNS_OK"
+            
+    except Exception as e:
+        logger.debug(f"Monitor probe {mon_id} failed: {e}")
+        is_up = False
+        err_msg = str(e).upper()
+        if "TIMEOUT" in err_msg:
+            status_code = "TIMEOUT"
+        elif "REFUSED" in err_msg or "RESET" in err_msg:
+            status_code = "CONN_REFUSED"
+        else:
+            status_code = "OFFLINE"
+        
+    latency = (time.time() - start_time) * 1000 if is_up else 0.0
+    return is_up, round(latency, 2), status_code
+
+
+async def run_single_probe(monitor: dict):
+    mon_id = monitor["id"]
+    mname = monitor["name"]
+    mtype = monitor["type"]
+    target = monitor["target"]
+    timeout = monitor["timeout"]
+    
+    is_up, latency, status_code = await execute_monitor_probe(mon_id, mtype, target, timeout)
+    status_str = status_code
+    status_type = "optimal" if is_up else "alarm"
+    status_desc = "Optimal" if is_up else "Alarm"
+    
+    entity_states[f"monitor-{mon_id}-status"] = {
+        "node_id": "monitors",
+        "entity_key": f"monitor-{mon_id}-status",
+        "name": f"{mname} Status",
+        "type": "sensor",
+        "value_type": "string",
+        "unit": "",
+        "value": status_str,
+        "status": status_desc,
+        "status_type": status_type,
+        "tags": "main",
+        "icon": "shield-check" if is_up else "shield-alert"
+    }
+    entity_states[f"monitor-{mon_id}-latency"] = {
+        "node_id": "monitors",
+        "entity_key": f"monitor-{mon_id}-latency",
+        "name": f"{mname} Latency",
+        "type": "sensor",
+        "value_type": "float",
+        "unit": "ms",
+        "value": latency,
+        "status": "Stable" if is_up else "Caution",
+        "status_type": "stable" if is_up else "caution",
+        "tags": "main",
+        "icon": "activity",
+        "color": "#10b981" if is_up else "#f43f5e",
+        "graphic": "sparkline"
+    }
+    
+    if db_pool:
+        try:
+            async with db_pool.acquire() as conn:
+                await conn.execute(
+                    """UPDATE system_monitors 
+                       SET last_status = $1, last_latency = $2, last_checked = CURRENT_TIMESTAMP 
+                       WHERE id = $3;""",
+                    status_str, latency, mon_id
+                )
+                await conn.execute(
+                    "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
+                    "monitors", f"monitor-{mon_id}-status", status_str
+                )
+                await conn.execute(
+                    "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
+                    "monitors", f"monitor-{mon_id}-latency", str(latency)
+                )
+        except Exception as db_err:
+            logger.error(f"Failed to record monitor {mon_id} results to DB: {db_err}")
+            
+    await manager.broadcast({
+        "event": "state_changed",
+        "node_id": "monitors",
+        "entity_id": f"monitor-{mon_id}-status",
+        "value": status_str,
+        "status": status_desc,
+        "status_type": status_type
+    })
+    await manager.broadcast({
+        "event": "state_changed",
+        "node_id": "monitors",
+        "entity_id": f"monitor-{mon_id}-latency",
+        "value": latency,
+        "status": "Stable" if is_up else "Caution",
+        "status_type": "stable" if is_up else "caution"
+    })
+
+
+async def monitor_probers_task():
+    global db_pool
+    logger.info("Starting built-in system monitors prober background task...")
+    
+    last_check_tracker = {}
+    
+    while True:
+        try:
+            if not db_pool:
+                await asyncio.sleep(2)
+                continue
+                
+            async with db_pool.acquire() as conn:
+                monitors = await conn.fetch("SELECT id, name, type, target, check_interval, timeout, enabled FROM system_monitors;")
+                
+            now = time.time()
+            for m in monitors:
+                mid = m["id"]
+                interval = m["check_interval"]
+                enabled = m["enabled"] if "enabled" in m else True
+                if not enabled:
+                    continue
+                
+                last_time = last_check_tracker.get(mid, 0)
+                if now - last_time >= interval:
+                    last_check_tracker[mid] = now
+                    asyncio.create_task(run_single_probe(dict(m)))
+                    
+        except Exception as e:
+            logger.error(f"Exception in monitor prober background task: {e}")
+            
+        await asyncio.sleep(1)
+
+
+# 4. Static serving routing
 @app.get("/")
 async def get_index():
     return FileResponse("index.html")
@@ -489,6 +776,236 @@ async def post_settings(payload: SettingsPayload):
     return JSONResponse(content={"status": "settings_applied", "settings": app_settings})
 
 
+# Built-in background monitor CRUD routes
+class MonitorPayload(BaseModel):
+    name: str
+    type: str # 'http', 'websocket', 'ping', 'port', 'dns'
+    target: str
+    check_interval: int = 30
+    timeout: int = 5
+
+@app.get("/api/monitors")
+async def get_monitors():
+    if not db_pool:
+        return JSONResponse(content=[])
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, name, type, target, check_interval, timeout, last_status, last_latency, last_checked, enabled FROM system_monitors ORDER BY id ASC;")
+            res = []
+            for r in rows:
+                d = dict(r)
+                if d["last_checked"]:
+                    d["last_checked"] = d["last_checked"].isoformat()
+                res.append(d)
+            return JSONResponse(content=res)
+    except Exception as e:
+        logger.error(f"Failed to fetch system monitors: {e}")
+        raise HTTPException(status_code=500, detail="Database query error.")
+
+@app.post("/api/monitors")
+async def add_monitor(payload: MonitorPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    
+    if payload.type not in ('http', 'websocket', 'ping', 'port', 'dns'):
+        raise HTTPException(status_code=400, detail="Invalid monitor type.")
+    if not payload.name.strip() or not payload.target.strip():
+        raise HTTPException(status_code=400, detail="Required fields Name and Target must be provided.")
+        
+    try:
+        async with db_pool.acquire() as conn:
+            monitor_id = await conn.fetchval(
+                """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled) 
+                   VALUES ($1, $2, $3, $4, $5, 'unknown', true) RETURNING id;""",
+                payload.name.strip(), payload.type, payload.target.strip(), payload.check_interval, payload.timeout
+            )
+            
+            entity_states[f"monitor-{monitor_id}-status"] = {
+                "node_id": "monitors",
+                "entity_key": f"monitor-{monitor_id}-status",
+                "name": f"{payload.name} Status",
+                "type": "sensor",
+                "value_type": "string",
+                "unit": "",
+                "value": "unknown",
+                "status": "Unknown",
+                "status_type": "default",
+                "tags": "main",
+                "icon": "shield-question"
+            }
+            entity_states[f"monitor-{monitor_id}-latency"] = {
+                "node_id": "monitors",
+                "entity_key": f"monitor-{monitor_id}-latency",
+                "name": f"{payload.name} Latency",
+                "type": "sensor",
+                "value_type": "float",
+                "unit": "ms",
+                "value": 0.0,
+                "status": "Stable",
+                "status_type": "stable",
+                "tags": "main",
+                "icon": "activity",
+                "color": "#3b82f6",
+                "graphic": "sparkline"
+            }
+            
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"New background monitor configured: {payload.name} ({payload.target})"
+            )
+        
+        await manager.broadcast({
+            "event": "audit_logged",
+            "type": "info",
+            "message": f"New monitor '{payload.name}' added with type {payload.type}."
+        })
+        
+        return JSONResponse(content={"status": "created", "monitor_id": monitor_id})
+    except Exception as e:
+        logger.error(f"Failed to add monitor: {e}")
+        raise HTTPException(status_code=500, detail="Database write error.")
+
+@app.delete("/api/monitors/{monitor_id}")
+async def delete_monitor(monitor_id: int):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+        
+    try:
+        async with db_pool.acquire() as conn:
+            exists = await conn.fetchrow("SELECT id, name FROM system_monitors WHERE id = $1;", monitor_id)
+            if not exists:
+                raise HTTPException(status_code=404, detail="Monitor not found")
+                
+            await conn.execute("DELETE FROM system_monitors WHERE id = $1;", monitor_id)
+            
+            entity_states.pop(f"monitor-{monitor_id}-status", None)
+            entity_states.pop(f"monitor-{monitor_id}-latency", None)
+            
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "warning", f"Background monitor deleted by operator: {exists['name']}"
+            )
+            
+        await manager.broadcast({
+            "event": "audit_logged",
+            "type": "warning",
+            "message": f"Monitor '{exists['name']}' deleted."
+        })
+        
+        return JSONResponse(content={"status": "deleted"})
+    except Exception as e:
+        logger.error(f"Failed to delete monitor: {e}")
+        raise HTTPException(status_code=500, detail="Database write error.")
+
+class TogglePayload(BaseModel):
+    enabled: bool
+
+@app.post("/api/monitors/{monitor_id}/toggle")
+async def toggle_monitor(monitor_id: int, payload: TogglePayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+        
+    try:
+        async with db_pool.acquire() as conn:
+            exists = await conn.fetchrow("SELECT id, name FROM system_monitors WHERE id = $1;", monitor_id)
+            if not exists:
+                raise HTTPException(status_code=404, detail="Monitor not found")
+                
+            await conn.execute("UPDATE system_monitors SET enabled = $1 WHERE id = $2;", payload.enabled, monitor_id)
+            
+            # Broadcast state update immediately
+            mname = exists["name"]
+            status_val = "unknown" if payload.enabled else "disabled"
+            status_desc = "Unknown" if payload.enabled else "Disabled"
+            status_type = "default"
+            status_icon = "activity" if payload.enabled else "shield-off"
+            status_color = "var(--text-secondary)" if payload.enabled else "#6b7280"
+            
+            entity_states[f"monitor-{monitor_id}-status"] = {
+                "node_id": "monitors",
+                "entity_key": f"monitor-{monitor_id}-status",
+                "name": f"{mname} Status",
+                "type": "sensor",
+                "value_type": "string",
+                "unit": "",
+                "value": status_val,
+                "status": status_desc,
+                "status_type": status_type,
+                "tags": "main",
+                "icon": status_icon,
+                "color": status_color
+            }
+            entity_states[f"monitor-{monitor_id}-latency"] = {
+                "node_id": "monitors",
+                "entity_key": f"monitor-{monitor_id}-latency",
+                "name": f"{mname} Latency",
+                "type": "sensor",
+                "value_type": "float",
+                "unit": "ms",
+                "value": 0.0,
+                "status": "Stable" if payload.enabled else "Disabled",
+                "status_type": "stable" if payload.enabled else "default",
+                "tags": "main",
+                "icon": "activity",
+                "color": "#3b82f6" if payload.enabled else "#6b7280",
+                "graphic": "sparkline"
+            }
+            
+            await manager.broadcast({
+                "event": "state_changed",
+                "node_id": "monitors",
+                "entity_id": f"monitor-{monitor_id}-status",
+                "value": status_val,
+                "status": status_desc,
+                "status_type": status_type
+            })
+            await manager.broadcast({
+                "event": "state_changed",
+                "node_id": "monitors",
+                "entity_id": f"monitor-{monitor_id}-latency",
+                "value": 0.0,
+                "status": "Stable" if payload.enabled else "Disabled",
+                "status_type": "stable" if payload.enabled else "default"
+            })
+            
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"Background monitor {'enabled' if payload.enabled else 'disabled'} by operator: {mname}"
+            )
+            
+        await manager.broadcast({
+            "event": "audit_logged",
+            "type": "info",
+            "message": f"Monitor '{mname}' {'enabled' if payload.enabled else 'disabled'}."
+        })
+        
+        return JSONResponse(content={"status": "success", "enabled": payload.enabled})
+    except Exception as e:
+        logger.error(f"Failed to toggle monitor: {e}")
+        raise HTTPException(status_code=500, detail="Database write error.")
+
+@app.get("/api/monitors/logs/{entity_key}")
+async def get_monitor_logs(entity_key: str):
+    if not db_pool:
+        return JSONResponse(content=[])
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT timestamp, value FROM telemetry_logs 
+                   WHERE entity_key = $1 
+                   ORDER BY timestamp DESC LIMIT 10;""",
+                entity_key
+            )
+            res = []
+            for r in rows:
+                res.append({
+                    "timestamp": r["timestamp"].isoformat(),
+                    "value": r["value"]
+                })
+            return JSONResponse(content=res)
+    except Exception as e:
+        logger.error(f"Failed to fetch telemetry logs for {entity_key}: {e}")
+        raise HTTPException(status_code=500, detail="Database log query error.")
 
 @app.post("/api/discovery/approve/{node_id}")
 async def approve_node(node_id: str, payload: ApprovePayload):
