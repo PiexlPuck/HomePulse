@@ -1965,3 +1965,22 @@ input:checked+.slider:before {
 .toast-msg.info {
   border-left: 4px solid var(--color-caution);
 }
+
+/* Built-in Probe Catalog Tile Select Overlays */
+.catalog-tile-btn {
+  background: rgba(20, 20, 22, 0.6) !important;
+  border: 1px solid var(--border-soft) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.catalog-tile-btn:hover {
+  background: rgba(200, 140, 60, 0.05) !important;
+  border-color: rgba(200, 140, 60, 0.45) !important;
+  box-shadow: 0 0 16px rgba(200, 140, 60, 0.08) !important;
+  transform: translateY(-2px) !important;
+}
+
+.catalog-tile-btn:active {
+  transform: translateY(0) !important;
+  background: rgba(200, 140, 60, 0.08) !important;
+}

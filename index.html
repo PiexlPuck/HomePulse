@@ -392,6 +392,129 @@
           </div>
         </div>
 
+        <!-- LEVEL CATALOG: Engines & Integrations Catalog Grid -->
+        <div id="probes-level-catalog" class="settings-card" style="display: none;">
+          <div class="settings-header"
+            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h3>Monitoring Engines &amp; Integrations Catalog</h3>
+              <p>Configure built-in active background probers or preview deployable custom server modules.</p>
+            </div>
+            <button class="btn btn-secondary" onclick="navigateProbesLevel(1)"
+              style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Monitors
+            </button>
+          </div>
+
+          <div class="settings-form"
+            style="border-top:1px solid var(--border-soft); padding-top:20px; display:flex; flex-direction:column; gap:24px;">
+
+            <!-- Group 1: Included Monitoring Engines -->
+            <div>
+              <h4
+                style="font-size:0.88rem; font-weight:700; color:var(--accent-orange); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                <i data-lucide="cpu" style="width:16px; height:16px;"></i> Included Monitoring Engines
+              </h4>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+
+                <!-- HTTP/HTTPS Tile -->
+                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('http')"
+                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                  <div
+                    style="display:flex; align-items:center; justify-content:center; background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                    <i data-lucide="globe" style="width: 22px; height: 22px;"></i>
+                  </div>
+                  <div style="flex:1;">
+                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">
+                      HTTP/HTTPS</h5>
+                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Verify website
+                      availability, trace response codes and load latencies.</p>
+                  </div>
+                </div>
+
+                <!-- WebSocket Tile -->
+                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('websocket')"
+                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                  <div
+                    style="display:flex; align-items:center; justify-content:center; background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                    <i data-lucide="message-square" style="width: 22px; height: 22px;"></i>
+                  </div>
+                  <div style="flex:1;">
+                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">
+                      WebSocket Feed</h5>
+                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Test WebSocket
+                      socket link integrity and message push rates (Beta).</p>
+                  </div>
+                </div>
+
+                <!-- ICMP Ping Tile -->
+                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('ping')"
+                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                  <div
+                    style="display:flex; align-items:center; justify-content:center; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                    <i data-lucide="activity" style="width: 22px; height: 22px;"></i>
+                  </div>
+                  <div style="flex:1;">
+                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">ICMP
+                      Network Ping</h5>
+                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Verify server
+                      reachability and packet round-trip times via raw network pings.</p>
+                  </div>
+                </div>
+
+                <!-- TCP Port Tile -->
+                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('port')"
+                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                  <div
+                    style="display:flex; align-items:center; justify-content:center; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                    <i data-lucide="hash" style="width: 22px; height: 22px;"></i>
+                  </div>
+                  <div style="flex:1;">
+                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">TCP
+                      Port Probe</h5>
+                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Probe external
+                      target application ports (such as SSH, PostgreSQL, Redis) status.</p>
+                  </div>
+                </div>
+
+                <!-- DNS Resolve Tile -->
+                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('dns')"
+                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                  <div
+                    style="display:flex; align-items:center; justify-content:center; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                    <i data-lucide="server" style="width: 22px; height: 22px;"></i>
+                  </div>
+                  <div style="flex:1;">
+                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">DNS
+                      Name Resolution</h5>
+                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Verify
+                      resolution speed and validity mapping target hostname to IP entries.</p>
+                  </div>
+                </div>
+
+                <!-- SSL Certificate Expiration Tile -->
+                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('ssl')"
+                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                  <div
+                    style="display:flex; align-items:center; justify-content:center; background: rgba(244, 63, 94, 0.1); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                    <i data-lucide="lock" style="width: 22px; height: 22px;"></i>
+                  </div>
+                  <div style="flex:1;">
+                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">SSL
+                      Certificate Expiry</h5>
+                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Monitor
+                      SSL/TLS validity, warning threshold flags, and verify renewal dates.</p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+
+
+          </div>
+        </div>
+
       </div>
 
       <!-- Automations View Panel -->
@@ -885,7 +1008,7 @@
     <!-- js-yaml CDN -->
     <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=1.6"></script>
+    <script src="app.js?v=1.9"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
     <!-- Add Monitor Modal Overlay -->
@@ -909,6 +1032,7 @@
               <option value="ping">ICMP Network Ping</option>
               <option value="port">TCP Port Query</option>
               <option value="dns">DNS Resolution Target</option>
+              <option value="ssl">SSL Certificate Expiry</option>
             </select>
           </div>
           <!-- HTTP Protocol Selector Under Monitor Type -->
@@ -1056,9 +1180,6 @@
           <button class="btn btn-secondary" onclick="closeModal('marketplace-modal')">Close</button>
         </div>
       </div>
-    </div>
-
-
 </body>
 
 </html>

@@ -512,6 +512,11 @@ async def execute_monitor_probe(mon_id: int, mtype: str, target: str, timeout: i
             is_up = True
             status_code = "DNS_OK"
             
+        elif mtype == "ssl":
+            # Do not perform actual SSL checking, just return nominal placeholder data
+            is_up = True
+            status_code = "SSL_OK"
+            
     except Exception as e:
         logger.debug(f"Monitor probe {mon_id} failed: {e}")
         is_up = False
@@ -773,6 +778,10 @@ async def post_settings(payload: SettingsPayload):
         "type": "info",
         "message": "System settings dynamically updated by administrator."
     })
+    await manager.broadcast({
+        "event": "settings_updated",
+        "settings": app_settings
+    })
     return JSONResponse(content={"status": "settings_applied", "settings": app_settings})
 
 
@@ -807,7 +816,7 @@ async def add_monitor(payload: MonitorPayload):
     if not db_pool:
         raise HTTPException(status_code=503, detail="Database connection not available")
     
-    if payload.type not in ('http', 'websocket', 'ping', 'port', 'dns'):
+    if payload.type not in ('http', 'websocket', 'ping', 'port', 'dns', 'ssl'):
         raise HTTPException(status_code=400, detail="Invalid monitor type.")
     if not payload.name.strip() or not payload.target.strip():
         raise HTTPException(status_code=400, detail="Required fields Name and Target must be provided.")

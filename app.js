@@ -882,6 +882,51 @@ function handleIncomingWSEvent(data) {
   else if (data.event === 'device_discovered') {
     showDiscoveryAlert(data.node_id, data.name, data.ip);
   }
+
+  // D. Global Settings updates
+  else if (data.event === 'settings_updated') {
+    applyGlobalSettings(data.settings);
+  }
+}
+
+// Dynamically sync and apply updated system settings to this browser instance
+function applyGlobalSettings(data) {
+  if (!data) return;
+  console.log("Applying dynamic settings update broadcast:", data);
+
+  const tzEl = document.getElementById('setting-timezone');
+  if (tzEl && data.timezone) {
+    tzEl.value = data.timezone;
+  }
+  currentTimezone = data.timezone || 'UTC';
+  updateHeaderTime();
+
+  const retentionEl = document.getElementById('setting-retention');
+  const retentionVal = document.getElementById('setting-retention-val');
+  if (retentionEl && data.log_retention) {
+    retentionEl.value = data.log_retention;
+    if (retentionVal) retentionVal.textContent = `${data.log_retention} days`;
+  }
+
+  const intervalEl = document.getElementById('setting-interval');
+  const intervalVal = document.getElementById('setting-interval-val');
+  if (intervalEl && data.telemetry_interval) {
+    intervalEl.value = data.telemetry_interval;
+    if (intervalVal) intervalVal.textContent = `${data.telemetry_interval}s`;
+  }
+
+  const pskEl = document.getElementById('setting-psk');
+  if (pskEl && data.preshared_key) pskEl.value = data.preshared_key;
+
+  const compactEl = document.getElementById('setting-compact');
+  if (compactEl) {
+    compactEl.checked = (data.layout_compact === 'true');
+    document.body.classList.toggle('layout-compact', compactEl.checked);
+  }
+
+  if (data.theme) {
+    applyTheme(data.theme);
+  }
 }
 
 // Update DOM elements on Live Socket triggers
@@ -2467,28 +2512,38 @@ function navigateProbesLevel(level, param) {
   const lvl1 = document.getElementById('probes-level-1');
   const lvl2 = document.getElementById('probes-level-2');
   const lvl3 = document.getElementById('probes-level-3');
+  const lvlCatalog = document.getElementById('probes-level-catalog');
 
-  if (!lvl1 || !lvl2 || !lvl3) return;
+  if (!lvl1 || !lvl2 || !lvl3 || !lvlCatalog) return;
 
   if (level === 1) {
     lvl1.style.display = 'block';
     lvl2.style.display = 'none';
     lvl3.style.display = 'none';
+    lvlCatalog.style.display = 'none';
     loadProbesLevel1();
   } else if (level === 2) {
     lvl1.style.display = 'none';
     lvl2.style.display = 'block';
     lvl3.style.display = 'none';
+    lvlCatalog.style.display = 'none';
     if (param) activeProbeEngineType = param;
     loadProbesLevel2(activeProbeEngineType);
   } else if (level === 3) {
     lvl1.style.display = 'none';
     lvl2.style.display = 'none';
     lvl3.style.display = 'block';
+    lvlCatalog.style.display = 'none';
     if (param) {
       activeProbeMonitorId = param;
       loadProbesLevel3(activeProbeMonitorId);
     }
+  } else if (level === 'catalog') {
+    lvl1.style.display = 'none';
+    lvl2.style.display = 'none';
+    lvl3.style.display = 'none';
+    lvlCatalog.style.display = 'block';
+    if (window.lucide) window.lucide.createIcons();
   }
 }
 
@@ -2724,11 +2779,17 @@ async function loadProbesLevel3(monId) {
 }
 
 window.openAddMonitorModal = function () {
-  console.log("openAddMonitorModal triggered");
+  console.log("openAddMonitorModal triggered - navigating to catalog page");
+  navigateProbesLevel('catalog');
+};
+
+window.selectProbeTypeToConfigure = function (type) {
+  console.log("selectProbeTypeToConfigure triggered for:", type);
+
   const nameInput = document.getElementById('mon-name');
   if (nameInput) nameInput.value = '';
   const typeInput = document.getElementById('mon-type');
-  if (typeInput) typeInput.value = 'http';
+  if (typeInput) typeInput.value = type;
   const targetInput = document.getElementById('mon-target');
   if (targetInput) targetInput.value = '';
   const intervalInput = document.getElementById('mon-interval');
@@ -2736,7 +2797,7 @@ window.openAddMonitorModal = function () {
   const timeoutInput = document.getElementById('mon-timeout');
   if (timeoutInput) timeoutInput.value = '5';
 
-  onMonitorTypeChange('http');
+  onMonitorTypeChange(type);
 
   openModal('add-monitor-modal');
 };
