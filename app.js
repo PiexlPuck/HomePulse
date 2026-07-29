@@ -2547,6 +2547,21 @@ function navigateProbesLevel(level, param) {
   }
 }
 
+function isProbeStatusOnline(status, type) {
+  if (!status) return false;
+  const s = String(status).trim().toUpperCase();
+  return (
+    s === 'UP' ||
+    s === 'ONLINE' ||
+    s === 'SSL_OK' ||
+    s === 'DNS_OK' ||
+    s === 'PORT_OK' ||
+    s === 'ICMP_OK' ||
+    s === '101' ||
+    (type === 'http' && !isNaN(s) && parseInt(s) < 400)
+  );
+}
+
 async function loadProbesLevel1() {
   const { httpUrl } = getApiUrls();
   const gridEl = document.getElementById('engines-grid');
@@ -2557,17 +2572,18 @@ async function loadProbesLevel1() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const monitors = await res.json();
 
-    const counts = { http: 0, websocket: 0, ping: 0, port: 0, dns: 0 };
+    const counts = { http: 0, websocket: 0, ping: 0, port: 0, dns: 0, ssl: 0 };
     monitors.forEach(m => {
       if (counts[m.type] !== undefined) counts[m.type]++;
     });
 
     const engines = [
-      { type: 'http', name: 'HTTP/HTTPS Prober', desc: 'Web endpoints and REST APIs', icon: 'globe' },
-      { type: 'websocket', name: 'WebSocket Prober', desc: 'Active socket handshakes', icon: 'message-square' },
-      { type: 'ping', name: 'ICMP Ping Prober', desc: 'Simple host reachability checks', icon: 'shield' },
-      { type: 'port', name: 'TCP Port Prober', desc: 'Open database or SSH port queries', icon: 'server' },
-      { type: 'dns', name: 'DNS Resolver Prober', desc: 'Hostname IP resolution query checks', icon: 'globe-2' }
+      { type: 'http', name: 'HTTP/HTTPS Prober', desc: 'Web endpoints and REST APIs', icon: 'globe', color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
+      { type: 'websocket', name: 'WebSocket Prober', desc: 'Active socket handshakes', icon: 'message-square', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
+      { type: 'ping', name: 'ICMP Ping Prober', desc: 'Simple host reachability checks', icon: 'shield', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
+      { type: 'port', name: 'TCP Port Prober', desc: 'Open database or SSH port queries', icon: 'server', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+      { type: 'dns', name: 'DNS Resolver Prober', desc: 'Hostname IP resolution query checks', icon: 'globe-2', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' },
+      { type: 'ssl', name: 'SSL Expiration Prober', desc: 'SSL/TLS certificate expiration checks', icon: 'lock', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.1)' }
     ];
 
     const visibleEngines = engines.filter(eng => counts[eng.type] > 0);
@@ -2593,11 +2609,13 @@ async function loadProbesLevel1() {
       const countLabel = activeCount === 1 ? '1 active probe' : `${activeCount} active probes`;
 
       html += `
-        <div class="mon-picker-card" onclick="navigateProbesLevel(2, '${eng.type}')">
-          <i data-lucide="${eng.icon}"></i>
+        <div class="mon-picker-card" onclick="navigateProbesLevel(2, '${eng.type}')" style="display: flex; flex-direction: column; align-items: flex-start;">
+          <div style="display:flex; align-items:center; justify-content:center; background: ${eng.bg}; color: ${eng.color}; border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; width: 38px; height: 38px; margin-bottom: 12px; flex-shrink: 0;">
+            <i data-lucide="${eng.icon}" style="width: 20px; height: 20px; color: ${eng.color}; margin-bottom: 0;"></i>
+          </div>
           <span class="title">${eng.name}</span>
           <span class="desc">${eng.desc}</span>
-          <span style="font-size:0.65rem; color:var(--accent-orange); margin-top:10px; font-weight:600; background:rgba(200, 140, 60, 0.08); padding:2px 8px; border-radius:4px; max-width:80%; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">
+          <span style="font-size:0.65rem; color:${eng.color}; margin-top:10px; font-weight:600; background:${eng.bg}; padding:2px 8px; border-radius:4px; max-width:80%; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">
             ${countLabel}
           </span>
         </div>`;
@@ -2620,7 +2638,8 @@ async function loadProbesLevel2(type) {
     websocket: { title: "WebSocket Connection Engine", desc: "Monitors WebSockets connectivity logs." },
     ping: { title: "ICMP Ping reachability Engine", desc: "Monitors response durations of network gateways." },
     port: { title: "TCP Port query Engine", desc: "Monitors open ports for database, socket, or HTTP systems." },
-    dns: { title: "DNS Query Name Resolver", desc: "Monitors DNS lookup values for key servers." }
+    dns: { title: "DNS Query Name Resolver", desc: "Monitors DNS lookup values for key servers." },
+    ssl: { title: "SSL Certificate Expiry Engine", desc: "Monitors SSL/TLS certificate validity dates and thresholds." }
   };
 
 
@@ -2646,7 +2665,7 @@ async function loadProbesLevel2(type) {
     let html = '';
     filtered.forEach(mon => {
       const isEnabled = mon.enabled !== false;
-      const isUp = isEnabled && (mon.last_status === 'up' || mon.last_status === 'UP');
+      const isUp = isEnabled && isProbeStatusOnline(mon.last_status, mon.type);
       const statusColor = !isEnabled ? '#6b7280' : (isUp ? 'var(--color-optimal)' : '#f43f5e');
       const statusLabel = !isEnabled ? 'DISABLED' : (isUp ? 'ONLINE' : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE'));
       const latencyStr = isEnabled && mon.last_latency !== null ? `${mon.last_latency} ms` : '--';
@@ -2710,7 +2729,7 @@ async function loadProbesLevel3(monId) {
     document.getElementById('lvl3-probe-title').textContent = mon.name;
     document.getElementById('lvl3-probe-meta').textContent = `Engine: ${mon.type.toUpperCase()} | Address: ${mon.target}`;
 
-    const isUp = mon.last_status === 'up' || mon.last_status === 'UP';
+    const isUp = isProbeStatusOnline(mon.last_status, mon.type);
     const statusColor = isUp ? 'var(--color-optimal)' : '#f43f5e';
     const statusLabel = isUp ? 'ONLINE' : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE');
     const latencyStr = mon.last_latency !== null ? `${mon.last_latency} ms` : '-- ms';
@@ -2741,22 +2760,18 @@ async function loadProbesLevel3(monId) {
       const dt = new Date(sLog.timestamp).toLocaleString();
       const statusVal = sLog.value; // e.g. "200", "404", "TIMEOUT", "ICMP_OK", "up", "down", "OFFLINE"
 
-      let isLvlUp = false;
+      let isLvlUp = isProbeStatusOnline(sLog.value, mon.type);
       let displayStatus = statusVal;
 
       if (statusVal === 'up' || statusVal === 'UP' || statusVal === 'ONLINE') {
-        isLvlUp = true;
         displayStatus = 'ONLINE';
       } else if (statusVal === 'down' || statusVal === 'DOWN' || statusVal === 'OFFLINE') {
-        isLvlUp = false;
         displayStatus = 'OFFLINE';
       } else {
         const codeNum = parseInt(statusVal);
         if (!isNaN(codeNum)) {
-          isLvlUp = codeNum < 400;
           displayStatus = `HTTP ${statusVal}`;
         } else {
-          isLvlUp = statusVal.includes('OK') || statusVal === '101' || statusVal === 'ONLINE';
           displayStatus = statusVal.replace(/_/g, ' ');
         }
       }
@@ -2894,6 +2909,7 @@ async function submitAddMonitor() {
     if (activeProbeEngineType) {
       loadProbesLevel2(activeProbeEngineType);
     }
+    showToast(`Successfully configured background probe: ${name}`, "success");
   } catch (err) {
     alert(`Failed to save monitor probe config: ${err.message}`);
   }
