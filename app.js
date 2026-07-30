@@ -149,7 +149,10 @@ let socket = null;
 const telemetryHistory = {};
 let cachedEntities = {};
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Sync dashboard layout and configuration registry from database
+  await syncDashboardConfigFromServer();
+
   // Initialize header timestamp
   updateHeaderTime();
   setInterval(updateHeaderTime, 1000);
@@ -887,6 +890,11 @@ function handleIncomingWSEvent(data) {
   else if (data.event === 'settings_updated') {
     applyGlobalSettings(data.settings);
   }
+
+  // E. Global Dashboard Config updates
+  else if (data.event === 'dashboard_config_updated') {
+    applyGlobalDashboardConfig(data.widgets, data.order, data.tabs);
+  }
 }
 
 // Dynamically sync and apply updated system settings to this browser instance
@@ -1220,6 +1228,94 @@ function updateHealthSnapshot() {
 function addNewCardPlaceholder() {
   alert('Entity Configurator: Select approved micro-entities to mount as grid cards.');
 }
+
+// ─────────────────────────────────────────
+// SERVER-SIDE DASHBOARD CONFIGURATION SYNC
+// ─────────────────────────────────────────
+
+async function syncLocalConfigToServer() {
+  const { httpUrl } = getApiUrls();
+  try {
+    const widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
+    const order = JSON.parse(localStorage.getItem('hp_widget_order') || '[]');
+    const tabs = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
+
+    await fetch(`${httpUrl}/api/dashboard/config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ widgets, order, tabs })
+    });
+  } catch (err) {
+    console.error("Failed to sync local layout configuration to database:", err);
+  }
+}
+
+async function syncDashboardConfigFromServer() {
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/dashboard/config`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      let hasData = false;
+
+      window.isSyncingFromServer = true;
+      if (data.widgets && data.widgets.length > 0) {
+        localStorage.setItem('hp_dashboard_widgets', JSON.stringify(data.widgets));
+        hasData = true;
+      }
+      if (data.order && data.order.length > 0) {
+        localStorage.setItem('hp_widget_order', JSON.stringify(data.order));
+      }
+      if (data.tabs && data.tabs.length > 0) {
+        localStorage.setItem('hp_dashboards', JSON.stringify(data.tabs));
+        hasData = true;
+      }
+      window.isSyncingFromServer = false;
+
+      if (!hasData) {
+        await syncLocalConfigToServer();
+      }
+    }
+  } catch (err) {
+    console.error("Failed to fetch dashboard layout config from database:", err);
+    window.isSyncingFromServer = false;
+  }
+}
+
+function applyGlobalDashboardConfig(widgets, order, tabs) {
+  console.log("Applying live dynamically-received global dashboard configurations.");
+  window.isSyncingFromServer = true;
+  if (widgets) localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
+  if (order) localStorage.setItem('hp_widget_order', JSON.stringify(order));
+  if (tabs) localStorage.setItem('hp_dashboards', JSON.stringify(tabs));
+  window.isSyncingFromServer = false;
+
+  renderDashboards();
+  if (cachedEntities && Object.keys(cachedEntities).length > 0) {
+    buildDashboardCards(cachedEntities);
+  }
+}
+
+// Global Proxy to auto-sync local storage updates to the database
+(function () {
+  const originalSetItem = localStorage.setItem;
+  localStorage.setItem = function (key, value) {
+    originalSetItem.apply(this, arguments);
+    if (key === 'hp_dashboard_widgets' || key === 'hp_widget_order' || key === 'hp_dashboards') {
+      if (!window.isSyncingFromServer) {
+        syncLocalConfigToServer();
+      }
+    }
+  };
+})();
 
 // ─────────────────────────────────────────
 // SETTINGS PAGE LOGIC

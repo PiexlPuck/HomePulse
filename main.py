@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import json
 import asyncio
 import logging
 import psutil
@@ -223,6 +224,26 @@ async def init_db_pool():
                     logger.info("Cleaned up duplicate/misspelled proxmox monitor definitions.")
                 except Exception as clean_err:
                     logger.warning(f"Error cleaning up proxmox monitor definitions: {clean_err}")
+
+                # Create dashboard_config table
+                try:
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS dashboard_config (
+                            key VARCHAR(64) PRIMARY KEY,
+                            value TEXT NOT NULL
+                        );
+                    """)
+                    logger.info("dashboard_config table verified.")
+                except Exception as db_err:
+                    logger.warning(f"Error establishing dashboard_config table: {db_err}")
+
+                # Rename Plex monitors to distinguish SSL and Ping metrics
+                try:
+                    await conn.execute("UPDATE system_monitors SET name = 'Plex SSL Status' WHERE LOWER(name) = 'plex' AND type = 'ssl';")
+                    await conn.execute("UPDATE system_monitors SET name = 'Plex Ping Status' WHERE LOWER(name) = 'plex' AND type = 'ping';")
+                    logger.info("Renamed Plex monitor targets to differentiate engines.")
+                except Exception as plex_err:
+                    logger.warning(f"Error updating Plex monitor names: {plex_err}")
 
                 # Query built-in monitors to pre-register their entity states
                 try:
@@ -818,6 +839,64 @@ async def post_settings(payload: SettingsPayload):
         "settings": app_settings
     })
     return JSONResponse(content={"status": "settings_applied", "settings": app_settings})
+
+
+@app.get("/api/dashboard/config")
+async def get_dashboard_config():
+    if not db_pool:
+        return JSONResponse(content={"widgets": [], "order": [], "tabs": []})
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT key, value FROM dashboard_config;")
+            config = {}
+            for r in rows:
+                try:
+                    config[r["key"]] = json.loads(r["value"])
+                except Exception:
+                    config[r["key"]] = r["value"]
+            
+            widgets = config.get("widgets", [])
+            order = config.get("order", [])
+            tabs = config.get("tabs", [{"id": "main", "name": "Main"}])
+            return JSONResponse(content={"widgets": widgets, "order": order, "tabs": tabs})
+    except Exception as e:
+        logger.error(f"Error fetching dashboard config: {e}")
+        return JSONResponse(content={"widgets": [], "order": [], "tabs": []})
+
+class DashboardConfigPayload(BaseModel):
+    widgets: list
+    order: list
+    tabs: list
+
+@app.post("/api/dashboard/config")
+async def post_dashboard_config(payload: DashboardConfigPayload):
+    if not db_pool:
+        return {"status": "error", "message": "No database connection"}
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO dashboard_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value=$2;",
+                "widgets", json.dumps(payload.widgets)
+            )
+            await conn.execute(
+                "INSERT INTO dashboard_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value=$2;",
+                "order", json.dumps(payload.order)
+            )
+            await conn.execute(
+                "INSERT INTO dashboard_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value=$2;",
+                "tabs", json.dumps(payload.tabs)
+            )
+        
+        await manager.broadcast({
+            "event": "dashboard_config_updated",
+            "widgets": payload.widgets,
+            "order": payload.order,
+            "tabs": payload.tabs
+        })
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Error saving dashboard config: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 # Built-in background monitor CRUD routes
