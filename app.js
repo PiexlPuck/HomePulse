@@ -2558,6 +2558,8 @@ function isProbeStatusOnline(status, type) {
     s === 'PORT_OK' ||
     s === 'ICMP_OK' ||
     s === '101' ||
+    s.includes('REMAINING') ||
+    s.includes('DAYS') ||
     (type === 'http' && !isNaN(s) && parseInt(s) < 400)
   );
 }
@@ -2667,7 +2669,7 @@ async function loadProbesLevel2(type) {
       const isEnabled = mon.enabled !== false;
       const isUp = isEnabled && isProbeStatusOnline(mon.last_status, mon.type);
       const statusColor = !isEnabled ? '#6b7280' : (isUp ? 'var(--color-optimal)' : '#f43f5e');
-      const statusLabel = !isEnabled ? 'DISABLED' : (isUp ? 'ONLINE' : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE'));
+      const statusLabel = !isEnabled ? 'DISABLED' : (isUp ? (mon.type === 'ssl' ? mon.last_status : 'ONLINE') : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE'));
       const latencyStr = isEnabled && mon.last_latency !== null ? `${mon.last_latency} ms` : '--';
 
       html += `
@@ -2731,7 +2733,7 @@ async function loadProbesLevel3(monId) {
 
     const isUp = isProbeStatusOnline(mon.last_status, mon.type);
     const statusColor = isUp ? 'var(--color-optimal)' : '#f43f5e';
-    const statusLabel = isUp ? 'ONLINE' : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE');
+    const statusLabel = isUp ? (mon.type === 'ssl' ? mon.last_status : 'ONLINE') : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE');
     const latencyStr = mon.last_latency !== null ? `${mon.last_latency} ms` : '-- ms';
 
     document.getElementById('lvl3-stat-status').textContent = statusLabel;

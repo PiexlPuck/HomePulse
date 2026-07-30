@@ -513,9 +513,44 @@ async def execute_monitor_probe(mon_id: int, mtype: str, target: str, timeout: i
             status_code = "DNS_OK"
             
         elif mtype == "ssl":
-            # Do not perform actual SSL checking, just return nominal placeholder data
-            is_up = True
-            status_code = "SSL_OK"
+            try:
+                clean_host = target.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+                import ssl
+                import socket
+                from datetime import datetime
+                
+                context = ssl.create_default_context()
+                port = 443
+                if ":" in target.split("/")[0]:
+                    try:
+                        port = int(target.split("/")[0].split(":")[1])
+                    except:
+                        pass
+                
+                start_time = time.time()
+                with socket.create_connection((clean_host, port), timeout=timeout) as sock:
+                    with context.wrap_socket(sock, server_hostname=clean_host) as ssock:
+                        cert = ssock.getpeercert()
+                latency = round((time.time() - start_time) * 1000, 2)
+                
+                not_after_str = cert.get('notAfter')
+                if not_after_str:
+                    not_after = datetime.strptime(not_after_str, '%b %d %H:%M:%S %Y %Z')
+                    remaining_days = (not_after - datetime.utcnow()).days
+                    is_up = remaining_days > 0
+                    if is_up:
+                        status_code = f"{remaining_days}d remaining"
+                    else:
+                        status_code = "Expired"
+                else:
+                    is_up = False
+                    status_code = "No Cert Date"
+            except Exception as ssl_err:
+                # Fallback to connection failure
+                is_up = False
+                status_code = "SSL_ERROR"
+                latency = 0.0
+                logger.debug(f"SSL cert validation failed: {ssl_err}")
             
     except Exception as e:
         logger.debug(f"Monitor probe {mon_id} failed: {e}")
