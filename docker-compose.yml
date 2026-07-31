@@ -23,6 +23,7 @@ services:
       - SECRET_KEY=${JWT_SECRET_KEY:-default_secret_key_834927}
     volumes:
       - .:/app
+    command: sh -c "pip install --no-cache-dir -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000"
     restart: always
     network_mode: "host"
 
