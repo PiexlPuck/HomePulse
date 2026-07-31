@@ -376,10 +376,12 @@ function buildDashboardCards(entitiesMap) {
       widgets = JSON.parse(stored);
     } else {
       widgets = initializeWidgets();
+      syncLocalConfigToServer();
     }
   } catch (err) {
     console.error("Failed to load hp_dashboard_widgets configuration:", err);
     widgets = initializeWidgets();
+    syncLocalConfigToServer();
   }
 
   // Preserve the plus-circle add placeholder
@@ -1287,14 +1289,10 @@ async function syncDashboardConfigFromServer() {
         localStorage.removeItem('hp_dashboards');
         window.isSyncingFromServer = false;
 
-        // Initialize default tabs and widgets
+        // Initialize default tabs; widgets will be initialized once entities load
         localStorage.setItem('hp_dashboards', JSON.stringify([
           { id: "main", name: "Main" }
         ]));
-        initializeWidgets();
-
-        // Sync the initialized defaults back to the clean server
-        await syncLocalConfigToServer();
       }
     }
   } catch (err) {
