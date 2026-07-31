@@ -876,6 +876,9 @@ function handleIncomingWSEvent(data) {
   // A. Telemetry updates
   if (data.event === 'state_changed') {
     updateCardState(data.node_id, data.entity_id, data.value, data.status, data.status_type);
+    if (data.node_id === 'monitors') {
+      handleLiveMonitorWSUpdate(data.entity_id, data.value, data.status, data.status_type);
+    }
   }
 
   // B. Audit Log updates
@@ -3543,6 +3546,169 @@ window.showAlert = function (message, title = "System Alert", type = "error") {
 window.alert = function (message) {
   window.showAlert(message, "System Alert", "error");
 };
+
+let liveMonitorBuffer = {};
+
+function handleLiveMonitorWSUpdate(entityId, value, status, statusType) {
+  const lvl3View = document.getElementById('probes-level-3');
+  if (!lvl3View || lvl3View.style.display === 'none') {
+    return;
+  }
+
+  if (!activeProbeMonitorId) return;
+
+  const ids = String(activeProbeMonitorId).split(',');
+  const match = entityId.match(/^monitor-(\d+)-(status|latency)$/);
+  if (!match) return;
+
+  const monId = match[1];
+  const field = match[2];
+
+  if (!ids.includes(String(monId))) {
+    return;
+  }
+
+  if (!liveMonitorBuffer[monId]) {
+    liveMonitorBuffer[monId] = { timestamp: new Date().toISOString() };
+  }
+
+  if (field === 'status') {
+    liveMonitorBuffer[monId].status = value;
+  } else if (field === 'latency') {
+    liveMonitorBuffer[monId].latency = parseFloat(value);
+  }
+
+  checkAndCommitLiveLog(monId);
+  updateLevel3HeadingStats();
+}
+
+function checkAndCommitLiveLog(monId) {
+  const buf = liveMonitorBuffer[monId];
+  if (buf && buf.status !== undefined && buf.latency !== undefined) {
+    appendLiveHistoryRow(monId, buf.timestamp, buf.status, buf.latency);
+    delete liveMonitorBuffer[monId];
+  }
+}
+
+function appendLiveHistoryRow(monId, timestamp, status, latency) {
+  const tableBody = document.getElementById('lvl3-history-table-body');
+  if (!tableBody) return;
+
+  if (tableBody.innerHTML.includes('Querying logs') || tableBody.innerHTML.includes('No logs recorded')) {
+    tableBody.innerHTML = '';
+  }
+
+  const ids = String(activeProbeMonitorId).split(',');
+  const isGrouped = ids.length > 1;
+
+  let source = '';
+  if (isGrouped) {
+    if (String(monId) === String(ids[0])) {
+      source = 'HTTP';
+    } else if (String(monId) === String(ids[1])) {
+      source = 'HTTPS';
+    }
+  }
+
+  const isLogUp = isProbeStatusOnline(status, isGrouped ? 'http' : 'other');
+  const finalStatus = source ? `[${source}] ${source === 'HTTP' ? 'HTTP ' + status : status}` : status;
+
+  const html = `
+    <tr style="border-bottom:1px solid var(--border-soft); transition: background-color 0.5s ease;">
+      <td style="padding: 10px 14px; font-size:0.75rem; color:var(--text-secondary); font-family:monospace;">${new Date(timestamp).toLocaleString()}</td>
+      <td style="padding: 10px 14px; font-weight:700; font-size:0.75rem; color:${isLogUp ? 'var(--color-optimal)' : '#f43f5e'};">${finalStatus}</td>
+      <td style="padding: 10px 14px; font-family:monospace; font-size:0.75rem;">${parseFloat(latency).toFixed(2)} ms</td>
+    </tr>
+  `;
+
+  tableBody.insertAdjacentHTML('afterbegin', html);
+
+  const firstRow = tableBody.firstElementChild;
+  if (firstRow) {
+    firstRow.style.backgroundColor = 'rgba(200, 140, 60, 0.15)';
+    setTimeout(() => {
+      firstRow.style.backgroundColor = 'transparent';
+    }, 1000);
+  }
+
+  while (tableBody.children.length > 30) {
+    tableBody.lastElementChild.remove();
+  }
+}
+
+function updateLevel3HeadingStats() {
+  if (!activeProbeMonitorId) return;
+  const ids = String(activeProbeMonitorId).split(',');
+  const isGrouped = ids.length > 1;
+  const eList = Object.values(cachedEntities);
+
+  if (isGrouped) {
+    const mon1Status = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[0]}-status`);
+    const mon2Status = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[1]}-status`);
+    const mon1Lat = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[0]}-latency`);
+    const mon2Lat = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[1]}-latency`);
+
+    if (mon1Status && mon2Status) {
+      const isUp1 = isProbeStatusOnline(mon1Status.value, 'http');
+      const isUp2 = isProbeStatusOnline(mon2Status.value, 'http');
+
+      let label = 'BOTH OFFLINE';
+      let color = '#f43f5e';
+      if (isUp1 && isUp2) {
+        label = 'BOTH ONLINE';
+        color = 'var(--color-optimal)';
+      } else if (isUp1) {
+        label = 'HTTP ONLINE';
+        color = 'var(--accent-orange)';
+      } else if (isUp2) {
+        label = 'HTTPS ONLINE';
+        color = 'var(--accent-orange)';
+      }
+
+      const statusEl = document.getElementById('lvl3-stat-status');
+      if (statusEl) {
+        statusEl.textContent = label;
+        statusEl.style.color = color;
+      }
+
+      let latString = '-- ms';
+      const latVal1 = mon1Lat ? parseFloat(mon1Lat.value) : null;
+      const latVal2 = mon2Lat ? parseFloat(mon2Lat.value) : null;
+
+      if (latVal1 !== null && latVal2 !== null && latVal1 > 0 && latVal2 > 0) {
+        latString = `HTTP: ${latVal1.toFixed(1)} ms | HTTPS: ${latVal2.toFixed(1)} ms`;
+      } else if (latVal1 !== null && latVal1 > 0) {
+        latString = `HTTP: ${latVal1.toFixed(1)} ms | HTTPS: -- ms`;
+      } else if (latVal2 !== null && latVal2 > 0) {
+        latString = `HTTP: -- ms | HTTPS: ${latVal2.toFixed(1)} ms`;
+      }
+
+      const latEl = document.getElementById('lvl3-stat-latency');
+      if (latEl) latEl.textContent = latString;
+    }
+  } else {
+    const monStatus = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[0]}-status`);
+    const monLat = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[0]}-latency`);
+
+    if (monStatus) {
+      const isUp = isProbeStatusOnline(monStatus.value, 'other');
+      const color = isUp ? 'var(--color-optimal)' : '#f43f5e';
+      const label = isUp ? (monStatus.entity_key.includes('ssl') ? monStatus.value : 'ONLINE') : 'OFFLINE';
+
+      const statusEl = document.getElementById('lvl3-stat-status');
+      if (statusEl) {
+        statusEl.textContent = label;
+        statusEl.style.color = color;
+      }
+    }
+
+    if (monLat) {
+      const latVal = parseFloat(monLat.value);
+      const latEl = document.getElementById('lvl3-stat-latency');
+      if (latEl) latEl.textContent = (latVal > 0) ? `${latVal.toFixed(1)} ms` : '-- ms';
+    }
+  }
+}
 
 window.activeAuditFilter = 'all';
 
