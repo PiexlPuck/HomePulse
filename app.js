@@ -1281,6 +1281,19 @@ async function syncDashboardConfigFromServer() {
       window.isSyncingFromServer = false;
 
       if (!hasData) {
+        window.isSyncingFromServer = true;
+        localStorage.removeItem('hp_dashboard_widgets');
+        localStorage.removeItem('hp_widget_order');
+        localStorage.removeItem('hp_dashboards');
+        window.isSyncingFromServer = false;
+
+        // Initialize default tabs and widgets
+        localStorage.setItem('hp_dashboards', JSON.stringify([
+          { id: "main", name: "Main" }
+        ]));
+        initializeWidgets();
+
+        // Sync the initialized defaults back to the clean server
         await syncLocalConfigToServer();
       }
     }
