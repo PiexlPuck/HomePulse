@@ -2751,7 +2751,6 @@ async function loadProbesLevel2(type) {
     ssl: { title: "SSL Certificate Expiry Engine", desc: "Monitors SSL/TLS certificate validity dates and thresholds." }
   };
 
-
   const info = titles[type] || { title: "Probes Engine", desc: "Manage Probes" };
   document.getElementById('lvl2-engine-title').textContent = info.title;
   document.getElementById('lvl2-engine-desc').textContent = info.desc;
@@ -2771,13 +2770,125 @@ async function loadProbesLevel2(type) {
       return;
     }
 
+    let displayMonitors = [];
+    let handledIds = new Set();
+
+    if (type === 'http') {
+      filtered.forEach(m1 => {
+        if (handledIds.has(m1.id)) return;
+
+        let baseName = null;
+        let partnerName = null;
+        if (m1.name.endsWith(' (HTTP)')) {
+          baseName = m1.name.slice(0, -7);
+          partnerName = baseName + ' (HTTPS)';
+        } else if (m1.name.endsWith(' (HTTPS)')) {
+          baseName = m1.name.slice(0, -8);
+          partnerName = baseName + ' (HTTP)';
+        }
+
+        if (baseName) {
+          const m2 = filtered.find(m => m.name === partnerName);
+          if (m2 && !handledIds.has(m2.id)) {
+            displayMonitors.push({
+              isGrouped: true,
+              id: `${m1.id},${m2.id}`,
+              editMonId: m1.id,
+              name: baseName,
+              target: m1.target.replace(/^(https?:\/\/)+/i, ''),
+              type: 'http',
+              check_interval: m1.check_interval,
+              timeout: m1.timeout,
+              m1: m1,
+              m2: m2
+            });
+            handledIds.add(m1.id);
+            handledIds.add(m2.id);
+            return;
+          }
+        }
+      });
+
+      filtered.forEach(m => {
+        if (!handledIds.has(m.id)) {
+          displayMonitors.push({
+            isGrouped: false,
+            id: String(m.id),
+            name: m.name,
+            target: m.target,
+            type: m.type,
+            check_interval: m.check_interval,
+            timeout: m.timeout,
+            m1: m
+          });
+        }
+      });
+    } else {
+      filtered.forEach(m => {
+        displayMonitors.push({
+          isGrouped: false,
+          id: String(m.id),
+          name: m.name,
+          target: m.target,
+          type: m.type,
+          check_interval: m.check_interval,
+          timeout: m.timeout,
+          m1: m
+        });
+      });
+    }
+
     let html = '';
-    filtered.forEach(mon => {
-      const isEnabled = mon.enabled !== false;
-      const isUp = isEnabled && isProbeStatusOnline(mon.last_status, mon.type);
-      const statusColor = !isEnabled ? '#6b7280' : (isUp ? 'var(--color-optimal)' : '#f43f5e');
-      const statusLabel = !isEnabled ? 'DISABLED' : (isUp ? (mon.type === 'ssl' ? mon.last_status : 'ONLINE') : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE'));
-      const latencyStr = isEnabled && mon.last_latency !== null ? `${mon.last_latency} ms` : '--';
+    displayMonitors.forEach(mon => {
+      let isEnabled = true;
+      let statusLabel = '';
+      let statusColor = '';
+      let latencyStr = '';
+      let m1Enabled = mon.m1.enabled !== false;
+
+      if (mon.isGrouped) {
+        let m2Enabled = mon.m2.enabled !== false;
+        isEnabled = m1Enabled || m2Enabled;
+        const isUp1 = m1Enabled && isProbeStatusOnline(mon.m1.last_status, mon.m1.type);
+        const isUp2 = m2Enabled && isProbeStatusOnline(mon.m2.last_status, mon.m2.type);
+
+        if (!isEnabled) {
+          statusLabel = 'DISABLED';
+          statusColor = '#6b7280';
+          latencyStr = '--';
+        } else {
+          let lats = [];
+          if (m1Enabled && mon.m1.last_latency !== null) lats.push(parseFloat(mon.m1.last_latency));
+          if (m2Enabled && mon.m2.last_latency !== null) lats.push(parseFloat(mon.m2.last_latency));
+
+          if (lats.length > 0) {
+            const avgLat = (lats.reduce((a, b) => a + b, 0) / lats.length).toFixed(1);
+            latencyStr = `${avgLat} ms avg`;
+          } else {
+            latencyStr = '--';
+          }
+
+          if (isUp1 && isUp2) {
+            statusLabel = 'BOTH ONLINE';
+            statusColor = 'var(--color-optimal)';
+          } else if (isUp1) {
+            statusLabel = 'HTTP ONLINE';
+            statusColor = 'var(--accent-orange)';
+          } else if (isUp2) {
+            statusLabel = 'HTTPS ONLINE';
+            statusColor = 'var(--accent-orange)';
+          } else {
+            statusLabel = 'BOTH OFFLINE';
+            statusColor = '#f43f5e';
+          }
+        }
+      } else {
+        isEnabled = mon.m1.enabled !== false;
+        const isUp = isEnabled && isProbeStatusOnline(mon.m1.last_status, mon.m1.type);
+        statusColor = !isEnabled ? '#6b7280' : (isUp ? 'var(--color-optimal)' : '#f43f5e');
+        statusLabel = !isEnabled ? 'DISABLED' : (isUp ? (mon.m1.type === 'ssl' ? mon.m1.last_status : 'ONLINE') : (mon.m1.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE'));
+        latencyStr = isEnabled && mon.m1.last_latency !== null ? `${mon.m1.last_latency} ms` : '--';
+      }
 
       html += `
         <div style="background:#1d1b18; border:1px solid var(--border-soft); border-radius:6px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="goLvl3('${mon.id}', event)">
@@ -2793,11 +2904,14 @@ async function loadProbesLevel2(type) {
             </div>
             
             <label class="switch" title="Enable/Disable Monitor" onclick="event.stopPropagation()">
-              <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMonitorEnabled(${mon.id}, this.checked, event)">
+              <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMonitorEnabled('${mon.id}', this.checked, event)">
               <span class="slider"></span>
             </label>
 
-            <button class="btn-icon" onclick="deleteMonitorSource(${mon.id}, event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Delete Monitor">
+            <button class="btn-icon" onclick="openEditMonitor('${mon.id}', event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Edit Monitor">
+              <i data-lucide="edit-3" style="width:14px; height:14px; color:var(--accent-orange);"></i>
+            </button>
+            <button class="btn-icon" onclick="deleteMonitorSource(${mon.id.includes(',') ? `'${mon.id}'` : mon.id}, event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Delete Monitor">
               <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
             </button>
           </div>
@@ -2812,7 +2926,7 @@ async function loadProbesLevel2(type) {
 }
 
 function goLvl3(monId, e) {
-  if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
+  if (e.target.closest('button') || e.target.closest('.btn-icon') || e.target.closest('.switch')) return;
   navigateProbesLevel(3, monId);
 }
 
@@ -2827,76 +2941,176 @@ async function loadProbesLevel3(monId) {
     const resMon = await fetch(`${httpUrl}/api/monitors`);
     if (!resMon.ok) throw new Error(`HTTP ${resMon.status}`);
     const monitors = await resMon.json();
-    const mon = monitors.find(m => String(m.id) === String(monId));
 
-    if (!mon) {
-      alert("Probe details not found.");
-      navigateProbesLevel(2);
-      return;
-    }
+    const ids = String(monId).split(',');
+    const isGrouped = ids.length > 1;
 
-    document.getElementById('lvl3-probe-title').textContent = mon.name;
-    document.getElementById('lvl3-probe-meta').textContent = `Engine: ${mon.type.toUpperCase()} | Address: ${mon.target}`;
+    if (isGrouped) {
+      const mon1 = monitors.find(m => String(m.id) === String(ids[0]));
+      const mon2 = monitors.find(m => String(m.id) === String(ids[1]));
 
-    const isUp = isProbeStatusOnline(mon.last_status, mon.type);
-    const statusColor = isUp ? 'var(--color-optimal)' : '#f43f5e';
-    const statusLabel = isUp ? (mon.type === 'ssl' ? mon.last_status : 'ONLINE') : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE');
-    const latencyStr = mon.last_latency !== null ? `${mon.last_latency} ms` : '-- ms';
-
-    document.getElementById('lvl3-stat-status').textContent = statusLabel;
-    document.getElementById('lvl3-stat-status').style.color = statusColor;
-    document.getElementById('lvl3-stat-latency').textContent = latencyStr;
-    document.getElementById('lvl3-stat-interval').textContent = `${mon.check_interval} seconds`;
-
-    const resStatus = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-status`);
-    if (!resStatus.ok) throw new Error(`Status Logs HTTP ${resStatus.status}`);
-    const statusLogs = await resStatus.json();
-
-    const resLatency = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-latency`);
-    if (!resLatency.ok) throw new Error(`Latency Logs HTTP ${resLatency.status}`);
-    const latencyLogs = await resLatency.json();
-
-    if (statusLogs.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
-      return;
-    }
-
-    let logsHtml = '';
-    for (let i = 0; i < statusLogs.length; i++) {
-      const sLog = statusLogs[i];
-      const lLog = latencyLogs[i] || { value: '0.0' };
-
-      const dt = new Date(sLog.timestamp).toLocaleString();
-      const statusVal = sLog.value; // e.g. "200", "404", "TIMEOUT", "ICMP_OK", "up", "down", "OFFLINE"
-
-      let isLvlUp = isProbeStatusOnline(sLog.value, mon.type);
-      let displayStatus = statusVal;
-
-      if (statusVal === 'up' || statusVal === 'UP' || statusVal === 'ONLINE') {
-        displayStatus = 'ONLINE';
-      } else if (statusVal === 'down' || statusVal === 'DOWN' || statusVal === 'OFFLINE') {
-        displayStatus = 'OFFLINE';
-      } else {
-        const codeNum = parseInt(statusVal);
-        if (!isNaN(codeNum)) {
-          displayStatus = `HTTP ${statusVal}`;
-        } else {
-          displayStatus = statusVal.replace(/_/g, ' ');
-        }
+      if (!mon1 || !mon2) {
+        alert("Probe details not found.");
+        navigateProbesLevel(2);
+        return;
       }
 
-      const resultColor = isLvlUp ? 'var(--color-optimal)' : '#f43f5e';
-      const latencyVal = parseFloat(lLog.value) || 0;
+      const baseName = mon1.name.endsWith(' (HTTP)') ? mon1.name.slice(0, -7) : mon1.name.slice(0, -8);
+      document.getElementById('lvl3-probe-title').textContent = baseName + " (Combined Probe)";
+      document.getElementById('lvl3-probe-meta').textContent = `HTTP URL: ${mon1.target} | HTTPS URL: ${mon2.target}`;
 
-      logsHtml += `
-        <tr style="border-bottom:1px solid var(--border-soft);">
-          <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
-          <td style="padding:10px 14px; font-weight:700; color:${resultColor};">${displayStatus}</td>
-          <td style="padding:10px 14px; font-family:monospace;">${latencyVal.toFixed(2)} ms</td>
-        </tr>`;
+      const isUp1 = (mon1.enabled !== false) && isProbeStatusOnline(mon1.last_status, mon1.type);
+      const isUp2 = (mon2.enabled !== false) && isProbeStatusOnline(mon2.last_status, mon2.type);
+
+      let statusLabel = '';
+      let statusColor = '';
+      if (isUp1 && isUp2) {
+        statusLabel = 'BOTH ONLINE';
+        statusColor = 'var(--color-optimal)';
+      } else if (isUp1) {
+        statusLabel = 'HTTP ONLINE';
+        statusColor = 'var(--accent-orange)';
+      } else if (isUp2) {
+        statusLabel = 'HTTPS ONLINE';
+        statusColor = 'var(--accent-orange)';
+      } else {
+        statusLabel = 'BOTH OFFLINE';
+        statusColor = '#f43f5e';
+      }
+
+      document.getElementById('lvl3-stat-status').textContent = statusLabel;
+      document.getElementById('lvl3-stat-status').style.color = statusColor;
+
+      let latString = '';
+      if (mon1.last_latency !== null && mon2.last_latency !== null) {
+        latString = `HTTP: ${mon1.last_latency.toFixed(1)} ms | HTTPS: ${mon2.last_latency.toFixed(1)} ms`;
+      } else if (mon1.last_latency !== null) {
+        latString = `HTTP: ${mon1.last_latency.toFixed(1)} ms | HTTPS: -- ms`;
+      } else if (mon2.last_latency !== null) {
+        latString = `HTTP: -- ms | HTTPS: ${mon2.last_latency.toFixed(1)} ms`;
+      } else {
+        latString = '-- ms';
+      }
+      document.getElementById('lvl3-stat-latency').textContent = latString;
+      document.getElementById('lvl3-stat-interval').textContent = `${mon1.check_interval} seconds`;
+
+      const resStatus1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-status`);
+      const statusLogs1 = resStatus1.ok ? await resStatus1.json() : [];
+      const resStatus2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-status`);
+      const statusLogs2 = resStatus2.ok ? await resStatus2.json() : [];
+
+      const resLatency1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-latency`);
+      const latencyLogs1 = resLatency1.ok ? await resLatency1.json() : [];
+      const resLatency2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-latency`);
+      const latencyLogs2 = resLatency2.ok ? await resLatency2.json() : [];
+
+      let combinedLogs = [];
+      statusLogs1.forEach((log, index) => {
+        const matchingLat = latencyLogs1[index];
+        combinedLogs.push({
+          timestamp: log.timestamp,
+          source: 'HTTP',
+          status: log.value,
+          latency: matchingLat ? parseFloat(matchingLat.value) : 0.0
+        });
+      });
+      statusLogs2.forEach((log, index) => {
+        const matchingLat = latencyLogs2[index];
+        combinedLogs.push({
+          timestamp: log.timestamp,
+          source: 'HTTPS',
+          status: log.value,
+          latency: matchingLat ? parseFloat(matchingLat.value) : 0.0
+        });
+      });
+
+      combinedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      if (combinedLogs.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
+      } else {
+        tableBody.innerHTML = combinedLogs.slice(0, 30).map(log => {
+          const isLogUp = isProbeStatusOnline(log.status, 'http');
+          const finalStatus = isLogUp ? `[${log.source}] HTTP ${log.status}` : `[${log.source}] ${log.status}`;
+          return `
+            <tr style="border-bottom:1px solid var(--border-soft);">
+              <td style="padding: 10px 14px; font-size:0.75rem; color:var(--text-secondary); font-family:monospace;">${new Date(log.timestamp).toLocaleString()}</td>
+              <td style="padding: 10px 14px; font-weight:700; font-size:0.75rem; color:${isLogUp ? 'var(--color-optimal)' : '#f43f5e'};">${finalStatus}</td>
+              <td style="padding: 10px 14px; font-family:monospace; font-size:0.75rem;">${log.latency.toFixed(2)} ms</td>
+            </tr>`;
+        }).join('');
+      }
+    } else {
+      const mon = monitors.find(m => String(m.id) === String(monId));
+
+      if (!mon) {
+        alert("Probe details not found.");
+        navigateProbesLevel(2);
+        return;
+      }
+
+      document.getElementById('lvl3-probe-title').textContent = mon.name;
+      document.getElementById('lvl3-probe-meta').textContent = `Engine: ${mon.type.toUpperCase()} | Address: ${mon.target}`;
+
+      const isUp = isProbeStatusOnline(mon.last_status, mon.type);
+      const statusColor = isUp ? 'var(--color-optimal)' : '#f43f5e';
+      const statusLabel = isUp ? (mon.type === 'ssl' ? mon.last_status : 'ONLINE') : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE');
+      const latencyStr = mon.last_latency !== null ? `${mon.last_latency} ms` : '-- ms';
+
+      document.getElementById('lvl3-stat-status').textContent = statusLabel;
+      document.getElementById('lvl3-stat-status').style.color = statusColor;
+      document.getElementById('lvl3-stat-latency').textContent = latencyStr;
+      document.getElementById('lvl3-stat-interval').textContent = `${mon.check_interval} seconds`;
+
+      const resStatus = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-status`);
+      if (!resStatus.ok) throw new Error(`Status Logs HTTP ${resStatus.status}`);
+      const statusLogs = await resStatus.json();
+
+      const resLatency = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-latency`);
+      if (!resLatency.ok) throw new Error(`Latency Logs HTTP ${resLatency.status}`);
+      const latencyLogs = await resLatency.json();
+
+      if (statusLogs.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
+        return;
+      }
+
+      let logsHtml = '';
+      for (let i = 0; i < statusLogs.length; i++) {
+        const sLog = statusLogs[i];
+        const lLog = latencyLogs[i] || { value: '0.0' };
+
+        const dt = new Date(sLog.timestamp).toLocaleString();
+        const statusVal = sLog.value;
+
+        let isLvlUp = isProbeStatusOnline(sLog.value, mon.type);
+        let displayStatus = statusVal;
+
+        if (statusVal === 'up' || statusVal === 'UP' || statusVal === 'ONLINE') {
+          displayStatus = 'ONLINE';
+        } else if (statusVal === 'down' || statusVal === 'DOWN' || statusVal === 'OFFLINE') {
+          displayStatus = 'OFFLINE';
+        } else {
+          const codeNum = parseInt(statusVal);
+          if (!isNaN(codeNum)) {
+            displayStatus = `HTTP ${statusVal}`;
+          } else {
+            displayStatus = statusVal.replace(/_/g, ' ');
+          }
+        }
+
+        const resultColor = isLvlUp ? 'var(--color-optimal)' : '#f43f5e';
+        const latencyVal = parseFloat(lLog.value) || 0;
+
+        logsHtml += `
+          <tr style="border-bottom:1px solid var(--border-soft);">
+            <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
+            <td style="padding:10px 14px; font-weight:700; color:${resultColor};">${displayStatus}</td>
+            <td style="padding:10px 14px; font-family:monospace;">${latencyVal.toFixed(2)} ms</td>
+          </tr>`;
+      }
+      tableBody.innerHTML = logsHtml;
     }
-    tableBody.innerHTML = logsHtml;
-
   } catch (err) {
     tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:#f43f5e;">Failed to load logs details: ${err.message}</td></tr>`;
   }
@@ -3030,11 +3244,237 @@ async function deleteMonitorSource(monId, e) {
 
   const { httpUrl } = getApiUrls();
   try {
-    const res = await fetch(`${httpUrl}/api/monitors/${monId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const resList = await fetch(`${httpUrl}/api/monitors`);
+    if (!resList.ok) throw new Error(`HTTP ${resList.status}`);
+    const monitors = await resList.json();
+    const targetMon = monitors.find(m => String(m.id) === String(monId));
+
+    let idsToDelete = [String(monId)];
+    if (targetMon && targetMon.type === 'http') {
+      let partner = null;
+      if (targetMon.name.endsWith(' (HTTP)')) {
+        const base = targetMon.name.substring(0, targetMon.name.length - 7);
+        partner = monitors.find(m => m.type === 'http' && m.name === base + ' (HTTPS)');
+      } else if (targetMon.name.endsWith(' (HTTPS)')) {
+        const base = targetMon.name.substring(0, targetMon.name.length - 8);
+        partner = monitors.find(m => m.type === 'http' && m.name === base + ' (HTTP)');
+      }
+      if (partner) {
+        idsToDelete.push(String(partner.id));
+      }
+    }
+
+    for (const deleteId of idsToDelete) {
+      const res = await fetch(`${httpUrl}/api/monitors/${deleteId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    }
+
+    loadProbesLevel1();
     loadProbesLevel2(activeProbeEngineType);
+    showToast("Probe deleted successfully", "success");
   } catch (err) {
     alert(`Could not delete prober source: ${err.message}`);
+  }
+}
+
+function onEditMonitorTypeChange(type) {
+  const container = document.getElementById('modal-edit-http-protocol-select-container');
+  if (container) {
+    container.style.display = (type === 'http') ? 'flex' : 'none';
+  }
+}
+
+async function openEditMonitor(monId, event) {
+  if (event) event.stopPropagation();
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/monitors`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const monitors = await res.json();
+
+    const ids = String(monId).split(',');
+    const isGrouped = ids.length > 1;
+
+    if (isGrouped) {
+      const mon1 = monitors.find(m => String(m.id) === String(ids[0]));
+      const mon2 = monitors.find(m => String(m.id) === String(ids[1]));
+      if (!mon1 || !mon2) {
+        alert("Configured monitors not found.");
+        return;
+      }
+
+      const baseName = mon1.name.endsWith(' (HTTP)') ? mon1.name.slice(0, -7) : mon1.name.slice(0, -8);
+      document.getElementById('edit-mon-id').value = monId;
+      document.getElementById('edit-mon-name').value = baseName;
+      document.getElementById('edit-mon-type').value = 'http';
+      document.getElementById('edit-mon-proto').value = 'both';
+
+      document.getElementById('edit-mon-target').value = mon1.target.replace(/^(https?:\/\/)+/i, '');
+      document.getElementById('edit-mon-interval').value = mon1.check_interval;
+      document.getElementById('edit-mon-timeout').value = mon1.timeout;
+    } else {
+      const mon = monitors.find(m => String(m.id) === String(monId));
+      if (!mon) {
+        alert("Monitor not found.");
+        return;
+      }
+
+      document.getElementById('edit-mon-id').value = monId;
+      document.getElementById('edit-mon-name').value = mon.name;
+      document.getElementById('edit-mon-type').value = mon.type;
+
+      if (mon.type === 'http') {
+        const hasHttps = mon.target.startsWith('https://');
+        document.getElementById('edit-mon-proto').value = hasHttps ? 'https' : 'http';
+        document.getElementById('edit-mon-target').value = mon.target.replace(/^(https?:\/\/)+/i, '');
+      } else {
+        document.getElementById('edit-mon-target').value = mon.target;
+      }
+
+      document.getElementById('edit-mon-interval').value = mon.check_interval;
+      document.getElementById('edit-mon-timeout').value = mon.timeout;
+    }
+
+    onEditMonitorTypeChange(document.getElementById('edit-mon-type').value);
+    openModal('edit-monitor-modal');
+  } catch (err) {
+    alert(`Could not load monitor details: ${err.message}`);
+  }
+}
+
+async function submitEditMonitor() {
+  const monId = document.getElementById('edit-mon-id').value;
+  const name = document.getElementById('edit-mon-name').value.trim();
+  const type = document.getElementById('edit-mon-type').value;
+  const target = document.getElementById('edit-mon-target').value.trim();
+  const interval = parseInt(document.getElementById('edit-mon-interval').value) || 30;
+  const timeout = parseInt(document.getElementById('edit-mon-timeout').value) || 5;
+
+  if (!name || !target) {
+    alert("Required fields Name and Target Address must be filled!");
+    return;
+  }
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const ids = String(monId).split(',');
+    const wasGrouped = ids.length > 1;
+
+    if (type === 'http') {
+      const proto = document.getElementById('edit-mon-proto').value;
+      const cleanTarget = target.replace(/^(https?:\/\/)+/i, '');
+
+      if (proto === 'both') {
+        if (wasGrouped) {
+          const res1 = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: `${name} (HTTP)`,
+              type: type,
+              target: `http://${cleanTarget}`,
+              check_interval: interval,
+              timeout: timeout
+            })
+          });
+          if (!res1.ok) throw new Error(`HTTP Update failed`);
+
+          const res2 = await fetch(`${httpUrl}/api/monitors/${ids[1]}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: `${name} (HTTPS)`,
+              type: type,
+              target: `https://${cleanTarget}`,
+              check_interval: interval,
+              timeout: timeout
+            })
+          });
+          if (!res2.ok) throw new Error(`HTTPS Update failed`);
+        } else {
+          const res1 = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: `${name} (HTTP)`,
+              type: type,
+              target: `http://${cleanTarget}`,
+              check_interval: interval,
+              timeout: timeout
+            })
+          });
+          if (!res1.ok) throw new Error(`HTTP Update failed`);
+
+          const res2 = await fetch(`${httpUrl}/api/monitors`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: `${name} (HTTPS)`,
+              type: type,
+              target: `https://${cleanTarget}`,
+              check_interval: interval,
+              timeout: timeout
+            })
+          });
+          if (!res2.ok) throw new Error(`HTTPS creation failed`);
+        }
+      } else {
+        if (wasGrouped) {
+          const resDel = await fetch(`${httpUrl}/api/monitors/${ids[1]}`, { method: 'DELETE' });
+          if (!resDel.ok) throw new Error(`Failed to remove second monitor during ungrouping`);
+
+          const finalTarget = proto === 'https' ? `https://${cleanTarget}` : `http://${cleanTarget}`;
+          const res1 = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: name,
+              type: type,
+              target: finalTarget,
+              check_interval: interval,
+              timeout: timeout
+            })
+          });
+          if (!res1.ok) throw new Error(`Failed to update ungrouped monitor`);
+        } else {
+          const finalTarget = proto === 'https' ? `https://${cleanTarget}` : `http://${cleanTarget}`;
+          const res1 = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: name,
+              type: type,
+              target: finalTarget,
+              check_interval: interval,
+              timeout: timeout
+            })
+          });
+          if (!res1.ok) throw new Error(`Failed to update monitor`);
+        }
+      }
+    } else {
+      const res = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name,
+          type: type,
+          target: target,
+          check_interval: interval,
+          timeout: timeout
+        })
+      });
+      if (!res.ok) throw new Error(`Failed to update monitor`);
+    }
+
+    closeModal('edit-monitor-modal');
+    loadProbesLevel1();
+    if (activeProbeEngineType) {
+      loadProbesLevel2(activeProbeEngineType);
+    }
+    showToast(`Successfully updated background probe: ${name}`, "success");
+  } catch (err) {
+    alert(`Failed to save monitor probe changes: ${err.message}`);
   }
 }
 
@@ -3064,6 +3504,45 @@ function showToast(message, type = 'info') {
     }, 300);
   }, 3000);
 }
+
+window.showAlert = function (message, title = "System Alert", type = "error") {
+  const modal = document.getElementById('custom-alert-modal');
+  if (!modal) {
+    console.warn("custom-alert-modal element not found in DOM.");
+    return;
+  }
+
+  const titleSpan = document.getElementById('custom-alert-title');
+  if (titleSpan) titleSpan.textContent = title;
+
+  const bodyDiv = document.getElementById('custom-alert-body');
+  if (bodyDiv) bodyDiv.textContent = message;
+
+  const icon = document.getElementById('custom-alert-icon');
+  if (icon) {
+    if (type === 'error') {
+      icon.style.color = '#f43f5e';
+      icon.setAttribute('data-lucide', 'alert-triangle');
+    } else if (type === 'success') {
+      icon.style.color = '#10b981';
+      icon.setAttribute('data-lucide', 'check-circle');
+    } else {
+      icon.style.color = 'var(--accent-orange)';
+      icon.setAttribute('data-lucide', 'info');
+    }
+  }
+
+  openModal('custom-alert-modal');
+  if (window.lucide) {
+    window.lucide.createIcons({
+      node: modal
+    });
+  }
+};
+
+window.alert = function (message) {
+  window.showAlert(message, "System Alert", "error");
+};
 
 window.activeAuditFilter = 'all';
 

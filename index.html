@@ -1008,9 +1008,37 @@
     <!-- js-yaml CDN -->
     <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=2.1"></script>
+    <script src="app.js?v=2.3"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
+    <!-- Custom Alert Modal Overlay -->
+    <div class="modal-overlay" id="custom-alert-modal"
+      style="display: none; z-index: 10000; backdrop-filter: blur(16px); background: rgba(10, 10, 12, 0.618);">
+      <div class="modal-content"
+        style="max-width: 420px; display: flex; flex-direction: column; background: var(--bg-primary); border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);">
+        <div class="modal-header"
+          style="padding: 16px; border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, rgba(200, 140, 60, 0.05), transparent);">
+          <h3
+            style="margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="alert-triangle" id="custom-alert-icon"
+              style="width: 18px; height: 18px; color: var(--accent-orange);"></i>
+            <span id="custom-alert-title">System Alert</span>
+          </h3>
+          <button class="modal-close-btn" onclick="closeModal('custom-alert-modal')"
+            style="background: none; border: none; font-size: 1.25rem; color: var(--text-secondary); cursor: pointer;">&times;</button>
+        </div>
+        <div class="modal-body" id="custom-alert-body"
+          style="padding: 24px 20px; font-size: 0.8rem; line-height: 1.5; color: var(--text-secondary);">
+          Failed to save monitor probe changes.
+        </div>
+        <div class="modal-footer"
+          style="padding: 12px 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; background: rgba(10, 10, 12, 0.2);">
+          <button class="btn btn-primary" onclick="closeModal('custom-alert-modal')"
+            style="font-size: 0.75rem; padding: 6px 16px; cursor: pointer;">OK</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Add Monitor Modal Overlay -->
     <div class="modal-overlay" id="add-monitor-modal" style="display: none;">
       <div class="modal-content" style="max-width: 480px; display: flex; flex-direction: column;">
@@ -1066,6 +1094,66 @@
         <div class="modal-footer">
           <button class="btn btn-secondary" onclick="closeModal('add-monitor-modal')">Cancel</button>
           <button class="btn btn-primary" onclick="submitAddMonitor()">Create Monitor</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Background Monitor Modal Overlay -->
+    <div class="modal-overlay" id="edit-monitor-modal" style="display: none;">
+      <div class="modal-content" style="max-width: 480px; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h3>Edit Background Monitor</h3>
+          <button class="modal-close-btn" onclick="closeModal('edit-monitor-modal')">&times;</button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; padding: 16px;">
+          <input type="hidden" id="edit-mon-id">
+          <div class="modal-group">
+            <label for="edit-mon-name">Monitor Name</label>
+            <input type="text" class="modal-input" id="edit-mon-name" placeholder="e.g. Google Public DNS">
+          </div>
+          <div class="modal-group">
+            <label for="edit-mon-type">Monitor Type</label>
+            <select id="edit-mon-type" class="modal-input" onchange="onEditMonitorTypeChange(this.value)"
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+              <option value="http">HTTP/HTTPS Endpoint</option>
+              <option value="websocket">WebSocket Endpoint</option>
+              <option value="ping">ICMP Network Ping</option>
+              <option value="port">TCP Port Query</option>
+              <option value="dns">DNS Resolution Target</option>
+              <option value="ssl">SSL Certificate Expiry</option>
+            </select>
+          </div>
+          <!-- HTTP Protocol Selector Under Monitor Type -->
+          <div class="modal-group" id="modal-edit-http-protocol-select-container"
+            style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="edit-mon-proto" style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Check
+              Protocol/Port</label>
+            <select id="edit-mon-proto" class="modal-input"
+              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+              <option value="http">HTTP (Port 80)</option>
+              <option value="https">HTTPS (Port 443)</option>
+              <option value="both">Both (Port 80 & 443)</option>
+            </select>
+          </div>
+          <div class="modal-group">
+            <label for="edit-mon-target">Target Address</label>
+            <input type="text" class="modal-input" id="edit-mon-target"
+              placeholder="e.g. 1.1.1.1 or https://httpbin.org/status/200">
+          </div>
+          <div class="modal-group select-row" style="display: flex; gap: 10px;">
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <label for="edit-mon-interval">Check Interval (s)</label>
+              <input type="number" class="modal-input" id="edit-mon-interval" value="30" min="5" max="3600">
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <label for="edit-mon-timeout">Timeout (s)</label>
+              <input type="number" class="modal-input" id="edit-mon-timeout" value="5" min="1" max="60">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeModal('edit-monitor-modal')">Cancel</button>
+          <button class="btn btn-primary" onclick="submitEditMonitor()">Save Changes</button>
         </div>
       </div>
     </div>

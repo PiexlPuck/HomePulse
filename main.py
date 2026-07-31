@@ -1020,6 +1020,108 @@ async def delete_monitor(monitor_id: int):
         logger.error(f"Failed to delete monitor: {e}")
         raise HTTPException(status_code=500, detail="Database write error.")
 
+@app.put("/api/monitors/{monitor_id}")
+async def update_monitor(monitor_id: int, payload: MonitorPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+        
+    if payload.type not in ('http', 'websocket', 'ping', 'port', 'dns', 'ssl'):
+        raise HTTPException(status_code=400, detail="Invalid monitor type.")
+    if not payload.name.strip() or not payload.target.strip():
+        raise HTTPException(status_code=400, detail="Required fields Name and Target must be provided.")
+        
+    try:
+        async with db_pool.acquire() as conn:
+            old_row = await conn.fetchrow(
+                "SELECT name, type, target, check_interval, timeout FROM system_monitors WHERE id = $1;", 
+                monitor_id
+            )
+            if not old_row:
+                raise HTTPException(status_code=404, detail="Monitor not found")
+            
+            changes = []
+            if old_row["name"] != payload.name.strip():
+                changes.append(f"name('{old_row['name']}' -> '{payload.name.strip()}')")
+            if old_row["type"] != payload.type:
+                changes.append(f"type('{old_row['type']}' -> '{payload.type}')")
+            if old_row["target"] != payload.target.strip():
+                changes.append(f"target('{old_row['target']}' -> '{payload.target.strip()}')")
+            if old_row["check_interval"] != payload.check_interval:
+                changes.append(f"check_interval({old_row['check_interval']} -> {payload.check_interval})")
+            if old_row["timeout"] != payload.timeout:
+                changes.append(f"timeout({old_row['timeout']} -> {payload.timeout})")
+                
+            await conn.execute(
+                """UPDATE system_monitors 
+                   SET name = $1, type = $2, target = $3, check_interval = $4, timeout = $5
+                   WHERE id = $6;""",
+                payload.name.strip(), payload.type, payload.target.strip(), payload.check_interval, payload.timeout, monitor_id
+            )
+            
+            status_key = f"monitor-{monitor_id}-status"
+            latency_key = f"monitor-{monitor_id}-latency"
+            
+            if status_key in entity_states:
+                entity_states[status_key]["name"] = f"{payload.name.strip()} Status"
+            else:
+                entity_states[status_key] = {
+                    "node_id": "monitors",
+                    "entity_key": status_key,
+                    "name": f"{payload.name.strip()} Status",
+                    "type": "sensor",
+                    "value_type": "string",
+                    "unit": "",
+                    "value": "unknown",
+                    "status": "Unknown",
+                    "status_type": "default",
+                    "tags": "main",
+                    "icon": "shield-question"
+                }
+
+            if latency_key in entity_states:
+                entity_states[latency_key]["name"] = f"{payload.name.strip()} Latency"
+            else:
+                entity_states[latency_key] = {
+                    "node_id": "monitors",
+                    "entity_key": latency_key,
+                    "name": f"{payload.name.strip()} Latency",
+                    "type": "sensor",
+                    "value_type": "float",
+                    "unit": "ms",
+                    "value": 0.0,
+                    "status": "Stable",
+                    "status_type": "stable",
+                    "tags": "main",
+                    "icon": "activity",
+                    "color": "#3b82f6",
+                    "graphic": "sparkline"
+                }
+
+            if changes:
+                changes_str = ", ".join(changes)
+                audit_msg = f"Background monitor '{old_row['name']}' updated by operator. Changes: {changes_str}"
+            else:
+                audit_msg = f"Background monitor '{old_row['name']}' saved without changes by operator."
+                
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", audit_msg
+            )
+            
+        await manager.broadcast({
+            "event": "audit_logged",
+            "type": "info",
+            "message": audit_msg
+        })
+        
+        return JSONResponse(content={"status": "updated", "monitor_id": monitor_id})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update monitor: {e}")
+        raise HTTPException(status_code=500, detail="Database update error.")
+
+
 class TogglePayload(BaseModel):
     enabled: bool
 

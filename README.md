@@ -7,16 +7,16 @@ HomePulse is a community-focused, highly modular telemetry monitoring and dashbo
 ## Architecture Overview
 
 ```mermaid
-graph TD
+graph LR
     classDef client fill:#3b82f6,stroke:#1d4ed8,color:#fff;
     classDef api fill:#10b981,stroke:#047857,color:#fff;
     classDef db fill:#f59e0b,stroke:#d97706,color:#fff;
-    
-    A[IoT Nodes / Servers / Microcontrollers] -- HTTP POST / WebSockets --> B(FastAPI Server)
-    B -- Serving static files --> C[Browser Dashboard UI]:::client
-    C -- WebSocket telemetry stream --> B
-    B -- Config/Logs/Audits --> D[(PostgreSQL Database)]:::db
-    C -- API requests / Controls --> B:::api
+
+    A[IoT Nodes / Servers] -->|HTTP POST / WS| B(FastAPI Server):::api
+    B -->|Serve Files| C[Dashboard UI]:::client
+    C -->|WS Stream| B
+    C -->|API / Controls| B
+    B -->|Logs & Config| D[(PostgreSQL DB)]:::db
 ```
 
 - **Frontend**: A single-page application built on HTML5, Vanilla JavaScript (ES6), and beautiful custom CSS styling. There are no heavy UI frameworks or Tailwind compilation steps needed. Rendered icons are provided dynamically via [Lucide Icons](https://lucide.dev/).
