@@ -28,5 +28,7 @@ Process Lifecycle: Ensure web services are kept running in the background if sta
 - If the web server is not reachable, immediately verify that the application code is bound to port 8000 and listening on 0.0.0.0.
 - If when simulating browser actions to understand things, you keep hitting custom auth barriers or logins, request the user to perform authentication.
 - Do not attempt to install system-level packages (using apt-get) unless explicitly requested. Rely on standard Python packages inside the requirements file where possible.
+- If the browser subagent (`open_browser_url`) fails to initialize or download Playwright due to environment/network issues, use the local Google Chrome installation to headlessly open URLs and generate screenshots for verification:
+  `google-chrome --headless=new --disable-gpu --no-sandbox --screenshot=/tmp/screenshot.png <URL>`
 - If you need more documentation, refer to the project's `api_documentation`, `Reference`, and `brainstorm` (less important) directories in the workspace.
 

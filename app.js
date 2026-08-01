@@ -1559,6 +1559,10 @@ function showAutomationsView() {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navAutomations = document.getElementById('nav-automations');
   if (navAutomations) navAutomations.classList.add('active');
+
+  // Load Alert Router lists dynamically
+  loadAlertRules();
+  loadNotificationChannels();
 }
 
 function showDeveloperToolsView() {
@@ -3879,4 +3883,629 @@ function filterAuditLogs(severity) {
     }
   });
 }
+
+// ==========================================
+// ALERT ROUTER ENGINE & RULES COMPOSER LOGIC
+// ==========================================
+window.cachedChannels = [];
+window.activeAlertRuleId = null;
+window.activeAlertChannelId = null;
+
+function switchAlertSubView(viewName) {
+  document.querySelectorAll('.alert-content-pane').forEach(p => p.classList.add('hide'));
+  document.querySelectorAll('#alert-sub-navigation .sub-nav-btn').forEach(btn => {
+    btn.classList.remove('active');
+    btn.style.background = 'none';
+    btn.style.color = 'var(--text-secondary)';
+    const icon = btn.querySelector('i');
+    if (icon) icon.style.color = 'var(--text-secondary)';
+  });
+
+  const activePane = document.getElementById(`alert-sub-view-${viewName}`);
+  if (activePane) activePane.classList.remove('hide');
+
+  const activeBtn = document.getElementById(`alert-subnav-${viewName}`);
+  if (activeBtn) {
+    activeBtn.classList.add('active');
+    activeBtn.style.background = 'var(--bg-secondary)';
+    activeBtn.style.color = 'var(--text-primary)';
+    const icon = activeBtn.querySelector('i');
+    if (icon) icon.style.color = 'var(--accent-orange)';
+  }
+}
+
+async function loadNotificationChannels() {
+  const { httpUrl } = getApiUrls();
+  const listEl = document.getElementById('alert-channels-list');
+  if (!listEl) return;
+
+  try {
+    const res = await fetch(`${httpUrl}/api/alerts/channels`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    window.cachedChannels = data;
+
+    if (data.length === 0) {
+      listEl.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No notification channels configured yet.</p>`;
+      return;
+    }
+
+    listEl.innerHTML = data.map(chan => {
+      let iconName = 'bell';
+      let details = '';
+      if (chan.type === 'smtp') {
+        iconName = 'mail';
+        details = `Host: ${chan.config.host}:${chan.config.port} | To: ${chan.config.to_address}`;
+      } else if (chan.type === 'telegram') {
+        iconName = 'message-square';
+        details = `Chat ID: ${chan.config.chat_id}`;
+      } else if (chan.type === 'pushover') {
+        iconName = 'smartphone';
+        details = `User Key: ${chan.config.user_key.substring(0, 8)}... | Priority: ${chan.config.priority || 0}`;
+      }
+
+      return `
+        <div style="background:#1d1b18; border:1px solid var(--border-soft); border-radius:8px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="background:rgba(200, 140, 60, 0.08); border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; border:1px solid rgba(200, 140, 60, 0.15);">
+              <i data-lucide="${iconName}" style="width:16px; height:16px; color:var(--accent-orange);"></i>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">${chan.name}</span>
+              <span style="font-size:0.68rem; color:var(--text-secondary); font-family:monospace;">${details}</span>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="btn btn-secondary" onclick="openChannelComposer(${chan.id})" style="font-size:0.7rem; padding:4px 10px;">Edit</button>
+            <button class="btn-icon" onclick="deleteChannelSource(${chan.id}, event)" style="background:none; border:none; cursor:pointer;" title="Delete Profile">
+              <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
+            </button>
+          </div>
+        </div>`;
+    }).join('');
+
+    if (window.lucide) window.lucide.createIcons();
+  } catch (err) {
+    listEl.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem;">Failure loading channels: ${err.message}</p>`;
+  }
+}
+
+async function loadAlertRules() {
+  const { httpUrl } = getApiUrls();
+  const listEl = document.getElementById('alert-rules-list');
+  if (!listEl) return;
+
+  try {
+    const res = await fetch(`${httpUrl}/api/alerts/rules`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (data.length === 0) {
+      listEl.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No warning rules configured yet.</p>`;
+      return;
+    }
+
+    listEl.innerHTML = data.map(rule => {
+      // Build conditions presentation text
+      const condsText = rule.rules_json.map((c, idx) => {
+        const prefix = idx > 0 ? ` <span style="color:var(--accent-orange); font-weight:700;">${c.join_type}</span> ` : '';
+        return `${prefix}<span style="color:var(--text-primary); font-family:monospace;">${c.entity_key}</span> ${c.operator} <span style="font-family:monospace; color:var(--accent-orange);">${c.value}</span>`;
+      }).join('');
+
+      const isFiring = rule.status === 'firing';
+      const statusLabel = isFiring ? 'FIRING' : 'NORMAL';
+      const statusColorClass = isFiring ? 'status-pill critical' : 'status-pill optimal';
+
+      // Find channel names associated
+      const chanNames = rule.channel_ids.map(cid => {
+        const matchingChan = window.cachedChannels.find(c => c.id === cid);
+        return matchingChan ? matchingChan.name : `Channel #${cid}`;
+      }).join(', ') || 'No notifier linked';
+
+      return `
+        <div style="background:#1d1b18; border:1px solid var(--border-soft); border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <h4 style="font-size:0.85rem; font-weight:700; color:var(--text-primary); margin:0 0 4px 0;">${rule.name}</h4>
+              <div style="font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">
+                ${condsText}
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span class="${statusColorClass}" style="font-size:0.65rem;">${statusLabel}</span>
+              <label class="switch" title="Enable/Disable Rule" onclick="event.stopPropagation()">
+                <input type="checkbox" ${rule.enabled !== false ? 'checked' : ''} onchange="toggleRuleEnabled(${rule.id}, this.checked, event)">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-soft); padding-top:10px; margin-top:4px;">
+            <span style="font-size:0.68rem; color:var(--text-secondary);"><i data-lucide="send" style="width:10px; height:10px; display:inline-block; vertical-align:middle; margin-right:4px;"></i>Channels: <strong style="color:var(--text-primary);">${chanNames}</strong></span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button class="btn btn-secondary" onclick="openRuleComposer(${rule.id})" style="font-size:0.7rem; padding:4px 10px;">Edit</button>
+              <button class="btn-icon" onclick="deleteRuleSource(${rule.id}, event)" style="background:none; border:none; cursor:pointer;" title="Delete Rule">
+                <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
+              </button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    if (window.lucide) window.lucide.createIcons();
+  } catch (err) {
+    listEl.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem;">Failure loading rules: ${err.message}</p>`;
+  }
+}
+
+function openChannelComposer(cid = null) {
+  window.activeAlertChannelId = cid;
+  const modal = document.getElementById('channel-modal');
+  const titleEl = document.getElementById('channel-modal-title');
+  const nameInput = document.getElementById('chan-name');
+  const typeSelect = document.getElementById('chan-type');
+
+  if (!modal) return;
+
+  if (cid) {
+    titleEl.textContent = 'Edit Notification Channel';
+    const chan = window.cachedChannels.find(c => c.id === cid);
+    if (chan) {
+      nameInput.value = chan.name;
+      typeSelect.value = chan.type;
+      renderChannelConfigFields(chan.config);
+    }
+  } else {
+    titleEl.textContent = 'Add Notification Channel';
+    nameInput.value = '';
+    typeSelect.value = 'smtp';
+    renderChannelConfigFields({});
+  }
+
+  openModal('channel-modal');
+}
+
+function renderChannelConfigFields(currentConfig = {}) {
+  const container = document.getElementById('chan-dynamic-fields');
+  const type = document.getElementById('chan-type').value;
+  if (!container) return;
+
+  if (type === 'smtp') {
+    container.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">SMTP Server Host</label>
+        <input type="text" id="smtp-host" placeholder="smtp.gmail.com" value="${currentConfig.host || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">SMTP Port</label>
+        <input type="number" id="smtp-port" placeholder="587" value="${currentConfig.port || 587}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Sender / Username (Optional)</label>
+        <input type="text" id="smtp-user" placeholder="e.g. notifications@yourdomain.com" value="${currentConfig.username || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Password (Optional)</label>
+        <input type="password" id="smtp-pass" placeholder="••••••••" value="${currentConfig.password || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Sender Envelope From address</label>
+        <input type="text" id="smtp-from" placeholder="notifications@yourdomain.com" value="${currentConfig.from_address || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Recipient To address</label>
+        <input type="text" id="smtp-to" placeholder="sysalerts@coxonfam.au" value="${currentConfig.to_address || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+    `;
+  } else if (type === 'telegram') {
+    container.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Telegram Bot Token</label>
+        <input type="password" id="telegram-token" placeholder="bot123456789:ABCDefgh..." value="${currentConfig.bot_token || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Chat ID / Target Channel</label>
+        <input type="text" id="telegram-chat" placeholder="e.g. -10015839958" value="${currentConfig.chat_id || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+    `;
+  } else if (type === 'pushover') {
+    container.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Pushover User Key</label>
+        <input type="password" id="pushover-user" placeholder="uabcdefg123456..." value="${currentConfig.user_key || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Application API Token</label>
+        <input type="password" id="pushover-token" placeholder="azxy123456..." value="${currentConfig.api_token || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Sound Ringtone</label>
+        <select id="pushover-sound" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+          <option value="pushover" ${currentConfig.sound === 'pushover' ? 'selected' : ''}>Pushover Default</option>
+          <option value="bike" ${currentConfig.sound === 'bike' ? 'selected' : ''}>Bike</option>
+          <option value="bugle" ${currentConfig.sound === 'bugle' ? 'selected' : ''}>Bugle</option>
+          <option value="classical" ${currentConfig.sound === 'classical' ? 'selected' : ''}>Classical</option>
+          <option value="cosmic" ${currentConfig.sound === 'cosmic' ? 'selected' : ''}>Cosmic</option>
+          <option value="falling" ${currentConfig.sound === 'falling' ? 'selected' : ''}>Falling</option>
+          <option value="gamelan" ${currentConfig.sound === 'gamelan' ? 'selected' : ''}>Gamelan</option>
+          <option value="incoming" ${currentConfig.sound === 'incoming' ? 'selected' : ''}>Incoming Call</option>
+          <option value="intermission" ${currentConfig.sound === 'intermission' ? 'selected' : ''}>Intermission</option>
+          <option value="magic" ${currentConfig.sound === 'magic' ? 'selected' : ''}>Magic</option>
+          <option value="mechanical" ${currentConfig.sound === 'mechanical' ? 'selected' : ''}>Mechanical</option>
+          <option value="pianobar" ${currentConfig.sound === 'pianobar' ? 'selected' : ''}>Pianobar</option>
+          <option value="siren" ${currentConfig.sound === 'siren' ? 'selected' : ''}>Siren</option>
+          <option value="spacealarm" ${currentConfig.sound === 'spacealarm' ? 'selected' : ''}>Space Alarm</option>
+          <option value="tugboat" ${currentConfig.sound === 'tugboat' ? 'selected' : ''}>Tug Boat</option>
+        </select>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:0.7rem; color:var(--text-secondary);">Message Priority</label>
+        <select id="pushover-priority" onchange="togglePushoverCriticalFields(this.value)" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+          <option value="-2" ${currentConfig.priority === -2 ? 'selected' : ''}>Lowest (Silent Background)</option>
+          <option value="-1" ${currentConfig.priority === -1 ? 'selected' : ''}>Low (No sound/vibe)</option>
+          <option value="0" ${currentConfig.priority === 0 || !currentConfig.priority ? 'selected' : ''}>Normal</option>
+          <option value="1" ${currentConfig.priority === 1 ? 'selected' : ''}>High (Bypasses quiet hours)</option>
+          <option value="2" ${currentConfig.priority === 2 ? 'selected' : ''}>Emergency / Critical Alert</option>
+        </select>
+      </div>
+      <div id="pushover-critical-params" style="display:${currentConfig.priority == 2 ? 'flex' : 'none'}; flex-direction:column; gap:10px;">
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <label style="font-size:0.7rem; color:var(--text-secondary);">Retry interval (seconds)</label>
+          <input type="number" id="pushover-retry" placeholder="60" value="${currentConfig.retry || 60}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <label style="font-size:0.7rem; color:var(--text-secondary);">Expire time (seconds)</label>
+          <input type="number" id="pushover-expire" placeholder="3600" value="${currentConfig.expire || 3600}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        </div>
+      </div>
+    `;
+  }
+}
+
+function togglePushoverCriticalFields(val) {
+  const customFields = document.getElementById('pushover-critical-params');
+  if (customFields) {
+    customFields.style.display = (parseInt(val) === 2) ? 'flex' : 'none';
+  }
+}
+
+function gatherChannelConfig() {
+  const type = document.getElementById('chan-type').value;
+  let cfg = {};
+
+  if (type === 'smtp') {
+    cfg = {
+      host: document.getElementById('smtp-host').value.trim(),
+      port: parseInt(document.getElementById('smtp-port').value) || 587,
+      username: document.getElementById('smtp-user').value.trim(),
+      password: document.getElementById('smtp-pass').value.trim(),
+      from_address: document.getElementById('smtp-from').value.trim(),
+      to_address: document.getElementById('smtp-to').value.trim()
+    };
+  } else if (type === 'telegram') {
+    cfg = {
+      bot_token: document.getElementById('telegram-token').value.trim(),
+      chat_id: document.getElementById('telegram-chat').value.trim()
+    };
+  } else if (type === 'pushover') {
+    cfg = {
+      user_key: document.getElementById('pushover-user').value.trim(),
+      api_token: document.getElementById('pushover-token').value.trim(),
+      sound: document.getElementById('pushover-sound').value,
+      priority: parseInt(document.getElementById('pushover-priority').value)
+    };
+    if (cfg.priority === 2) {
+      cfg.retry = parseInt(document.getElementById('pushover-retry').value) || 60;
+      cfg.expire = parseInt(document.getElementById('pushover-expire').value) || 3600;
+    }
+  }
+  return cfg;
+}
+
+async function testCurrentChannelConfig() {
+  const type = document.getElementById('chan-type').value;
+  const config = gatherChannelConfig();
+
+  const { httpUrl } = getApiUrls();
+  showToast("Dispatching test notification...", "info");
+  try {
+    const res = await fetch(`${httpUrl}/api/alerts/channels/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, config })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    showToast("Test notification dispatched successfully!", "success");
+  } catch (err) {
+    showToast(`Test failed: ${err.message}`, "error");
+  }
+}
+
+async function submitSaveChannel() {
+  const name = document.getElementById('chan-name').value.trim();
+  const type = document.getElementById('chan-type').value;
+  const config = gatherChannelConfig();
+
+  if (!name) {
+    alert("Profile configurations need a name!");
+    return;
+  }
+
+  const { httpUrl } = getApiUrls();
+  const cid = window.activeAlertChannelId;
+  const method = cid ? 'PUT' : 'POST';
+  const url = cid ? `${httpUrl}/api/alerts/channels/${cid}` : `${httpUrl}/api/alerts/channels`;
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type, config })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    closeModal('channel-modal');
+    loadNotificationChannels();
+    showToast("Notification channel config profile committed.", "success");
+  } catch (err) {
+    alert(`Save failed: ${err.message}`);
+  }
+}
+
+async function deleteChannelSource(cid, event) {
+  if (event) event.stopPropagation();
+  if (!confirm("Are you sure you want to permanently delete this notification channel? Custom rules routing to it will lose reference.")) return;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/alerts/channels/${cid}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    loadNotificationChannels();
+    showToast("Deleted notification channel profile.", "success");
+  } catch (err) {
+    showToast(`Deletion failed: ${err.message}`, "error");
+  }
+}
+
+async function openRuleComposer(rid = null) {
+  window.activeAlertRuleId = rid;
+  const modal = document.getElementById('rule-modal');
+  const titleEl = document.getElementById('rule-modal-title');
+  const nameInput = document.getElementById('rule-name');
+  const conditionsContainer = document.getElementById('rule-conditions-editor-container');
+  const channelsContainer = document.getElementById('rule-channels-list-container');
+
+  if (!modal) return;
+
+  conditionsContainer.innerHTML = '';
+
+  // Render linked channel checkboxes
+  if (window.cachedChannels.length === 0) {
+    channelsContainer.innerHTML = `<span style="font-size:0.72rem; color:var(--text-secondary);">No notification channels configured yet. Create a channel profile first!</span>`;
+  } else {
+    channelsContainer.innerHTML = window.cachedChannels.map(chan => `
+      <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer;">
+        <input type="checkbox" class="rule-channel-chk" value="${chan.id}" style="accent-color:var(--accent-orange);">
+        <span>${chan.name} (${chan.type.toUpperCase()})</span>
+      </label>
+    `).join('');
+  }
+
+  if (rid) {
+    titleEl.textContent = 'Edit Alert Rule';
+    try {
+      const { httpUrl } = getApiUrls();
+      const res = await fetch(`${httpUrl}/api/alerts/rules`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const list = await res.json();
+      const rule = list.find(r => r.id === rid);
+      if (rule) {
+        nameInput.value = rule.name;
+
+        // Render conditions rows
+        rule.rules_json.forEach(cond => {
+          addVisualRuleConditionRow(cond);
+        });
+
+        // Toggle checkboxes
+        document.querySelectorAll('.rule-channel-chk').forEach(c => {
+          if (rule.channel_ids.includes(parseInt(c.value))) {
+            c.checked = true;
+          }
+        });
+      }
+    } catch (err) {
+      alert(`Failed to load rule detail: ${err.message}`);
+    }
+  } else {
+    titleEl.textContent = 'Create Alert Rule';
+    nameInput.value = '';
+    addVisualRuleConditionRow(); // Seed first row
+  }
+
+  openModal('rule-modal');
+}
+
+function addVisualRuleConditionRow(cond = null) {
+  const container = document.getElementById('rule-conditions-editor-container');
+  if (!container) return;
+
+  const rowCount = container.children.length;
+  const isFirstRow = rowCount === 0;
+
+  // Build entity selector options
+  let entityOptionsHtml = '';
+  Object.values(cachedEntities).forEach(item => {
+    entityOptionsHtml += `<option value="${item.entity_key}" ${cond && cond.entity_key === item.entity_key ? 'selected' : ''}>${item.name || item.entity_key} [${item.entity_key}]</option>`;
+  });
+
+  const rowDiv = document.createElement('div');
+  rowDiv.className = 'rule-condition-row';
+  rowDiv.style = 'display:flex; gap:8px; align-items:center; width:100%; flex-wrap:wrap; border-bottom:1px solid rgba(255,255,255,0.02); padding-bottom:6px;';
+
+  rowDiv.innerHTML = `
+    <!-- Connector -->
+    <div style="width: 75px; min-width:75px;">
+      ${isFirstRow ? `
+        <span style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; padding-left:14px;">Trigger IF</span>
+      ` : `
+        <select class="cond-join" style="width:100%; background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 6px; font-size:0.72rem;">
+          <option value="AND" ${cond && cond.join_type === 'AND' ? 'selected' : ''}>AND</option>
+          <option value="OR" ${cond && cond.join_type === 'OR' ? 'selected' : ''}>OR</option>
+        </select>
+      `}
+    </div>
+
+    <!-- Entity Dropdown -->
+    <select class="cond-entity" style="flex:2; min-width:150px; background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 6px; font-size:0.72rem;">
+      ${entityOptionsHtml}
+    </select>
+
+    <!-- Operator -->
+    <select class="cond-op" style="width:85px; min-width:85px; background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 6px; font-size:0.72rem;">
+      <option value="==" ${cond && cond.operator === '==' ? 'selected' : ''}>=</option>
+      <option value="!=" ${cond && cond.operator === '!=' ? 'selected' : ''}>!=</option>
+      <option value=">" ${cond && cond.operator === '>' ? 'selected' : ''}>&gt;</option>
+      <option value="<" ${cond && cond.operator === '<' ? 'selected' : ''}>&lt;</option>
+      <option value="contains" ${cond && cond.operator === 'contains' ? 'selected' : ''}>contains</option>
+    </select>
+
+    <!-- Target Value -->
+    <input type="text" class="cond-val" placeholder="value" value="${cond ? cond.value : ''}" style="flex:1; min-width:80px; background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 6px; font-size:0.72rem;">
+
+    <!-- Trash Actions Row delete -->
+    ${isFirstRow ? `
+      <div style="width:24px; height:24px;"></div>
+    ` : `
+      <button class="btn-icon delete-row-btn" onclick="this.parentElement.remove()" style="background:none; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center;" title="Delete Condition">
+        <i data-lucide="x" style="width:14px; height:14px; color:#f43f5e;"></i>
+      </button>
+    `}
+  `;
+
+  container.appendChild(rowDiv);
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function submitSaveRule() {
+  const name = document.getElementById('rule-name').value.trim();
+  if (!name) {
+    alert("Warning rule must have a name!");
+    return;
+  }
+
+  // Gather conditions
+  const conditions = [];
+  const rows = document.querySelectorAll('.rule-condition-row');
+
+  if (rows.length === 0) {
+    alert("Must contain at least 1 trigger condition!");
+    return;
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const entity_key = row.querySelector('.cond-entity').value;
+    const operator = row.querySelector('.cond-op').value;
+    const value = row.querySelector('.cond-val').value.trim();
+
+    let join_type = '';
+    if (i > 0) {
+      join_type = row.querySelector('.cond-join').value;
+    }
+
+    if (value === '') {
+      alert(`Condition value in row ${i + 1} cannot be empty!`);
+      return;
+    }
+
+    conditions.push({ entity_key, operator, value, join_type });
+  }
+
+  // Gather channel IDs
+  const channel_ids = [];
+  document.querySelectorAll('.rule-channel-chk:checked').forEach(c => {
+    channel_ids.push(parseInt(c.value));
+  });
+
+  if (channel_ids.length === 0) {
+    alert("Please select at least 1 destination notification channel!");
+    return;
+  }
+
+  const { httpUrl } = getApiUrls();
+  const rid = window.activeAlertRuleId;
+  const method = rid ? 'PUT' : 'POST';
+  const url = rid ? `${httpUrl}/api/alerts/rules/${rid}` : `${httpUrl}/api/alerts/rules`;
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, rules_json: conditions, channel_ids, enabled: true })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    closeModal('rule-modal');
+    loadAlertRules();
+    showToast("Warning trigger rule configuration saved.", "success");
+  } catch (err) {
+    alert(`Save failed: ${err.message}`);
+  }
+}
+
+async function deleteRuleSource(rid, event) {
+  if (event) event.stopPropagation();
+  if (!confirm("Are you sure you want to delete this warning rule definition?")) return;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/alerts/rules/${rid}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    loadAlertRules();
+    showToast("Warning rule removed from database system.", "success");
+  } catch (err) {
+    showToast(`Rule deletion failed: ${err.message}`, "error");
+  }
+}
+
+async function toggleRuleEnabled(rid, enabled, event) {
+  if (event) event.stopPropagation();
+
+  const { httpUrl } = getApiUrls();
+  try {
+    // We can fetch list of rules, find target, modify enabled boolean, and send PUT request
+    const resList = await fetch(`${httpUrl}/api/alerts/rules`);
+    if (!resList.ok) throw new Error(`List call failed`);
+    const list = await resList.json();
+    const rule = list.find(r => r.id === rid);
+
+    if (rule) {
+      const payload = {
+        name: rule.name,
+        rules_json: rule.rules_json,
+        channel_ids: rule.channel_ids,
+        enabled: enabled
+      };
+
+      const res = await fetch(`${httpUrl}/api/alerts/rules/${rid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(`Save PUT failed: ${res.status}`);
+      showToast(`Rule status successfully switched ${enabled ? 'ON' : 'OFF'}.`, "success");
+    }
+  } catch (err) {
+    showToast(`Toggle failed: ${err.message}`, "error");
+  }
+}
+
 

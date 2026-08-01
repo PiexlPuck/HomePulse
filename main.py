@@ -13,7 +13,9 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header as EmailHeader
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("homepulse-backend")
@@ -47,6 +49,85 @@ class ConnectionManager:
                 self.disconnect(connection)
 
 manager = ConnectionManager()
+
+def dispatch_notification_sync(channel_type: str, config: dict, message: str, title: str = "HomePulse Alert"):
+    try:
+        if channel_type == "smtp":
+            host = config.get("host")
+            port = int(config.get("port", 587))
+            user = config.get("username")
+            password = config.get("password")
+            from_addr = config.get("from_address")
+            to_addr = config.get("to_address")
+            
+            msg = MIMEText(message, 'plain', 'utf-8')
+            msg['Subject'] = EmailHeader(title, 'utf-8')
+            msg['From'] = from_addr
+            msg['To'] = to_addr
+            
+            with smtplib.SMTP(host, port, timeout=10) as server:
+                if port == 587:
+                    server.starttls()
+                if user and password:
+                    server.login(user, password)
+                server.sendmail(from_addr, [to_addr], msg.as_string())
+            logger.info("SMTP email alert dispatched successfully.")
+            
+        elif channel_type == "telegram":
+            token = config.get("bot_token")
+            chat_id = config.get("chat_id")
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            
+            payload = {
+                "chat_id": chat_id,
+                "text": f"*{title}*\n{message}",
+                "parse_mode": "Markdown"
+            }
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_body = response.read().decode('utf-8')
+                logger.info(f"Telegram alert dispatched successfully: {res_body}")
+                
+        elif channel_type == "pushover":
+            user_key = config.get("user_key")
+            token = config.get("api_token")
+            priority = int(config.get("priority", 0))
+            sound = config.get("sound", "pushover")
+            
+            payload = {
+                "token": token,
+                "user": user_key,
+                "title": title,
+                "message": message,
+                "priority": priority,
+                "sound": sound
+            }
+            if priority == 2:
+                payload["retry"] = int(config.get("retry", 60))
+                payload["expire"] = int(config.get("expire", 3600))
+                
+            url = "https://api.pushover.net/1/messages.json"
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_body = response.read().decode('utf-8')
+                logger.info(f"Pushover alert dispatched successfully: {res_body}")
+                
+    except Exception as e:
+        logger.error(f"Error dispatching notification via {channel_type}: {e}")
+        raise e
+
+async def dispatch_notification(channel_type: str, config: dict, message: str, title: str = "HomePulse Alert"):
+    await asyncio.to_thread(dispatch_notification_sync, channel_type, config, message, title)
 
 # Dynamic system configurations cache
 app_settings = {
@@ -162,6 +243,27 @@ class ControlPayload(BaseModel):
 class ApprovePayload(BaseModel):
     preshared_key: str
 
+class ChannelPayload(BaseModel):
+    name: str
+    type: str # 'smtp', 'telegram', 'pushover'
+    config: dict
+
+class ChannelTestPayload(BaseModel):
+    type: str
+    config: dict
+
+class RuleCondition(BaseModel):
+    entity_key: str
+    operator: str # '==', '!=', '>', '<', 'contains'
+    value: str
+    join_type: str # 'AND', 'OR', or ''
+
+class RulePayload(BaseModel):
+    name: str
+    rules_json: List[RuleCondition]
+    channel_ids: List[int]
+    enabled: bool = True
+
 # 1. DB Init Routine
 async def init_db_pool():
     global db_pool
@@ -228,6 +330,39 @@ async def init_db_pool():
                 except Exception as db_err:
                     logger.warning(f"Error establishing dashboard_config table: {db_err}")
 
+                # Create notification_channels table
+                try:
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS notification_channels (
+                            id SERIAL PRIMARY KEY,
+                            name VARCHAR(255) NOT NULL,
+                            type VARCHAR(32) NOT NULL,
+                            config JSONB NOT NULL,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    logger.info("notification_channels table verified.")
+                except Exception as nc_err:
+                    logger.warning(f"Error establishing notification_channels table: {nc_err}")
+
+                # Create alert_rules table
+                try:
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS alert_rules (
+                            id SERIAL PRIMARY KEY,
+                            name VARCHAR(255) NOT NULL,
+                            rules_json JSONB NOT NULL,
+                            channel_ids INT[] NOT NULL,
+                            enabled BOOLEAN DEFAULT TRUE,
+                            status VARCHAR(32) DEFAULT 'normal',
+                            last_fired TIMESTAMP,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    logger.info("alert_rules table verified.")
+                except Exception as ar_err:
+                    logger.warning(f"Error establishing alert_rules table: {ar_err}")
+
                 # Rename Plex monitors to distinguish SSL and Ping metrics
                 try:
                     await conn.execute("UPDATE system_monitors SET name = 'Plex SSL Status' WHERE LOWER(name) = 'plex' AND type = 'ssl';")
@@ -289,11 +424,133 @@ async def init_db_pool():
             await asyncio.sleep(3)
     logger.error("Could not coordinate Database connection, proceeding in standalone mode.")
 
+def evaluate_condition(entity_key: str, operator: str, target_val: str) -> bool:
+    state = entity_states.get(entity_key)
+    if not state:
+        return False
+    
+    current_val = state.get("value")
+    if current_val is None:
+        return False
+        
+    current_str = str(current_val).strip()
+    target_str = str(target_val).strip()
+    
+    try:
+        current_float = float(current_str)
+        target_float = float(target_str)
+        is_numeric = True
+    except ValueError:
+        is_numeric = False
+        
+    if operator == "==":
+        return current_str.lower() == target_str.lower()
+    elif operator == "!=":
+        return current_str.lower() != target_str.lower()
+    elif operator == ">":
+        if is_numeric:
+            return current_float > target_float
+        return current_str > target_str
+    elif operator == "<":
+        if is_numeric:
+            return current_float < target_float
+        return current_str < target_str
+    elif operator == "contains":
+        return target_str.lower() in current_str.lower()
+    return False
+
+def check_rule_firing(conditions: list) -> bool:
+    if not conditions:
+        return False
+        
+    c0 = conditions[0]
+    result = evaluate_condition(c0.get("entity_key"), c0.get("operator"), c0.get("value"))
+    
+    for c in conditions[1:]:
+        join_type = c.get("join_type", "AND").upper()
+        val = evaluate_condition(c.get("entity_key"), c.get("operator"), c.get("value"))
+        if join_type == "AND":
+            result = result and val
+        elif join_type == "OR":
+            result = result or val
+    return result
+
+async def alerts_evaluator_task():
+    global db_pool
+    logger.info("Starting Alert Router background rules evaluator task...")
+    
+    while True:
+        await asyncio.sleep(10)
+        if not db_pool:
+            continue
+            
+        try:
+            async with db_pool.acquire() as conn:
+                rules = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status FROM alert_rules WHERE enabled = TRUE;")
+                for r in rules:
+                    rid = r["id"]
+                    rname = r["name"]
+                    channel_ids = r["channel_ids"]
+                    old_status = r["status"] or "normal"
+                    
+                    try:
+                        conditions = json.loads(r["rules_json"]) if isinstance(r["rules_json"], str) else r["rules_json"]
+                    except Exception as json_err:
+                        logger.error(f"Rule {rid} rules_json parse error: {json_err}")
+                        continue
+                        
+                    is_firing = check_rule_firing(conditions)
+                    new_status = "firing" if is_firing else "normal"
+                    
+                    if old_status != new_status:
+                        logger.info(f"Alert rule '{rname}' transition: {old_status} -> {new_status}")
+                        
+                        if is_firing:
+                            await conn.execute(
+                                "UPDATE alert_rules SET status = $1, last_fired = CURRENT_TIMESTAMP WHERE id = $2;",
+                                new_status, rid
+                            )
+                        else:
+                            await conn.execute(
+                                "UPDATE alert_rules SET status = $1 WHERE id = $2;",
+                                new_status, rid
+                            )
+                        
+                        audit_type = "warning" if is_firing else "success"
+                        audit_msg = f"Alert rule '{rname}' is FIRING!" if is_firing else f"Alert rule '{rname}' has recovered to normal."
+                        await conn.execute(
+                            "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                            audit_type, audit_msg
+                        )
+                        
+                        title = f"❗ Alert [FIRING]: {rname}" if is_firing else f"✅ Alert [RESOLVED]: {rname}"
+                        message = f"Rule: {rname}\nStatus: {new_status.upper()}\n\nConditions check:\n"
+                        for cond in conditions:
+                            ekey = cond.get("entity_key")
+                            op = cond.get("operator")
+                            val = cond.get("value")
+                            curr_val = entity_states.get(ekey, {}).get("value", "unknown")
+                            message += f"- {ekey} (Current: {curr_val}) {op} {val}\n"
+                            
+                        for cid in channel_ids:
+                            chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
+                            if chan:
+                                c_type = chan["type"]
+                                c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
+                                try:
+                                    await dispatch_notification(c_type, c_cfg, message, title)
+                                except Exception as notify_err:
+                                    logger.error(f"Failed to send notification via channel {cid}: {notify_err}")
+                                    
+        except Exception as eval_err:
+            logger.error(f"Error in alerts_evaluator_task iteration: {eval_err}")
+
 @app.on_event("startup")
 async def startup_event():
     await init_db_pool()
     asyncio.create_task(collect_system_statistics_task())
     asyncio.create_task(monitor_probers_task())
+    asyncio.create_task(alerts_evaluator_task())
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -897,6 +1154,165 @@ class MonitorPayload(BaseModel):
     target: str
     check_interval: int = 30
     timeout: int = 5
+
+@app.get("/api/alerts/channels")
+async def get_channels():
+    if not db_pool:
+        return JSONResponse(content=[])
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, name, type, config FROM notification_channels ORDER BY id ASC;")
+            res = []
+            for r in rows:
+                d = dict(r)
+                d["config"] = json.loads(d["config"]) if isinstance(d["config"], str) else d["config"]
+                res.append(d)
+            return JSONResponse(content=res)
+    except Exception as e:
+        logger.error(f"Failed to fetch notification channels: {e}")
+        raise HTTPException(status_code=500, detail="Database query error.")
+
+@app.post("/api/alerts/channels")
+async def add_channel(payload: ChannelPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "INSERT INTO notification_channels (name, type, config) VALUES ($1, $2, $3) RETURNING id;",
+                payload.name, payload.type, json.dumps(payload.config)
+            )
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "success", f"Created notification channel profile '{payload.name}' of type {payload.type}."
+            )
+            return JSONResponse(content={"status": "success", "id": row["id"]})
+    except Exception as e:
+        logger.error(f"Failed to save channel: {e}")
+        raise HTTPException(status_code=500, detail="Database insert error.")
+
+@app.put("/api/alerts/channels/{cid}")
+async def update_channel(cid: int, payload: ChannelPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE notification_channels SET name = $1, type = $2, config = $3 WHERE id = $4;",
+                payload.name, payload.type, json.dumps(payload.config), cid
+            )
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"Updated notification channel profile '{payload.name}' (ID: {cid})."
+            )
+            return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error(f"Failed to update channel: {e}")
+        raise HTTPException(status_code=500, detail="Database update error.")
+
+@app.delete("/api/alerts/channels/{cid}")
+async def delete_channel(cid: int):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("DELETE FROM notification_channels WHERE id = $1;", cid)
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"Deleted notification channel profile ID: {cid}."
+            )
+            return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error(f"Failed to delete channel: {e}")
+        raise HTTPException(status_code=500, detail="Database delete error.")
+
+@app.post("/api/alerts/channels/test")
+async def test_channel(payload: ChannelTestPayload):
+    try:
+        await dispatch_notification(
+            channel_type=payload.type,
+            config=payload.config,
+            message="This is a test notification from your HomePulse Alert Router! Your notifier integration is working successfully.",
+            title="HomePulse Test Alert"
+        )
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/alerts/rules")
+async def get_rules():
+    if not db_pool:
+        return JSONResponse(content=[])
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, last_fired FROM alert_rules ORDER BY id ASC;")
+            res = []
+            for r in rows:
+                d = dict(r)
+                d["rules_json"] = json.loads(d["rules_json"]) if isinstance(d["rules_json"], str) else d["rules_json"]
+                if d["last_fired"]:
+                    d["last_fired"] = d["last_fired"].isoformat()
+                res.append(d)
+            return JSONResponse(content=res)
+    except Exception as e:
+        logger.error(f"Failed to fetch alert rules: {e}")
+        raise HTTPException(status_code=500, detail="Database query error.")
+
+@app.post("/api/alerts/rules")
+async def add_rule(payload: RulePayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        rules_str = json.dumps([r.model_dump() for r in payload.rules_json])
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "INSERT INTO alert_rules (name, rules_json, channel_ids, enabled) VALUES ($1, $2, $3, $4) RETURNING id;",
+                payload.name, rules_str, payload.channel_ids, payload.enabled
+            )
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "success", f"Created warning rule '{payload.name}'."
+            )
+            return JSONResponse(content={"status": "success", "id": row["id"]})
+    except Exception as e:
+        logger.error(f"Failed to add rule: {e}")
+        raise HTTPException(status_code=500, detail="Database insert error.")
+
+@app.put("/api/alerts/rules/{rid}")
+async def update_rule(rid: int, payload: RulePayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        rules_str = json.dumps([r.model_dump() for r in payload.rules_json])
+        async with db_pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE alert_rules SET name = $1, rules_json = $2, channel_ids = $3, enabled = $4 WHERE id = $5;",
+                payload.name, rules_str, payload.channel_ids, payload.enabled, rid
+            )
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"Updated warning rule '{payload.name}' (ID: {rid})."
+            )
+            return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error(f"Failed to update rule: {e}")
+        raise HTTPException(status_code=500, detail="Database update error.")
+
+@app.delete("/api/alerts/rules/{rid}")
+async def delete_rule(rid: int):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("DELETE FROM alert_rules WHERE id = $1;", rid)
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"Deleted warning rule ID: {rid}."
+            )
+            return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error(f"Failed to delete rule: {e}")
+        raise HTTPException(status_code=500, detail="Database delete error.")
 
 @app.get("/api/monitors")
 async def get_monitors():

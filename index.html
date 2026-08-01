@@ -40,7 +40,7 @@
       <a href="#" class="nav-item" id="nav-automations">
         <div class="nav-item-left">
           <i data-lucide="bell-ring"></i>
-          <span>Automations</span>
+          <span>Alert Router</span>
         </div>
       </a>
       <a href="#" class="nav-item" id="nav-devtools">
@@ -516,57 +516,82 @@
 
       </div>
 
-      <!-- Automations View Panel -->
+      <!-- Alert Router View Panel -->
       <div class="settings-view hide" id="automations-view">
-        <div class="settings-card">
-          <div class="settings-header">
-            <h3>Automations Engine</h3>
-            <p>Define automated rules and alert responses based on system thresholds</p>
+        <div class="settings-card"
+          style="max-width: 1000px; display: flex; flex-direction: row; gap: 0; padding: 0; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden;">
+
+          <!-- Sub-sidebar for Alert Router -->
+          <div
+            style="width: 220px; border-right: 1px solid var(--border-soft); background: rgba(15, 13, 11, 0.4); display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div
+                style="padding: 18px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="bell" style="width: 18px; height: 18px; color: var(--accent-orange);"></i>
+                <span
+                  style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.05em; color: var(--text-primary); text-transform: uppercase;">Alert
+                  Router</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px;" id="alert-sub-navigation">
+                <button class="sub-nav-btn active" id="alert-subnav-rules" onclick="switchAlertSubView('rules')"
+                  style="background: var(--bg-secondary); border: none; text-align: left; width: 100%; padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--text-primary); cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                  <i data-lucide="shield-alert" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
+                  Alert Rules
+                </button>
+                <button class="sub-nav-btn" id="alert-subnav-channels" onclick="switchAlertSubView('channels')"
+                  style="background: none; border: none; text-align: left; width: 100%; padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                  <i data-lucide="send" style="width: 14px; height: 14px;"></i>
+                  Notification Channels
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="settings-form">
-            <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px;">
-              Create active telemetry triggers. If any configured metrics exceed set thresholds (e.g. CPU temperature
-              &gt; 80°C), HomePulse will log a warning or execute alert callbacks automatically.
-            </div>
-            <!-- Mock Event Triggers -->
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-              <div
-                style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
+
+          <!-- Main Content Area -->
+          <div style="flex: 1; display: flex; flex-direction: column; background: transparent;">
+
+            <!-- SUB-VIEW 1: Rules List -->
+            <div id="alert-sub-view-rules" class="alert-content-pane"
+              style="padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; max-height: 520px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                  <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0 0 4px 0;">
-                    Trigger Core CPU Saturn Warning</h4>
-                  <span style="font-size: 0.72rem; color: var(--text-secondary);">If `cpu-utilization` &gt; 90.0% for 3
-                    cycles ➔ log System Audit Warning.</span>
+                  <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Alert Rules
+                  </h3>
+                  <p style="margin: 2px 0 0 0; font-size: 0.72rem; color: var(--text-secondary);">Rule conditions
+                    evaluated dynamically to trigger notifications.</p>
                 </div>
-                <span class="status-pill optimal" style="font-size: 0.68rem;">ACTIVE</span>
+                <button class="btn btn-primary" onclick="openRuleComposer()"
+                  style="font-size: 0.72rem; padding: 6px 14px; cursor: pointer;">+ Create Alert Rule</button>
               </div>
-              <div
-                style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0 0 4px 0;">Host
-                    High Temp Alert</h4>
-                  <span style="font-size: 0.72rem; color: var(--text-secondary);">If `server-room-temp` &gt; 75.0°C ➔
-                    log critical event in Audit Stream.</span>
-                </div>
-                <span class="status-pill optimal" style="font-size: 0.68rem;">ACTIVE</span>
-              </div>
-              <div
-                style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center; opacity: 0.6;">
-                <div>
-                  <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0 0 4px 0;">DB
-                    Replication Check Retry</h4>
-                  <span style="font-size: 0.72rem; color: var(--text-secondary);">If `database-status` != "CONNECTED" ➔
-                    retry query up to 5 times.</span>
-                </div>
-                <span class="status-pill default"
-                  style="font-size: 0.68rem; color: var(--text-secondary);">DISABLED</span>
+
+              <!-- Rules Container List -->
+              <div id="alert-rules-list" style="display: flex; flex-direction: column; gap: 12px;">
+                <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No warning
+                  rules configured yet.</p>
               </div>
             </div>
-            <div style="margin-top: 24px;">
-              <button class="btn btn-primary"
-                style="font-size: 0.75rem; padding: 6px 14px; cursor: not-allowed; opacity: 0.6;" disabled>+ Create
-                Rule</button>
+
+            <!-- SUB-VIEW 2: Channels List -->
+            <div id="alert-sub-view-channels" class="alert-content-pane hide"
+              style="padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; max-height: 520px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Notification
+                    Channels</h3>
+                  <p style="margin: 2px 0 0 0; font-size: 0.72rem; color: var(--text-secondary);">Manage destination
+                    profiles for SMTP email, Telegram, and Pushover alerts.</p>
+                </div>
+                <button class="btn btn-primary" onclick="openChannelComposer()"
+                  style="font-size: 0.72rem; padding: 6px 14px; cursor: pointer;">+ Add Channel Profile</button>
+              </div>
+
+              <!-- Channels Container List -->
+              <div id="alert-channels-list" style="display: flex; flex-direction: column; gap: 12px;">
+                <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No
+                  notification channels configured yet.</p>
+              </div>
             </div>
+
           </div>
         </div>
       </div>
@@ -1007,7 +1032,7 @@
     <!-- js-yaml CDN -->
     <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=2.5"></script>
+    <script src="app.js?v=2.6"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
     <!-- Custom Alert Modal Overlay -->
@@ -1262,11 +1287,92 @@
             </div>
           </div>
         </div>
-        <div class="modal-footer"
-          style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end;">
-          <button class="btn btn-secondary" onclick="closeModal('marketplace-modal')">Close</button>
+        <!-- Notification Channel Modal Overlay -->
+        <div class="modal-overlay" id="channel-modal" style="display: none;">
+          <div class="modal-content" style="max-width: 480px; display: flex; flex-direction: column;">
+            <div class="modal-header">
+              <h3 id="channel-modal-title">Configure Notification Channel</h3>
+              <button class="modal-close-btn" onclick="closeModal('channel-modal')">&times;</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; padding: 16px;">
+              <div class="modal-group">
+                <label for="chan-name">Profile Name</label>
+                <input type="text" class="modal-input" id="chan-name" placeholder="e.g. Bot Telegram Main">
+              </div>
+              <div class="modal-group">
+                <label for="chan-type">Provider Type</label>
+                <select id="chan-type" class="modal-input" onchange="renderChannelConfigFields()"
+                  style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
+                  <option value="smtp">SMTP Email</option>
+                  <option value="telegram">Telegram Bot</option>
+                  <option value="pushover">Pushover App</option>
+                </select>
+              </div>
+
+              <!-- Dynamic Provider Configurations Container -->
+              <div id="chan-dynamic-fields"
+                style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border-soft); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+                <!-- Fields render dynamically -->
+              </div>
+            </div>
+            <div class="modal-footer"
+              style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center;">
+              <button class="btn btn-secondary" onclick="testCurrentChannelConfig()"
+                style="font-size:0.75rem; padding:6px 12px; cursor: pointer;">Send Test</button>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" onclick="closeModal('channel-modal')">Cancel</button>
+                <button class="btn btn-primary" id="btn-save-channel" onclick="submitSaveChannel()">Save
+                  Profile</button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+
+        <!-- Alert Rule Modal Overlay -->
+        <div class="modal-overlay" id="rule-modal" style="display: none;">
+          <div class="modal-content"
+            style="max-width: 680px; width: 90%; display: flex; flex-direction: column; max-height: 90vh;">
+            <div class="modal-header">
+              <h3 id="rule-modal-title">Configure Alert Rule</h3>
+              <button class="modal-close-btn" onclick="closeModal('rule-modal')">&times;</button>
+            </div>
+            <div class="modal-body"
+              style="display: flex; flex-direction: column; gap: 14px; padding: 16px; overflow-y: auto; flex: 1;">
+              <div class="modal-group">
+                <label for="rule-name">Rule Name</label>
+                <input type="text" class="modal-input" id="rule-name"
+                  placeholder="e.g. Cabinet CPU Thermal Threshold Alert">
+              </div>
+
+              <!-- Rule Conditions Visual Editor Builder -->
+              <div class="modal-group" style="display: flex; flex-direction: column; gap: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="margin: 0;">Trigger Conditions</label>
+                  <button class="btn btn-secondary" onclick="addVisualRuleConditionRow()"
+                    style="font-size: 0.68rem; padding: 2px 8px; cursor: pointer;">+ Add Condition</button>
+                </div>
+                <div id="rule-conditions-editor-container"
+                  style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
+                  <!-- Condition lines are appended here -->
+                </div>
+              </div>
+
+              <!-- Channels Association checkboxes -->
+              <div class="modal-group">
+                <label>Dispatch Notifications via Channels</label>
+                <div id="rule-channels-list-container"
+                  style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px; max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; background: #221d16;">
+                  <!-- Channels select checkboxes render here -->
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer"
+              style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 8px;">
+              <button class="btn btn-secondary" onclick="closeModal('rule-modal')">Cancel</button>
+              <button class="btn btn-primary" id="btn-save-rule" onclick="submitSaveRule()">Save Rule</button>
+            </div>
+          </div>
+        </div>
 </body>
 
 </html>
