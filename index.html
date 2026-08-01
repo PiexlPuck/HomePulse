@@ -61,6 +61,12 @@
           <span>Uptime History</span>
         </div>
       </a>
+      <a href="#" class="nav-item" id="nav-hosts">
+        <div class="nav-item-left">
+          <i data-lucide="server"></i>
+          <span>Host Manager</span>
+        </div>
+      </a>
       <a href="#" class="nav-item" id="nav-settings">
         <div class="nav-item-left">
           <i data-lucide="settings"></i>
@@ -371,37 +377,14 @@
                   Frequency</small>
                 <h4 id="lvl3-stat-interval" style="font-size:1.4rem; font-weight:700; margin:0;">-- s</h4>
               </div>
-              <div
-                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
-                <small
-                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Uptime
-                  Performance</small>
-                <h4 id="lvl3-stat-uptime"
-                  style="font-size:1.4rem; font-weight:700; margin:0; color:var(--color-optimal);">100%</h4>
-                <span id="lvl3-stat-outages"
-                  style="font-size:0.65rem; color:var(--text-secondary); display:block; margin-top:2px;">0
-                  outages</span>
-              </div>
             </div>
 
             <!-- History log -->
             <div
               style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 20px; flex-wrap: wrap; gap: 10px;">
               <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0;">
-                Check Telemetry History
+                Check Telemetry History (Last 10 events)
               </h4>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <label style="font-size: 0.7rem; color: var(--text-secondary);">Range:</label>
-                <select id="lvl3-history-range" onchange="loadProbesLevel3(activeProbeMonitorId)"
-                  style="background: #221d16; color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; cursor: pointer;">
-                  <option value="limit-10">Last 10 Runs</option>
-                  <option value="limit-100">Last 100 Runs</option>
-                  <option value="hours-1">Last 1 Hour</option>
-                  <option value="hours-24">Last 24 Hours</option>
-                  <option value="hours-168">Last 7 Days</option>
-                  <option value="hours-720">Last 30 Days</option>
-                </select>
-              </div>
             </div>
             <div id="lvl3-history-table-container" style="overflow-x:auto;">
               <table
@@ -730,6 +713,31 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Host Manager View Panel -->
+      <div class="settings-view hide" id="hosts-view">
+        <div class="settings-card" style="max-width: 1000px;">
+          <div class="settings-header"
+            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <h3>Host Manager</h3>
+              <p>Configure device hosts by IP/Hostname and automatically manage their associated health checks.</p>
+            </div>
+            <button class="btn btn-primary" onclick="openAddHostModal()"
+              style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Host
+            </button>
+          </div>
+
+          <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
+            <!-- Hosts Grid/List -->
+            <div id="hosts-list-container"
+              style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+              <!-- Dynamically populated with host cards -->
             </div>
           </div>
         </div>
@@ -1173,7 +1181,7 @@
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=2.7"></script>
+    <script src="app.js?v=2.8"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
     <!-- Custom Alert Modal Overlay -->
@@ -1511,6 +1519,84 @@
               style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 8px;">
               <button class="btn btn-secondary" onclick="closeModal('rule-modal')">Cancel</button>
               <button class="btn btn-primary" id="btn-save-rule" onclick="submitSaveRule()">Save Rule</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Host Config Modal Overlay -->
+        <div class="modal-overlay" id="host-modal" style="display: none;">
+          <div class="modal-content"
+            style="max-width: 580px; width: 90%; display: flex; flex-direction: column; max-height: 90vh;">
+            <div class="modal-header">
+              <h3 id="host-modal-title">Configure Host Device</h3>
+              <button class="modal-close-btn" onclick="closeModal('host-modal')">&times;</button>
+            </div>
+            <div class="modal-body"
+              style="display: flex; flex-direction: column; gap: 14px; padding: 16px; overflow-y: auto; flex: 1;">
+              <input type="hidden" id="host-modal-id">
+
+              <div class="modal-group">
+                <label for="host-name">Host/Device Friendly Name</label>
+                <input type="text" class="modal-input" id="host-name" placeholder="e.g. Rack NAS Storage">
+              </div>
+
+              <div class="modal-group">
+                <label for="host-target">Target IP Address or Hostname</label>
+                <input type="text" class="modal-input" id="host-target" placeholder="e.g. 192.168.1.15 or nas.local">
+              </div>
+
+              <div class="modal-group">
+                <label style="margin-bottom: 8px; display: block;">Enable Health Diagnostic Checkers</label>
+                <div
+                  style="display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border-soft); padding: 12px; border-radius: 6px; background: rgba(0,0,0,0.15);">
+
+                  <label
+                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
+                    <input type="checkbox" id="host-check-ping">
+                    <span>Ping (ICMP Status latency checks)</span>
+                  </label>
+
+                  <label
+                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
+                    <input type="checkbox" id="host-check-http">
+                    <span>HTTP (Port 80 basic connectivity check)</span>
+                  </label>
+
+                  <label
+                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
+                    <input type="checkbox" id="host-check-https">
+                    <span>HTTPS (Port 443 secure TLS web check)</span>
+                  </label>
+
+                  <label
+                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
+                    <input type="checkbox" id="host-check-ssl">
+                    <span>SSL Certificate Expiration (Track TLS expiry alerts)</span>
+                  </label>
+
+                  <div
+                    style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border-soft); padding-top: 8px; margin-top: 4px;">
+                    <label
+                      style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
+                      <input type="checkbox" id="host-check-port"
+                        onchange="document.getElementById('host-port-number').disabled = !this.checked">
+                      <span>TCP Port Monitor</span>
+                    </label>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <label style="font-size: 0.72rem; margin: 0; color: var(--text-secondary);">Port:</label>
+                      <input type="number" id="host-port-number" disabled placeholder="e.g. 22"
+                        style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 8px; font-size:0.75rem; width: 80px;">
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+            <div class="modal-footer"
+              style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 8px;">
+              <button class="btn btn-secondary" onclick="closeModal('host-modal')">Cancel</button>
+              <button class="btn btn-primary" id="btn-save-host" onclick="submitSaveHost()">Save Host</button>
             </div>
           </div>
         </div>

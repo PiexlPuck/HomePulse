@@ -1465,12 +1465,14 @@ function showSettingsView() {
   const probesView = document.getElementById('probes-view');
   const automationsView = document.getElementById('automations-view');
   const devtoolsView = document.getElementById('developer-tools-view');
+  const hostsView = document.getElementById('hosts-view');
 
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
   if (probesView) probesView.classList.add('hide');
   if (automationsView) automationsView.classList.add('hide');
   if (devtoolsView) devtoolsView.classList.add('hide');
+  if (hostsView) hostsView.classList.add('hide');
   if (settingsView) settingsView.classList.remove('hide');
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1490,6 +1492,7 @@ function showDashboardView() {
   const probesView = document.getElementById('probes-view');
   const automationsView = document.getElementById('automations-view');
   const devtoolsView = document.getElementById('developer-tools-view');
+  const hostsView = document.getElementById('hosts-view');
 
   if (dashGrid) dashGrid.style.display = '';
   if (bottomSection) bottomSection.style.display = '';
@@ -1497,6 +1500,7 @@ function showDashboardView() {
   if (probesView) probesView.classList.add('hide');
   if (automationsView) automationsView.classList.add('hide');
   if (devtoolsView) devtoolsView.classList.add('hide');
+  if (hostsView) hostsView.classList.add('hide');
 }
 
 function showProbesView() {
@@ -1516,12 +1520,14 @@ function showProbesView() {
   const probesView = document.getElementById('probes-view');
   const automationsView = document.getElementById('automations-view');
   const devtoolsView = document.getElementById('developer-tools-view');
+  const hostsView = document.getElementById('hosts-view');
 
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
   if (settingsView) settingsView.classList.add('hide');
   if (automationsView) automationsView.classList.add('hide');
   if (devtoolsView) devtoolsView.classList.add('hide');
+  if (hostsView) hostsView.classList.add('hide');
   if (probesView) probesView.classList.remove('hide');
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1548,12 +1554,14 @@ function showAutomationsView() {
   const probesView = document.getElementById('probes-view');
   const automationsView = document.getElementById('automations-view');
   const devtoolsView = document.getElementById('developer-tools-view');
+  const hostsView = document.getElementById('hosts-view');
 
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
   if (settingsView) settingsView.classList.add('hide');
   if (probesView) probesView.classList.add('hide');
   if (devtoolsView) devtoolsView.classList.add('hide');
+  if (hostsView) hostsView.classList.add('hide');
   if (automationsView) automationsView.classList.remove('hide');
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1582,12 +1590,14 @@ function showDeveloperToolsView() {
   const probesView = document.getElementById('probes-view');
   const automationsView = document.getElementById('automations-view');
   const devtoolsView = document.getElementById('developer-tools-view');
+  const hostsView = document.getElementById('hosts-view');
 
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
   if (settingsView) settingsView.classList.add('hide');
   if (probesView) probesView.classList.add('hide');
   if (automationsView) automationsView.classList.add('hide');
+  if (hostsView) hostsView.classList.add('hide');
   if (devtoolsView) devtoolsView.classList.remove('hide');
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1636,6 +1646,14 @@ document.addEventListener('DOMContentLoaded', () => {
     navHistory.addEventListener('click', (e) => {
       e.preventDefault();
       showUptimeHistoryView();
+    });
+  }
+
+  const navHosts = document.getElementById('nav-hosts');
+  if (navHosts) {
+    navHosts.addEventListener('click', (e) => {
+      e.preventDefault();
+      showHostsView();
     });
   }
 
@@ -3043,17 +3061,6 @@ async function loadProbesLevel3(monId) {
 
   tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">Querying logs...</td></tr>`;
 
-  // Read range selector value
-  const rangeEl = document.getElementById('lvl3-history-range');
-  const rangeVal = rangeEl ? rangeEl.value : 'limit-10';
-
-  let querySuffix = '';
-  if (rangeVal.startsWith('limit-')) {
-    querySuffix = `?limit=${rangeVal.split('-')[1]}`;
-  } else if (rangeVal.startsWith('hours-')) {
-    querySuffix = `?hours=${rangeVal.split('-')[1]}`;
-  }
-
   try {
     const resMon = await fetch(`${httpUrl}/api/monitors`);
     if (!resMon.ok) throw new Error(`HTTP ${resMon.status}`);
@@ -3061,9 +3068,6 @@ async function loadProbesLevel3(monId) {
 
     const ids = String(monId).split(',');
     const isGrouped = ids.length > 1;
-
-    let uptimePct = 100.0;
-    let outagesCount = 0;
 
     if (isGrouped) {
       const mon1 = monitors.find(m => String(m.id) === String(ids[0]));
@@ -3145,14 +3149,14 @@ async function loadProbesLevel3(monId) {
       document.getElementById('lvl3-stat-latency').textContent = latString;
       document.getElementById('lvl3-stat-interval').textContent = `${mon1.check_interval} seconds`;
 
-      const resStatus1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-status${querySuffix}`);
+      const resStatus1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-status?limit=10`);
       const statusLogs1 = resStatus1.ok ? await resStatus1.json() : [];
-      const resStatus2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-status${querySuffix}`);
+      const resStatus2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-status?limit=10`);
       const statusLogs2 = resStatus2.ok ? await resStatus2.json() : [];
 
-      const resLatency1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-latency${querySuffix}`);
+      const resLatency1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-latency?limit=10`);
       const latencyLogs1 = resLatency1.ok ? await resLatency1.json() : [];
-      const resLatency2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-latency${querySuffix}`);
+      const resLatency2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-latency?limit=10`);
       const latencyLogs2 = resLatency2.ok ? await resLatency2.json() : [];
 
       let combinedLogs = [];
@@ -3177,31 +3181,13 @@ async function loadProbesLevel3(monId) {
 
       combinedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-      // Calculate Uptime Statistics for combined
-      if (combinedLogs.length > 0) {
-        const chronologicalLogs = [...combinedLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        let healthyCombo = 0;
-        let prevComboUp = true;
+      // Slice to 10 for basic display
+      const displayLogs = combinedLogs.slice(0, 10);
 
-        chronologicalLogs.forEach((log, idx) => {
-          const isUp = isProbeStatusOnline(log.status, 'http');
-          if (isUp) {
-            healthyCombo++;
-            prevComboUp = true;
-          } else {
-            if (prevComboUp && idx > 0) {
-              outagesCount++;
-            }
-            prevComboUp = false;
-          }
-        });
-        uptimePct = (healthyCombo / chronologicalLogs.length) * 100;
-      }
-
-      if (combinedLogs.length === 0) {
+      if (displayLogs.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
       } else {
-        tableBody.innerHTML = combinedLogs.map(log => {
+        tableBody.innerHTML = displayLogs.map(log => {
           const isLogUp = isProbeStatusOnline(log.status, 'http');
           const finalStatus = isLogUp ? `[${log.source}] HTTP ${log.status}` : `[${log.source}] ${log.status}`;
           return `
@@ -3251,34 +3237,13 @@ async function loadProbesLevel3(monId) {
       document.getElementById('lvl3-stat-latency').textContent = latencyStr;
       document.getElementById('lvl3-stat-interval').textContent = `${mon.check_interval} seconds`;
 
-      const resStatus = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-status${querySuffix}`);
+      const resStatus = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-status?limit=10`);
       if (!resStatus.ok) throw new Error(`Status Logs HTTP ${resStatus.status}`);
       const statusLogs = await resStatus.json();
 
-      const resLatency = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-latency${querySuffix}`);
+      const resLatency = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-latency?limit=10`);
       if (!resLatency.ok) throw new Error(`Latency Logs HTTP ${resLatency.status}`);
       const latencyLogs = await resLatency.json();
-
-      // Calculate Uptime Statistics for single
-      if (statusLogs.length > 0) {
-        const chronologicalLogs = [...statusLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        let healthySingle = 0;
-        let prevSingleUp = true;
-
-        chronologicalLogs.forEach((log, idx) => {
-          const isUpLog = isProbeStatusOnline(log.value, mon.type);
-          if (isUpLog) {
-            healthySingle++;
-            prevSingleUp = true;
-          } else {
-            if (prevSingleUp && idx > 0) {
-              outagesCount++;
-            }
-            prevSingleUp = false;
-          }
-        });
-        uptimePct = (healthySingle / chronologicalLogs.length) * 100;
-      }
 
       if (statusLogs.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
@@ -3320,23 +3285,6 @@ async function loadProbesLevel3(monId) {
           </tr>`;
       }
       tableBody.innerHTML = logsHtml;
-    }
-
-    // Render Uptime Diagnostics stats cards
-    const uptimePctEl = document.getElementById('lvl3-stat-uptime');
-    const outagesCountEl = document.getElementById('lvl3-stat-outages');
-    if (uptimePctEl) {
-      uptimePctEl.textContent = `${uptimePct.toFixed(1)}%`;
-      if (uptimePct >= 99.0) {
-        uptimePctEl.style.color = 'var(--color-optimal)';
-      } else if (uptimePct >= 95.0) {
-        uptimePctEl.style.color = 'var(--accent-orange)';
-      } else {
-        uptimePctEl.style.color = '#f43f5e';
-      }
-    }
-    if (outagesCountEl) {
-      outagesCountEl.textContent = `${outagesCount} outage${outagesCount === 1 ? '' : 's'}`;
     }
   } catch (err) {
     tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:#f43f5e;">Failed to load logs details: ${err.message}</td></tr>`;
@@ -4610,6 +4558,7 @@ function showUptimeHistoryView() {
   const automationsView = document.getElementById('automations-view');
   const devtoolsView = document.getElementById('developer-tools-view');
   const uptimeHistoryView = document.getElementById('uptime-history-view');
+  const hostsView = document.getElementById('hosts-view');
 
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
@@ -4617,6 +4566,7 @@ function showUptimeHistoryView() {
   if (probesView) probesView.classList.add('hide');
   if (automationsView) automationsView.classList.add('hide');
   if (devtoolsView) devtoolsView.classList.add('hide');
+  if (hostsView) hostsView.classList.add('hide');
   if (uptimeHistoryView) uptimeHistoryView.classList.remove('hide');
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -4855,5 +4805,208 @@ function drawHistoryChart(labels, values, healths) {
     }
   });
 }
+
+// ─────────────────────────────────────────
+// HOST MANAGER PAGE LOGIC
+// ─────────────────────────────────────────
+
+function showHostsView() {
+  const mainContent = document.getElementById('main-content');
+  if (mainContent && mainContent.classList.contains('edit-mode')) {
+    const editToggleBtn = document.getElementById('edit-toggle-btn');
+    if (editToggleBtn) editToggleBtn.click();
+  }
+
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'none';
+
+  const dashGrid = document.getElementById('dashboard-grid');
+  const bottomSection = document.querySelector('.bottom-section');
+
+  const settingsView = document.getElementById('settings-view');
+  const probesView = document.getElementById('probes-view');
+  const automationsView = document.getElementById('automations-view');
+  const devtoolsView = document.getElementById('developer-tools-view');
+  const uptimeHistoryView = document.getElementById('uptime-history-view');
+  const hostsView = document.getElementById('hosts-view');
+
+  if (dashGrid) dashGrid.style.display = 'none';
+  if (bottomSection) bottomSection.style.display = 'none';
+
+  if (settingsView) settingsView.classList.add('hide');
+  if (probesView) probesView.classList.add('hide');
+  if (automationsView) automationsView.classList.add('hide');
+  if (devtoolsView) devtoolsView.classList.add('hide');
+  if (uptimeHistoryView) uptimeHistoryView.classList.add('hide');
+  if (hostsView) hostsView.classList.remove('hide');
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navHosts = document.getElementById('nav-hosts');
+  if (navHosts) navHosts.classList.add('active');
+
+  loadHosts();
+}
+
+async function loadHosts() {
+  const { httpUrl } = getApiUrls();
+  const container = document.getElementById('hosts-list-container');
+  if (!container) return;
+
+  container.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:32px; color:var(--text-secondary);">Loading hosts...</p>`;
+
+  try {
+    const response = await fetch(`${httpUrl}/api/hosts`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const hosts = await response.json();
+
+    if (hosts.length === 0) {
+      container.innerHTML = `
+        <div style="grid-column: 1/-1; text-align:center; padding:48px 24px; border: 1px dashed var(--border-soft); border-radius: 8px;">
+          <p style="color:var(--text-secondary); margin-bottom: 16px;">No hosts configured yet.</p>
+          <button class="btn btn-primary" onclick="openAddHostModal()" style="font-size:0.75rem; padding: 8px 16px;">+ Add Your First Host</button>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = hosts.map(host => {
+      const activeCheckers = [];
+      if (host.ping_enabled) activeCheckers.push('Ping');
+      if (host.http_enabled) activeCheckers.push('HTTP');
+      if (host.https_enabled) activeCheckers.push('HTTPS');
+      if (host.ssl_enabled) activeCheckers.push('SSL');
+      if (host.port_enabled) activeCheckers.push(`Port ${host.port_number || ''}`);
+
+      const checkersHtml = activeCheckers.length > 0
+        ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
+        : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
+
+      return `
+        <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft);">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
+              <div style="display:flex; gap:6px;">
+                <button class="btn-icon" onclick="openEditHostModal(${JSON.stringify(host).replace(/"/g, '&quot;')})" style="padding:4px; opacity:0.8;" title="Edit Host">
+                  <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
+                </button>
+                <button class="btn-icon" onclick="deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
+                  <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
+                </button>
+              </div>
+            </div>
+            <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">${host.target}</p>
+          </div>
+          <div style="border-top:1px solid var(--border-soft); padding-top:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+            ${checkersHtml}
+          </div>
+        </div>`;
+    }).join('');
+
+    if (window.lucide) window.lucide.createIcons();
+
+  } catch (err) {
+    container.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:32px; color:#f43f5e;">Failed to load hosts: ${err.message}</p>`;
+  }
+}
+
+window.showHostsView = showHostsView;
+window.openAddHostModal = function () {
+  document.getElementById('host-modal-title').textContent = 'Configure New Host';
+  document.getElementById('host-modal-id').value = '';
+  document.getElementById('host-name').value = '';
+  document.getElementById('host-target').value = '';
+  document.getElementById('host-check-ping').checked = false;
+  document.getElementById('host-check-http').checked = false;
+  document.getElementById('host-check-https').checked = false;
+  document.getElementById('host-check-ssl').checked = false;
+  document.getElementById('host-check-port').checked = false;
+  document.getElementById('host-port-number').value = '';
+  document.getElementById('host-port-number').disabled = true;
+
+  document.getElementById('host-modal').style.display = 'flex';
+};
+
+window.openEditHostModal = function (host) {
+  document.getElementById('host-modal-title').textContent = 'Modify Host Device';
+  document.getElementById('host-modal-id').value = host.id;
+  document.getElementById('host-name').value = host.name;
+  document.getElementById('host-target').value = host.target;
+  document.getElementById('host-check-ping').checked = host.ping_enabled;
+  document.getElementById('host-check-http').checked = host.http_enabled;
+  document.getElementById('host-check-https').checked = host.https_enabled;
+  document.getElementById('host-check-ssl').checked = host.ssl_enabled;
+  document.getElementById('host-check-port').checked = host.port_enabled;
+  document.getElementById('host-port-number').value = host.port_number || '';
+  document.getElementById('host-port-number').disabled = !host.port_enabled;
+
+  document.getElementById('host-modal').style.display = 'flex';
+};
+
+window.submitSaveHost = async function () {
+  const { httpUrl } = getApiUrls();
+  const id = document.getElementById('host-modal-id').value;
+  const name = document.getElementById('host-name').value.trim();
+  const target = document.getElementById('host-target').value.trim();
+
+  if (!name || !target) {
+    alert("Name and Target fields must not be empty.");
+    return;
+  }
+
+  const payload = {
+    name: name,
+    target: target,
+    ping_enabled: document.getElementById('host-check-ping').checked,
+    http_enabled: document.getElementById('host-check-http').checked,
+    https_enabled: document.getElementById('host-check-https').checked,
+    ssl_enabled: document.getElementById('host-check-ssl').checked,
+    port_enabled: document.getElementById('host-check-port').checked,
+    port_number: document.getElementById('host-check-port').checked
+      ? parseInt(document.getElementById('host-port-number').value) || null
+      : null
+  };
+
+  try {
+    let response;
+    if (id) {
+      response = await fetch(`${httpUrl}/api/hosts/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } else {
+      response = await fetch(`${httpUrl}/api/hosts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    if (!response.ok) {
+      const errData = await response.json();
+      throw new Error(errData.detail || `HTTP ${response.status}`);
+    }
+
+    closeModal('host-modal');
+    loadHosts();
+  } catch (err) {
+    alert(`Failed to save host details: ${err.message}`);
+  }
+};
+
+window.deleteHost = async function (id) {
+  if (!confirm("Are you sure you want to delete this host? This will also remove all its monitored check probes.")) return;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const response = await fetch(`${httpUrl}/api/hosts/${id}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    loadHosts();
+  } catch (err) {
+    alert(`Failed to delete host: ${err.message}`);
+  }
+};
 
 

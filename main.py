@@ -363,6 +363,27 @@ async def init_db_pool():
                 except Exception as ar_err:
                     logger.warning(f"Error establishing alert_rules table: {ar_err}")
 
+                # Create hosts table and sync host_id foreign key constraint
+                try:
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS hosts (
+                            id SERIAL PRIMARY KEY,
+                            name VARCHAR(255) NOT NULL,
+                            target VARCHAR(255) NOT NULL,
+                            ping_enabled BOOLEAN DEFAULT FALSE,
+                            http_enabled BOOLEAN DEFAULT FALSE,
+                            https_enabled BOOLEAN DEFAULT FALSE,
+                            ssl_enabled BOOLEAN DEFAULT FALSE,
+                            port_enabled BOOLEAN DEFAULT FALSE,
+                            port_number INT,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS host_id INT REFERENCES hosts(id) ON DELETE CASCADE;")
+                    logger.info("hosts database schema and relationships verified.")
+                except Exception as hosts_err:
+                    logger.warning(f"Error establishing hosts and schemas: {hosts_err}")
+
                 # Rename Plex monitors to distinguish SSL and Ping metrics
                 try:
                     await conn.execute("UPDATE system_monitors SET name = 'Plex SSL Status' WHERE LOWER(name) = 'plex' AND type = 'ssl';")
@@ -1155,6 +1176,16 @@ class MonitorPayload(BaseModel):
     check_interval: int = 30
     timeout: int = 5
 
+class HostPayload(BaseModel):
+    name: str
+    target: str
+    ping_enabled: bool = False
+    http_enabled: bool = False
+    https_enabled: bool = False
+    ssl_enabled: bool = False
+    port_enabled: bool = False
+    port_number: int = None
+
 @app.get("/api/alerts/channels")
 async def get_channels():
     if not db_pool:
@@ -1527,6 +1558,182 @@ async def update_monitor(monitor_id: int, payload: MonitorPayload):
     except Exception as e:
         logger.error(f"Failed to update monitor: {e}")
         raise HTTPException(status_code=500, detail="Database update error.")
+
+
+@app.get("/api/hosts")
+async def get_hosts():
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number FROM hosts ORDER BY id DESC;")
+            res = []
+            for r in rows:
+                res.append(dict(r))
+            return JSONResponse(content=res)
+    except Exception as e:
+        logger.error(f"Failed to fetch hosts: {e}")
+        raise HTTPException(status_code=500, detail="Database query error.")
+
+@app.post("/api/hosts")
+async def add_host(payload: HostPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    
+    if not payload.name.strip() or not payload.target.strip():
+        raise HTTPException(status_code=400, detail="Name and target are required.")
+        
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                # 1. Insert Host
+                host_id = await conn.fetchval(
+                    """INSERT INTO hosts (name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number) 
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id;""",
+                    payload.name.strip(), payload.target.strip(), payload.ping_enabled,
+                    payload.http_enabled, payload.https_enabled, payload.ssl_enabled,
+                    payload.port_enabled, payload.port_number
+                )
+                
+                # 2. Sync Probers to system_monitors
+                await sync_host_probers(conn, host_id, payload)
+                
+            return JSONResponse(content={"status": "success", "host_id": host_id})
+    except Exception as e:
+        logger.error(f"Failed to add host: {e}")
+        raise HTTPException(status_code=500, detail=f"Database execution error: {str(e)}")
+
+@app.put("/api/hosts/{host_id}")
+async def update_host(host_id: int, payload: HostPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    
+    if not payload.name.strip() or not payload.target.strip():
+        raise HTTPException(status_code=400, detail="Name and target are required.")
+        
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                # 1. Check if host exists
+                host_exists = await conn.fetchval("SELECT id FROM hosts WHERE id = $1;", host_id)
+                if not host_exists:
+                    raise HTTPException(status_code=404, detail="Host not found.")
+                
+                # 2. Update Host
+                await conn.execute(
+                    """UPDATE hosts SET name=$1, target=$2, ping_enabled=$3, http_enabled=$4, 
+                       https_enabled=$5, ssl_enabled=$6, port_enabled=$7, port_number=$8 WHERE id=$9;""",
+                    payload.name.strip(), payload.target.strip(), payload.ping_enabled,
+                    payload.http_enabled, payload.https_enabled, payload.ssl_enabled,
+                    payload.port_enabled, payload.port_number, host_id
+                )
+                
+                # 3. Re-sync probers for this host (delete existing ones first, then insert needed ones)
+                await conn.execute("DELETE FROM system_monitors WHERE host_id = $1;", host_id)
+                await sync_host_probers(conn, host_id, payload)
+                
+            return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error(f"Failed to update host: {e}")
+        raise HTTPException(status_code=500, detail=f"Database execution error: {str(e)}")
+
+@app.delete("/api/hosts/{host_id}")
+async def delete_host(host_id: int):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+        
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("DELETE FROM hosts WHERE id = $1;", host_id)
+            return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error(f"Failed to delete host: {e}")
+        raise HTTPException(status_code=500, detail=f"Database execution error: {str(e)}")
+
+async def sync_host_probers(conn, host_id: int, payload: HostPayload):
+    host_name = payload.name.strip()
+    target = payload.target.strip()
+    
+    # 1. PING Check
+    if payload.ping_enabled:
+        mid = await conn.fetchval(
+            """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
+               VALUES ($1, 'ping', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
+            f"{host_name} (Ping)", target, host_id
+        )
+        register_memory_states(mid, f"{host_name} (Ping)")
+        
+    # 2. HTTP Check
+    if payload.http_enabled:
+        http_target = target
+        if not target.startswith("http://") and not target.startswith("https://"):
+            http_target = f"http://{target}"
+        mid = await conn.fetchval(
+            """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
+               VALUES ($1, 'http', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
+            f"{host_name} (HTTP)", http_target, host_id
+        )
+        register_memory_states(mid, f"{host_name} (HTTP)")
+        
+    # 3. HTTPS Check
+    if payload.https_enabled:
+        https_target = target
+        if not target.startswith("http://") and not target.startswith("https://"):
+            https_target = f"https://{target}"
+        mid = await conn.fetchval(
+            """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
+               VALUES ($1, 'http', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
+            f"{host_name} (HTTPS)", https_target, host_id
+        )
+        register_memory_states(mid, f"{host_name} (HTTPS)")
+        
+    # 4. SSL Expiry Check
+    if payload.ssl_enabled:
+        mid = await conn.fetchval(
+            """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
+               VALUES ($1, 'ssl', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
+            f"{host_name} (SSL)", target, host_id
+        )
+        register_memory_states(mid, f"{host_name} (SSL)")
+        
+    # 5. TCP Port Check
+    if payload.port_enabled and payload.port_number:
+        mid = await conn.fetchval(
+            """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
+               VALUES ($1, 'port', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
+            f"{host_name} (Port)", f"{target}:{payload.port_number}", host_id
+        )
+        register_memory_states(mid, f"{host_name} (Port)")
+
+def register_memory_states(monitor_id: int, name: str):
+    entity_states[f"monitor-{monitor_id}-status"] = {
+        "node_id": "monitors",
+        "entity_key": f"monitor-{monitor_id}-status",
+        "name": f"{name} Status",
+        "type": "sensor",
+        "value_type": "string",
+        "unit": "",
+        "value": "unknown",
+        "status": "Unknown",
+        "status_type": "default",
+        "tags": "main",
+        "icon": "shield-question"
+    }
+    entity_states[f"monitor-{monitor_id}-latency"] = {
+        "node_id": "monitors",
+        "entity_key": f"monitor-{monitor_id}-latency",
+        "name": f"{name} Latency",
+        "type": "sensor",
+        "value_type": "float",
+        "unit": "ms",
+        "value": 0.0,
+        "status": "Stable",
+        "status_type": "stable",
+        "tags": "main",
+        "icon": "activity",
+        "color": "#3b82f6",
+        "graphic": "sparkline"
+    }
 
 
 class TogglePayload(BaseModel):
