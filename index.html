@@ -36,7 +36,6 @@
           <i data-lucide="radio"></i>
           <span>Discovery Queue</span>
         </div>
-        <div class="nav-badge" id="discovery-badge">1</div>
       </a>
       <a href="#" class="nav-item" id="nav-automations">
         <div class="nav-item-left">
@@ -112,7 +111,7 @@
     </header>
 
     <!-- Interactive Discovery Banner (mDNS notification) - Hidden by default -->
-    <div class="discovery-banner hide" id="discovery-banner">
+    <div class="discovery-banner hide" id="discovery-banner" style="display: none !important;">
       <div class="discovery-info">
         <div class="discovery-icon">
           <i data-lucide="radio-receiver"></i>
@@ -1008,7 +1007,7 @@
     <!-- js-yaml CDN -->
     <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=2.4"></script>
+    <script src="app.js?v=2.5"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
     <!-- Custom Alert Modal Overlay -->

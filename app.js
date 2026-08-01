@@ -172,9 +172,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (navDiscovery) {
     navDiscovery.addEventListener('click', (e) => {
       e.preventDefault();
-      fetchDiscoveryQueue();
+      // Deactivated per request: let the button do nothing
     });
   }
+
+  // Sync discovery queue badge on load - Deactivated per request
+  // syncDiscoveryBadge();
 });
 
 // Active settings state
@@ -519,6 +522,24 @@ function buildDashboardCards(entitiesMap) {
           <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
           <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
         `;
+      } else {
+        cardEl.classList.add('unavailable');
+        cardEl.innerHTML = `
+          <div class="card-header" style="opacity: 0.6;">
+            <div class="card-title-area">
+              <span class="card-title">${widget.title || eRef.entityKey}</span>
+              <span class="card-subtitle">${eRef.nodeId}.local</span>
+            </div>
+            <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
+          </div>
+          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+            <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
+            <span>Entity unavailable or offline</span>
+          </div>
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
+          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        `;
       }
     }
 
@@ -564,6 +585,24 @@ function buildDashboardCards(entitiesMap) {
                 <text x="50" y="54" text-anchor="middle" class="gauge-unit" fill="var(--text-secondary)" font-size="7">${unit}</text>
               </svg>
             </div>
+          </div>
+          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
+          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        `;
+      } else {
+        cardEl.classList.add('unavailable');
+        cardEl.innerHTML = `
+          <div class="card-header" style="opacity: 0.6;">
+            <div class="card-title-area">
+              <span class="card-title">${widget.title || eRef.entityKey}</span>
+              <span class="card-subtitle">${eRef.nodeId}.local • Gauge</span>
+            </div>
+            <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
+          </div>
+          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+            <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
+            <span>Entity unavailable or offline</span>
           </div>
           <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
           <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
@@ -674,6 +713,11 @@ function buildDashboardCards(entitiesMap) {
 
     // TYPE D: Health Snapshot widget
     else if (widget.type === 'health') {
+      const isEditModeActive = document.getElementById('main-content')?.classList.contains('edit-mode');
+      const snapshotNoticeText = isEditModeActive ?
+        `Configuration mode active: Direct dashboard widgets configuration is unlocked.` :
+        `Observer mode restricted: Manual configuration and control overrides are currently disabled by administrative policy.`;
+
       cardEl.innerHTML = `
         <div class="card-header">
           <div class="card-title-area">
@@ -707,12 +751,12 @@ function buildDashboardCards(entitiesMap) {
                 <span class="snapshot-value green" id="snapshot-security">Waiting...</span>
               </div>
               <div class="snapshot-progress-bg" style="background:var(--border-soft); height:6px; border-radius:3px; overflow:hidden;">
-                <div class="snapshot-progress-fill green" id="snapshot-security-bar" style="width: 0%; background:var(--color-optimal); height:100%; transition:width 0.4s ease;"></div>
+                <div class="snapshot-progress-fill green" id="sidebar-security-bar" style="width: 0%; background:var(--color-optimal); height:100%; transition:width 0.4s ease;"></div>
               </div>
             </div>
           </div>
           <div class="snapshot-notice" style="margin-top:14px; font-size:0.72rem; color:var(--text-secondary); border-top:1px solid var(--border-soft); padding-top:10px;">
-            Observer mode restricted: Manual configuration and control overrides are currently disabled by administrative policy.
+            ${snapshotNoticeText}
           </div>
         </div>
         <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
@@ -888,7 +932,7 @@ function handleIncomingWSEvent(data) {
 
   // C. Dynamic mDNS discovery updates
   else if (data.event === 'device_discovered') {
-    showDiscoveryAlert(data.node_id, data.name, data.ip);
+    // Deactivated per request
   }
 
   // D. Global Settings updates
@@ -944,13 +988,7 @@ function applyGlobalSettings(data) {
 
 // Update DOM elements on Live Socket triggers
 function updateCardState(nodeId, entityId, val, status, statusType) {
-  const card = document.getElementById(`card-${nodeId}-${entityId}`);
-  if (!card) return;
-
-  const valueType = card.getAttribute('data-value-type');
-  const unit = card.getAttribute('data-unit') || '';
-
-  // Update memory cache for health status compilation
+  // Update memory cache for health status compilation (always keep cachedEntities in sync)
   const matchedKey = Object.keys(cachedEntities).find(key => {
     const item = cachedEntities[key];
     return item.node_id === nodeId && item.entity_key === entityId;
@@ -960,6 +998,12 @@ function updateCardState(nodeId, entityId, val, status, statusType) {
     if (status) cachedEntities[matchedKey].status = status;
     if (statusType) cachedEntities[matchedKey].status_type = statusType;
   }
+
+  const card = document.getElementById(`card-${nodeId}-${entityId}`);
+  if (!card) return;
+
+  const valueType = card.getAttribute('data-value-type');
+  const unit = card.getAttribute('data-unit') || '';
 
   // Update status pill dynamically
   if (status && statusType) {
@@ -1010,17 +1054,19 @@ function updateCardState(nodeId, entityId, val, status, statusType) {
 
 // Dynamically compute SVG graph coordinates
 function getSparklinePath(values) {
-  if (!values || values.length < 2) return '';
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  if (!values) return '';
+  const validValues = values.filter(val => typeof val === 'number' && !isNaN(val) && isFinite(val));
+  if (validValues.length < 2) return '';
+  const min = Math.min(...validValues);
+  const max = Math.max(...validValues);
   const range = (max - min === 0) ? 1 : (max - min);
 
   const width = 100;
   const height = 30; // Max height inside viewBox
   const padding = 5;
 
-  return values.map((val, idx) => {
-    const x = (idx / (values.length - 1)) * width;
+  return validValues.map((val, idx) => {
+    const x = (idx / (validValues.length - 1)) * width;
     const y = height + padding - ((val - min) / range) * height;
     return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
@@ -1083,6 +1129,7 @@ function showDiscoveryAlert(nodeId, name, ip) {
 
   // Show banner alert
   banner.classList.remove('hide');
+  banner.style.display = 'flex';
 
   // Increment badge notification
   if (badge) {
@@ -1101,6 +1148,7 @@ function dismissDiscovery() {
   if (banner) {
     const nodeId = banner.dataset.nodeId || 'unknown';
     banner.classList.add('hide');
+    banner.style.display = 'none';
     addAuditEntry('info', `mDNS discovery alert for ${nodeId}.local dismissed by admin.`);
     decrementDiscoveryBadge();
   }
@@ -1132,6 +1180,7 @@ function approveDiscovery() {
     })
     .then(data => {
       banner.classList.add('hide');
+      banner.style.display = 'none';
       decrementDiscoveryBadge();
 
       // Reload state layout to render the new approved device card
@@ -1183,6 +1232,34 @@ function fetchDiscoveryQueue() {
     .catch(err => {
       console.warn("Failed to check active discovery queue:", err);
       alert("Could not load discovery queue. System REST service offline.");
+    });
+}
+
+function syncDiscoveryBadge() {
+  const { httpUrl } = getApiUrls();
+  fetch(`${httpUrl}/api/discovery/queue`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  })
+    .then(res => res.ok ? res.json() : [])
+    .then(data => {
+      const badge = document.getElementById('discovery-badge');
+      if (badge) {
+        const count = (data && data.length) ? data.length : 0;
+        badge.textContent = count;
+        if (count > 0) {
+          badge.style.opacity = '1';
+          badge.style.pointerEvents = 'auto';
+        } else {
+          badge.style.opacity = '0';
+          badge.style.pointerEvents = 'none';
+        }
+      }
+    })
+    .catch(err => {
+      console.warn("Failed to sync discovery badge:", err);
     });
 }
 
@@ -3568,6 +3645,8 @@ function handleLiveMonitorWSUpdate(entityId, value, status, statusType) {
     return;
   }
 
+  console.log(`[WS Live Probe] Received update for: ${entityId}, value: ${value}, activeProbeMonitorId: ${activeProbeMonitorId}`);
+
   if (!liveMonitorBuffer[monId]) {
     liveMonitorBuffer[monId] = { timestamp: new Date().toISOString() };
   }
@@ -3577,6 +3656,8 @@ function handleLiveMonitorWSUpdate(entityId, value, status, statusType) {
   } else if (field === 'latency') {
     liveMonitorBuffer[monId].latency = parseFloat(value);
   }
+
+  console.log(`[WS Live Probe] Current buffer state for ${monId}:`, liveMonitorBuffer[monId]);
 
   checkAndCommitLiveLog(monId);
   updateLevel3HeadingStats();

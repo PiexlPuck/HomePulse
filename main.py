@@ -154,16 +154,7 @@ entity_states = {
 }
 
 # Staged discovery queue
-discovery_queue = [
-    {
-        "id": "smart-plug-84ab",
-        "name": "Smart Power Plug",
-        "ip": "192.168.0.185",
-        "manifest": {
-            "hardware": {"mac": "AA:BB:CC:DD:EE:01"}
-        }
-    }
-]
+discovery_queue = []
 
 class ControlPayload(BaseModel):
     value: Any
