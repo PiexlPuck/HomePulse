@@ -989,11 +989,25 @@ function applyGlobalSettings(data) {
 // Update DOM elements on Live Socket triggers
 function updateCardState(nodeId, entityId, val, status, statusType) {
   // Update memory cache for health status compilation (always keep cachedEntities in sync)
-  const matchedKey = Object.keys(cachedEntities).find(key => {
+  let matchedKey = Object.keys(cachedEntities).find(key => {
     const item = cachedEntities[key];
     return item.node_id === nodeId && item.entity_key === entityId;
   });
-  if (matchedKey) {
+  if (!matchedKey) {
+    const newKey = entityId;
+    cachedEntities[newKey] = {
+      node_id: nodeId,
+      entity_key: entityId,
+      name: entityId.replace(/-/g, ' '),
+      type: 'sensor',
+      value_type: entityId.includes('latency') ? 'float' : 'string',
+      unit: entityId.includes('latency') ? 'ms' : '',
+      value: val,
+      status: status || '',
+      status_type: statusType || 'default'
+    };
+    matchedKey = newKey;
+  } else {
     cachedEntities[matchedKey].value = val;
     if (status) cachedEntities[matchedKey].status = status;
     if (statusType) cachedEntities[matchedKey].status_type = statusType;
@@ -3042,6 +3056,37 @@ async function loadProbesLevel3(monId) {
       const isUp1 = (mon1.enabled !== false) && isProbeStatusOnline(mon1.last_status, mon1.type);
       const isUp2 = (mon2.enabled !== false) && isProbeStatusOnline(mon2.last_status, mon2.type);
 
+      // Seed cachedEntities with current values for these monitors to prevent out-of-sync WebSocket updates
+      const statusKey1 = `monitor-${ids[0]}-status`;
+      const latencyKey1 = `monitor-${ids[0]}-latency`;
+      const statusKey2 = `monitor-${ids[1]}-status`;
+      const latencyKey2 = `monitor-${ids[1]}-latency`;
+
+      cachedEntities[statusKey1] = {
+        node_id: 'monitors',
+        entity_key: statusKey1,
+        value: mon1.last_status,
+        status: mon1.last_status,
+        status_type: isUp1 ? 'healthy' : 'error'
+      };
+      cachedEntities[latencyKey1] = {
+        node_id: 'monitors',
+        entity_key: latencyKey1,
+        value: mon1.last_latency
+      };
+      cachedEntities[statusKey2] = {
+        node_id: 'monitors',
+        entity_key: statusKey2,
+        value: mon2.last_status,
+        status: mon2.last_status,
+        status_type: isUp2 ? 'healthy' : 'error'
+      };
+      cachedEntities[latencyKey2] = {
+        node_id: 'monitors',
+        entity_key: latencyKey2,
+        value: mon2.last_latency
+      };
+
       let statusLabel = '';
       let statusColor = '';
       if (isUp1 && isUp2) {
@@ -3134,6 +3179,23 @@ async function loadProbesLevel3(monId) {
 
       const isUp = isProbeStatusOnline(mon.last_status, mon.type);
       const statusColor = isUp ? 'var(--color-optimal)' : '#f43f5e';
+
+      // Seed cachedEntities with current values for this monitor to prevent out-of-sync WebSocket updates
+      const statusKey = `monitor-${monId}-status`;
+      const latencyKey = `monitor-${monId}-latency`;
+
+      cachedEntities[statusKey] = {
+        node_id: 'monitors',
+        entity_key: statusKey,
+        value: mon.last_status,
+        status: mon.last_status,
+        status_type: isUp ? 'healthy' : 'error'
+      };
+      cachedEntities[latencyKey] = {
+        node_id: 'monitors',
+        entity_key: latencyKey,
+        value: mon.last_latency
+      };
       const statusLabel = isUp ? (mon.type === 'ssl' ? mon.last_status : 'ONLINE') : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE');
       const latencyStr = mon.last_latency !== null ? `${mon.last_latency} ms` : '-- ms';
 
