@@ -1631,6 +1631,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const navHistory = document.getElementById('nav-history');
+  if (navHistory) {
+    navHistory.addEventListener('click', (e) => {
+      e.preventDefault();
+      showUptimeHistoryView();
+    });
+  }
+
   // Bind catalog search box input listener
   const catalogSearch = document.getElementById('catalog-search');
   if (catalogSearch) {
@@ -3035,6 +3043,17 @@ async function loadProbesLevel3(monId) {
 
   tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">Querying logs...</td></tr>`;
 
+  // Read range selector value
+  const rangeEl = document.getElementById('lvl3-history-range');
+  const rangeVal = rangeEl ? rangeEl.value : 'limit-10';
+
+  let querySuffix = '';
+  if (rangeVal.startsWith('limit-')) {
+    querySuffix = `?limit=${rangeVal.split('-')[1]}`;
+  } else if (rangeVal.startsWith('hours-')) {
+    querySuffix = `?hours=${rangeVal.split('-')[1]}`;
+  }
+
   try {
     const resMon = await fetch(`${httpUrl}/api/monitors`);
     if (!resMon.ok) throw new Error(`HTTP ${resMon.status}`);
@@ -3042,6 +3061,9 @@ async function loadProbesLevel3(monId) {
 
     const ids = String(monId).split(',');
     const isGrouped = ids.length > 1;
+
+    let uptimePct = 100.0;
+    let outagesCount = 0;
 
     if (isGrouped) {
       const mon1 = monitors.find(m => String(m.id) === String(ids[0]));
@@ -3123,14 +3145,14 @@ async function loadProbesLevel3(monId) {
       document.getElementById('lvl3-stat-latency').textContent = latString;
       document.getElementById('lvl3-stat-interval').textContent = `${mon1.check_interval} seconds`;
 
-      const resStatus1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-status`);
+      const resStatus1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-status${querySuffix}`);
       const statusLogs1 = resStatus1.ok ? await resStatus1.json() : [];
-      const resStatus2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-status`);
+      const resStatus2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-status${querySuffix}`);
       const statusLogs2 = resStatus2.ok ? await resStatus2.json() : [];
 
-      const resLatency1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-latency`);
+      const resLatency1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-latency${querySuffix}`);
       const latencyLogs1 = resLatency1.ok ? await resLatency1.json() : [];
-      const resLatency2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-latency`);
+      const resLatency2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-latency${querySuffix}`);
       const latencyLogs2 = resLatency2.ok ? await resLatency2.json() : [];
 
       let combinedLogs = [];
@@ -3155,10 +3177,31 @@ async function loadProbesLevel3(monId) {
 
       combinedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
+      // Calculate Uptime Statistics for combined
+      if (combinedLogs.length > 0) {
+        const chronologicalLogs = [...combinedLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        let healthyCombo = 0;
+        let prevComboUp = true;
+
+        chronologicalLogs.forEach((log, idx) => {
+          const isUp = isProbeStatusOnline(log.status, 'http');
+          if (isUp) {
+            healthyCombo++;
+            prevComboUp = true;
+          } else {
+            if (prevComboUp && idx > 0) {
+              outagesCount++;
+            }
+            prevComboUp = false;
+          }
+        });
+        uptimePct = (healthyCombo / chronologicalLogs.length) * 100;
+      }
+
       if (combinedLogs.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
       } else {
-        tableBody.innerHTML = combinedLogs.slice(0, 30).map(log => {
+        tableBody.innerHTML = combinedLogs.map(log => {
           const isLogUp = isProbeStatusOnline(log.status, 'http');
           const finalStatus = isLogUp ? `[${log.source}] HTTP ${log.status}` : `[${log.source}] ${log.status}`;
           return `
@@ -3208,13 +3251,34 @@ async function loadProbesLevel3(monId) {
       document.getElementById('lvl3-stat-latency').textContent = latencyStr;
       document.getElementById('lvl3-stat-interval').textContent = `${mon.check_interval} seconds`;
 
-      const resStatus = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-status`);
+      const resStatus = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-status${querySuffix}`);
       if (!resStatus.ok) throw new Error(`Status Logs HTTP ${resStatus.status}`);
       const statusLogs = await resStatus.json();
 
-      const resLatency = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-latency`);
+      const resLatency = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-latency${querySuffix}`);
       if (!resLatency.ok) throw new Error(`Latency Logs HTTP ${resLatency.status}`);
       const latencyLogs = await resLatency.json();
+
+      // Calculate Uptime Statistics for single
+      if (statusLogs.length > 0) {
+        const chronologicalLogs = [...statusLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        let healthySingle = 0;
+        let prevSingleUp = true;
+
+        chronologicalLogs.forEach((log, idx) => {
+          const isUpLog = isProbeStatusOnline(log.value, mon.type);
+          if (isUpLog) {
+            healthySingle++;
+            prevSingleUp = true;
+          } else {
+            if (prevSingleUp && idx > 0) {
+              outagesCount++;
+            }
+            prevSingleUp = false;
+          }
+        });
+        uptimePct = (healthySingle / chronologicalLogs.length) * 100;
+      }
 
       if (statusLogs.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
@@ -3256,6 +3320,23 @@ async function loadProbesLevel3(monId) {
           </tr>`;
       }
       tableBody.innerHTML = logsHtml;
+    }
+
+    // Render Uptime Diagnostics stats cards
+    const uptimePctEl = document.getElementById('lvl3-stat-uptime');
+    const outagesCountEl = document.getElementById('lvl3-stat-outages');
+    if (uptimePctEl) {
+      uptimePctEl.textContent = `${uptimePct.toFixed(1)}%`;
+      if (uptimePct >= 99.0) {
+        uptimePctEl.style.color = 'var(--color-optimal)';
+      } else if (uptimePct >= 95.0) {
+        uptimePctEl.style.color = 'var(--accent-orange)';
+      } else {
+        uptimePctEl.style.color = '#f43f5e';
+      }
+    }
+    if (outagesCountEl) {
+      outagesCountEl.textContent = `${outagesCount} outage${outagesCount === 1 ? '' : 's'}`;
     }
   } catch (err) {
     tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:#f43f5e;">Failed to load logs details: ${err.message}</td></tr>`;
@@ -4506,6 +4587,273 @@ async function toggleRuleEnabled(rid, enabled, event) {
   } catch (err) {
     showToast(`Toggle failed: ${err.message}`, "error");
   }
+}
+
+// Expose loadHistoryAnalytics to window so dropdown shifts can invoke it
+window.loadHistoryAnalytics = loadHistoryAnalytics;
+
+function showUptimeHistoryView() {
+  // Exit edit mode if active
+  const mainContent = document.getElementById('main-content');
+  if (mainContent && mainContent.classList.contains('edit-mode')) {
+    const editToggleBtn = document.getElementById('edit-toggle-btn');
+    if (editToggleBtn) editToggleBtn.click();
+  }
+
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'none';
+
+  const dashGrid = document.getElementById('dashboard-grid');
+  const bottomSection = document.querySelector('.bottom-section');
+  const settingsView = document.getElementById('settings-view');
+  const probesView = document.getElementById('probes-view');
+  const automationsView = document.getElementById('automations-view');
+  const devtoolsView = document.getElementById('developer-tools-view');
+  const uptimeHistoryView = document.getElementById('uptime-history-view');
+
+  if (dashGrid) dashGrid.style.display = 'none';
+  if (bottomSection) bottomSection.style.display = 'none';
+  if (settingsView) settingsView.classList.add('hide');
+  if (probesView) probesView.classList.add('hide');
+  if (automationsView) automationsView.classList.add('hide');
+  if (devtoolsView) devtoolsView.classList.add('hide');
+  if (uptimeHistoryView) uptimeHistoryView.classList.remove('hide');
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navHistory = document.getElementById('nav-history');
+  if (navHistory) navHistory.classList.add('active');
+
+  // Load monitors select and render
+  populateHistoryMonitorsDropdown();
+}
+
+async function populateHistoryMonitorsDropdown() {
+  const select = document.getElementById('history-monitor-select');
+  if (!select) return;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/monitors`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const monitors = await res.json();
+
+    let optionsHtml = '';
+    monitors.forEach(mon => {
+      optionsHtml += `<option value="${mon.id}" data-type="${mon.type}">${mon.name} (${mon.type.toUpperCase()})</option>`;
+    });
+
+    if (monitors.length === 0) {
+      select.innerHTML = '<option value="">No monitors defined</option>';
+      return;
+    }
+
+    select.innerHTML = optionsHtml;
+    // Trigger initial load
+    loadHistoryAnalytics();
+  } catch (err) {
+    console.error('Failed to populate history monitors list:', err);
+  }
+}
+
+let historyChartInstance = null;
+
+async function loadHistoryAnalytics() {
+  const select = document.getElementById('history-monitor-select');
+  const rangeEl = document.getElementById('history-timeframe-select');
+  const tableBody = document.getElementById('history-logs-table-body');
+  if (!select || !select.value || !tableBody) return;
+
+  const monId = select.value;
+  const selectedOpt = select.options[select.selectedIndex];
+  const type = selectedOpt.getAttribute('data-type') || 'ping';
+
+  const rangeVal = rangeEl ? rangeEl.value : 'limit-100';
+
+  let queryParams = '';
+  if (rangeVal.startsWith('limit-')) {
+    queryParams = `?limit=${rangeVal.split('-')[1]}`;
+  } else if (rangeVal.startsWith('hours-')) {
+    queryParams = `?hours=${rangeVal.split('-')[1]}`;
+  }
+
+  tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Loading analytics...</td></tr>`;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const statusKey = `monitor-${monId}-status`;
+    const latencyKey = `monitor-${monId}-latency`;
+
+    const resStatus = await fetch(`${httpUrl}/api/monitors/logs/${statusKey}${queryParams}`);
+    const statusLogs = resStatus.ok ? await resStatus.json() : [];
+
+    const resLatency = await fetch(`${httpUrl}/api/monitors/logs/${latencyKey}${queryParams}`);
+    const latencyLogs = resLatency.ok ? await resLatency.json() : [];
+
+    if (statusLogs.length === 0) {
+      tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No logs items found for this prober range.</td></tr>`;
+      updateHistoryStats(0, 0, 0, 100);
+      drawHistoryChart([], []);
+      return;
+    }
+
+    // Zip and calculate stats
+    let totalLatency = 0;
+    let maxLatency = 0;
+    let healthyCount = 0;
+    let outages = 0;
+    let prevUp = true;
+
+    let chartData = [];
+    let tableRows = '';
+
+    const sortedStatus = [...statusLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const sortedLatency = [...latencyLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    const chronologicalDetails = [];
+
+    sortedStatus.forEach((statusLog, idx) => {
+      const latVal = sortedLatency[idx] ? parseFloat(sortedLatency[idx].value) : 0;
+      const isUpVal = isProbeStatusOnline(statusLog.value, type);
+
+      chronologicalDetails.push({
+        timestamp: statusLog.timestamp,
+        status: statusLog.value,
+        latency: latVal,
+        isUp: isUpVal
+      });
+    });
+
+    chronologicalDetails.forEach((log, idx) => {
+      totalLatency += log.latency;
+      if (log.latency > maxLatency) maxLatency = log.latency;
+      if (log.isUp) {
+        healthyCount++;
+        prevUp = true;
+      } else {
+        if (prevUp && idx > 0) {
+          outages++;
+        }
+        prevUp = false;
+      }
+    });
+
+    const avgLatency = chronologicalDetails.length > 0 ? (totalLatency / chronologicalDetails.length) : 0;
+    const uptimePct = chronologicalDetails.length > 0 ? (healthyCount / chronologicalDetails.length) * 100 : 100.0;
+
+    // Render stats
+    updateHistoryStats(avgLatency, maxLatency, outages, uptimePct);
+
+    // Build logs display (reverse chronological for table)
+    const reversedDetails = [...chronologicalDetails].reverse();
+    reversedDetails.forEach(log => {
+      const dt = new Date(log.timestamp).toLocaleString();
+      let statusStr = log.status;
+      if (statusStr === 'up' || statusStr === 'UP' || statusStr === 'ONLINE') {
+        statusStr = 'ONLINE';
+      } else if (statusStr === 'down' || statusStr === 'DOWN' || statusStr === 'OFFLINE') {
+        statusStr = 'OFFLINE';
+      } else {
+        const numCode = parseInt(statusStr);
+        if (!isNaN(numCode)) statusStr = `HTTP ${statusStr}`;
+      }
+      const isUp = log.isUp;
+      const color = isUp ? 'var(--color-optimal)' : '#f43f5e';
+
+      tableRows += `
+        <tr style="border-bottom:1px solid var(--border-soft);">
+          <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
+          <td style="padding:10px 14px; font-weight:700; color:${color};">${statusStr}</td>
+          <td style="padding:10px 14px; font-family:monospace;">${log.latency.toFixed(2)} ms</td>
+        </tr>`;
+    });
+    tableBody.innerHTML = tableRows;
+
+    // Render chart
+    const labels = chronologicalDetails.map(log => new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    const latencies = chronologicalDetails.map(log => log.latency);
+    const healthBooleans = chronologicalDetails.map(log => log.isUp);
+
+    drawHistoryChart(labels, latencies, healthBooleans);
+  } catch (err) {
+    tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:#f43f5e;">Error loading analytics: ${err.message}</td></tr>`;
+  }
+}
+
+function updateHistoryStats(avgLat, maxLat, outages, uptime) {
+  const avgEl = document.getElementById('history-stat-avg-latency');
+  const maxEl = document.getElementById('history-stat-max-latency');
+  const outagesEl = document.getElementById('history-stat-outages');
+  const uptimeEl = document.getElementById('history-stat-uptime');
+
+  if (avgEl) avgEl.textContent = `${avgLat.toFixed(1)} ms`;
+  if (maxEl) maxEl.textContent = `${maxLat.toFixed(1)} ms`;
+  if (outagesEl) outagesEl.textContent = String(outages);
+  if (uptimeEl) {
+    uptimeEl.textContent = `${uptime.toFixed(1)}%`;
+    if (uptime >= 99.0) {
+      uptimeEl.style.color = 'var(--color-optimal)';
+    } else if (uptime >= 95.0) {
+      uptimeEl.style.color = 'var(--accent-orange)';
+    } else {
+      uptimeEl.style.color = '#f43f5e';
+    }
+  }
+}
+
+function drawHistoryChart(labels, values, healths) {
+  const canvas = document.getElementById('analytics-chart-canvas');
+  if (!canvas) return;
+
+  if (historyChartInstance) {
+    historyChartInstance.destroy();
+  }
+
+  // Create gradient fill
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+  gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+  gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+
+  // Map bullet point colors depending on healthy statuses (green vs red)
+  const pointColors = healths.map(h => h ? 'var(--color-optimal)' : '#f43f5e');
+
+  historyChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Ping Response Latency',
+        data: values,
+        borderColor: '#3b82f6',
+        borderWidth: 2,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.3,
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointColors,
+        pointHoverRadius: 6,
+        pointRadius: values.length > 50 ? 2 : 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: 'var(--text-secondary)', maxRotation: 45, maxTicksLimit: 12 }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: 'var(--text-secondary)' },
+          suggestedMin: 0
+        }
+      }
+    }
+  });
 }
 
 

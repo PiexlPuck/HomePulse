@@ -55,6 +55,12 @@
           <span>Service Monitors</span>
         </div>
       </a>
+      <a href="#" class="nav-item" id="nav-history">
+        <div class="nav-item-left">
+          <i data-lucide="activity"></i>
+          <span>Uptime History</span>
+        </div>
+      </a>
       <a href="#" class="nav-item" id="nav-settings">
         <div class="nav-item-left">
           <i data-lucide="settings"></i>
@@ -365,12 +371,38 @@
                   Frequency</small>
                 <h4 id="lvl3-stat-interval" style="font-size:1.4rem; font-weight:700; margin:0;">-- s</h4>
               </div>
+              <div
+                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
+                <small
+                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Uptime
+                  Performance</small>
+                <h4 id="lvl3-stat-uptime"
+                  style="font-size:1.4rem; font-weight:700; margin:0; color:var(--color-optimal);">100%</h4>
+                <span id="lvl3-stat-outages"
+                  style="font-size:0.65rem; color:var(--text-secondary); display:block; margin-top:2px;">0
+                  outages</span>
+              </div>
             </div>
 
             <!-- History log -->
-            <h4
-              style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; margin-top:20px;">
-              Check Telemetry History (Last 10 events)</h4>
+            <div
+              style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 20px; flex-wrap: wrap; gap: 10px;">
+              <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0;">
+                Check Telemetry History
+              </h4>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-size: 0.7rem; color: var(--text-secondary);">Range:</label>
+                <select id="lvl3-history-range" onchange="loadProbesLevel3(activeProbeMonitorId)"
+                  style="background: #221d16; color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; cursor: pointer;">
+                  <option value="limit-10">Last 10 Runs</option>
+                  <option value="limit-100">Last 100 Runs</option>
+                  <option value="hours-1">Last 1 Hour</option>
+                  <option value="hours-24">Last 24 Hours</option>
+                  <option value="hours-168">Last 7 Days</option>
+                  <option value="hours-720">Last 30 Days</option>
+                </select>
+              </div>
+            </div>
             <div id="lvl3-history-table-container" style="overflow-x:auto;">
               <table
                 style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; border:1px solid var(--border-soft); border-radius:6px;">
@@ -592,6 +624,113 @@
               </div>
             </div>
 
+          </div>
+        </div>
+      </div>
+
+      <!-- Uptime History View Panel -->
+      <div class="settings-view hide" id="uptime-history-view">
+        <div class="settings-card" style="max-width: 1000px;">
+          <div class="settings-header"
+            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <h3>Uptime History &amp; Analytics</h3>
+              <p>Visualize latency charts and uptime timelines for configured health checkers.</p>
+            </div>
+            <!-- Filters -->
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Monitor
+                  Source</label>
+                <select id="history-monitor-select" onchange="loadHistoryAnalytics()"
+                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 180px;">
+                  <!-- Dynamically populated with monitors -->
+                </select>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Time
+                  Range</label>
+                <select id="history-timeframe-select" onchange="loadHistoryAnalytics()"
+                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 120px;">
+                  <option value="limit-100">Last 100 Runs</option>
+                  <option value="hours-1">Last 1 Hour</option>
+                  <option value="hours-24">Last 24 Hours</option>
+                  <option value="hours-168">Last 7 Days</option>
+                  <option value="hours-720">Last 30 Days</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
+            <!-- Stats Summary Cards Row -->
+            <div
+              style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; margin-bottom: 24px;">
+              <div
+                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
+                <small
+                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Uptime
+                  Ratio</small>
+                <h4 id="history-stat-uptime"
+                  style="font-size:1.3rem; font-weight:700; margin:0; color:var(--color-optimal);">-- %</h4>
+              </div>
+              <div
+                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
+                <small
+                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Average
+                  Response</small>
+                <h4 id="history-stat-avg-latency" style="font-size:1.3rem; font-weight:700; margin:0;">-- ms</h4>
+              </div>
+              <div
+                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
+                <small
+                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Peak
+                  Latency</small>
+                <h4 id="history-stat-max-latency" style="font-size:1.3rem; font-weight:700; margin:0;">-- ms</h4>
+              </div>
+              <div
+                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
+                <small
+                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Outages
+                  Detected</small>
+                <h4 id="history-stat-outages" style="font-size:1.3rem; font-weight:700; margin:0; color:#f43f5e;">--
+                </h4>
+              </div>
+            </div>
+
+            <!-- Interactive Latency Graph Container -->
+            <div
+              style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; margin-bottom: 24px; position: relative;">
+              <small
+                style="position: absolute; top: 12px; right: 16px; font-size: 0.65rem; color: var(--text-secondary); font-family: monospace;">LATENCY
+                (MS) OVER TIME</small>
+              <div style="height: 320px; width: 100%;">
+                <canvas id="analytics-chart-canvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Historical Detailed Log Table -->
+            <h4 style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Detailed
+              Log View</h4>
+            <div style="overflow-x:auto;">
+              <table
+                style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; border:1px solid var(--border-soft); border-radius:6px;">
+                <thead>
+                  <tr
+                    style="background:rgba(255,255,255,0.01); border-bottom:1px solid var(--border-soft); color:var(--text-secondary);">
+                    <th style="padding:10px 14px;">Timestamp</th>
+                    <th style="padding:10px 14px;">Event Status</th>
+                    <th style="padding:10px 14px;">Response latency</th>
+                  </tr>
+                </thead>
+                <tbody id="history-logs-table-body">
+                  <tr>
+                    <td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Please select
+                      a monitor to view detailed results.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -1031,8 +1170,10 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- js-yaml CDN -->
     <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=2.6"></script>
+    <script src="app.js?v=2.7"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
     <!-- Custom Alert Modal Overlay -->

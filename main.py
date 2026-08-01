@@ -1617,17 +1617,26 @@ async def toggle_monitor(monitor_id: int, payload: TogglePayload):
         raise HTTPException(status_code=500, detail="Database write error.")
 
 @app.get("/api/monitors/logs/{entity_key}")
-async def get_monitor_logs(entity_key: str):
+async def get_monitor_logs(entity_key: str, limit: int = 10, hours: int = None):
     if not db_pool:
         return JSONResponse(content=[])
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                """SELECT timestamp, value FROM telemetry_logs 
-                   WHERE entity_key = $1 
-                   ORDER BY timestamp DESC LIMIT 10;""",
-                entity_key
-            )
+            if hours is not None:
+                rows = await conn.fetch(
+                    """SELECT timestamp, value FROM telemetry_logs 
+                       WHERE entity_key = $1 
+                         AND timestamp >= NOW() - ($2::integer * INTERVAL '1 hour')
+                       ORDER BY timestamp DESC;""",
+                    entity_key, hours
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT timestamp, value FROM telemetry_logs 
+                       WHERE entity_key = $1 
+                       ORDER BY timestamp DESC LIMIT $2;""",
+                    entity_key, limit
+                )
             res = []
             for r in rows:
                 res.append({
