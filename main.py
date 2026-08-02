@@ -985,6 +985,22 @@ async def get_css():
 
 # 4. REST API Implementation
 
+@app.get("/api/health")
+async def health_check():
+    """
+    General health check endpoint for Docker container check.
+    Verifies FastAPI is accepting requests and connection pool is healthy.
+    """
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection pool unavailable")
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("SELECT 1;")
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Database connectivity check failed: {str(e)}")
+
 @app.get("/api/entities")
 async def get_entities():
     # Merge status and states
@@ -1649,6 +1665,42 @@ async def delete_host(host_id: int):
     except Exception as e:
         logger.error(f"Failed to delete host: {e}")
         raise HTTPException(status_code=500, detail=f"Database execution error: {str(e)}")
+
+@app.get("/api/support/logs")
+async def get_support_logs():
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        support_pkg = {}
+        async with db_pool.acquire() as conn:
+            # 1. Fetch system settings
+            settings_rows = await conn.fetch("SELECT key, value FROM system_settings;")
+            support_pkg["settings"] = {r["key"]: r["value"] for r in settings_rows}
+
+            # 2. Fetch hosts list
+            hosts_rows = await conn.fetch("SELECT id, name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number FROM hosts ORDER BY id DESC;")
+            support_pkg["hosts"] = [dict(r) for r in hosts_rows]
+
+            # 3. Fetch monitors lists
+            monitors_rows = await conn.fetch("SELECT id, name, type, target, check_interval, timeout, last_status, enabled, host_id FROM system_monitors ORDER BY id DESC;")
+            support_pkg["monitors"] = [dict(r) for r in monitors_rows]
+
+            # 4. Fetch last 100 audits
+            audits_rows = await conn.fetch("SELECT id, type, message, timestamp FROM system_audits ORDER BY id DESC LIMIT 100;")
+            support_pkg["audits"] = [
+                {
+                    "id": r["id"],
+                    "type": r["type"],
+                    "message": r["message"],
+                    "timestamp": r["timestamp"].isoformat() if r["timestamp"] else None
+                }
+                for r in audits_rows
+            ]
+
+        return JSONResponse(content=support_pkg)
+    except Exception as e:
+        logger.error(f"Failed to compile support logs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to compile support logs: {str(e)}")
 
 async def sync_host_probers(conn, host_id: int, payload: HostPayload):
     host_name = payload.name.strip()

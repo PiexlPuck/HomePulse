@@ -1448,8 +1448,29 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+function hideAllViews() {
+  const dashGrid = document.getElementById('dashboard-grid');
+  const bottomSection = document.querySelector('.bottom-section');
+  const settingsView = document.getElementById('settings-view');
+  const probesView = document.getElementById('probes-view');
+  const automationsView = document.getElementById('automations-view');
+  const devtoolsView = document.getElementById('developer-tools-view');
+  const uptimeHistoryView = document.getElementById('uptime-history-view');
+  const hostsView = document.getElementById('hosts-view');
+
+  if (dashGrid) dashGrid.style.display = 'none';
+  if (bottomSection) bottomSection.style.display = 'none';
+  if (settingsView) settingsView.classList.add('hide');
+  if (probesView) probesView.classList.add('hide');
+  if (automationsView) automationsView.classList.add('hide');
+  if (devtoolsView) devtoolsView.classList.add('hide');
+  if (uptimeHistoryView) uptimeHistoryView.classList.add('hide');
+  if (hostsView) hostsView.classList.add('hide');
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+}
+
 function showSettingsView() {
-  // Exit edit mode if active
   const mainContent = document.getElementById('main-content');
   if (mainContent && mainContent.classList.contains('edit-mode')) {
     const editToggleBtn = document.getElementById('edit-toggle-btn');
@@ -1459,23 +1480,11 @@ function showSettingsView() {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   if (editToggleBtn) editToggleBtn.style.display = 'none';
 
-  const dashGrid = document.getElementById('dashboard-grid');
-  const bottomSection = document.querySelector('.bottom-section');
-  const settingsView = document.getElementById('settings-view');
-  const probesView = document.getElementById('probes-view');
-  const automationsView = document.getElementById('automations-view');
-  const devtoolsView = document.getElementById('developer-tools-view');
-  const hostsView = document.getElementById('hosts-view');
+  hideAllViews();
 
-  if (dashGrid) dashGrid.style.display = 'none';
-  if (bottomSection) bottomSection.style.display = 'none';
-  if (probesView) probesView.classList.add('hide');
-  if (automationsView) automationsView.classList.add('hide');
-  if (devtoolsView) devtoolsView.classList.add('hide');
-  if (hostsView) hostsView.classList.add('hide');
+  const settingsView = document.getElementById('settings-view');
   if (settingsView) settingsView.classList.remove('hide');
 
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navSettings = document.getElementById('nav-settings');
   if (navSettings) navSettings.classList.add('active');
 
@@ -1486,25 +1495,18 @@ function showDashboardView() {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   if (editToggleBtn) editToggleBtn.style.display = 'flex';
 
+  hideAllViews();
+
   const dashGrid = document.getElementById('dashboard-grid');
   const bottomSection = document.querySelector('.bottom-section');
-  const settingsView = document.getElementById('settings-view');
-  const probesView = document.getElementById('probes-view');
-  const automationsView = document.getElementById('automations-view');
-  const devtoolsView = document.getElementById('developer-tools-view');
-  const hostsView = document.getElementById('hosts-view');
-
   if (dashGrid) dashGrid.style.display = '';
   if (bottomSection) bottomSection.style.display = '';
-  if (settingsView) settingsView.classList.add('hide');
-  if (probesView) probesView.classList.add('hide');
-  if (automationsView) automationsView.classList.add('hide');
-  if (devtoolsView) devtoolsView.classList.add('hide');
-  if (hostsView) hostsView.classList.add('hide');
+
+  const navDashboard = document.getElementById('nav-dashboard');
+  if (navDashboard) navDashboard.classList.add('active');
 }
 
 function showProbesView() {
-  // Exit edit mode if active
   const mainContent = document.getElementById('main-content');
   if (mainContent && mainContent.classList.contains('edit-mode')) {
     const editToggleBtn = document.getElementById('edit-toggle-btn');
@@ -1514,23 +1516,11 @@ function showProbesView() {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   if (editToggleBtn) editToggleBtn.style.display = 'none';
 
-  const dashGrid = document.getElementById('dashboard-grid');
-  const bottomSection = document.querySelector('.bottom-section');
-  const settingsView = document.getElementById('settings-view');
-  const probesView = document.getElementById('probes-view');
-  const automationsView = document.getElementById('automations-view');
-  const devtoolsView = document.getElementById('developer-tools-view');
-  const hostsView = document.getElementById('hosts-view');
+  hideAllViews();
 
-  if (dashGrid) dashGrid.style.display = 'none';
-  if (bottomSection) bottomSection.style.display = 'none';
-  if (settingsView) settingsView.classList.add('hide');
-  if (automationsView) automationsView.classList.add('hide');
-  if (devtoolsView) devtoolsView.classList.add('hide');
-  if (hostsView) hostsView.classList.add('hide');
+  const probesView = document.getElementById('probes-view');
   if (probesView) probesView.classList.remove('hide');
 
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navProbes = document.getElementById('nav-probes');
   if (navProbes) navProbes.classList.add('active');
 
@@ -1538,7 +1528,6 @@ function showProbesView() {
 }
 
 function showAutomationsView() {
-  // Exit edit mode if active
   const mainContent = document.getElementById('main-content');
   if (mainContent && mainContent.classList.contains('edit-mode')) {
     const editToggleBtn = document.getElementById('edit-toggle-btn');
@@ -1548,33 +1537,19 @@ function showAutomationsView() {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   if (editToggleBtn) editToggleBtn.style.display = 'none';
 
-  const dashGrid = document.getElementById('dashboard-grid');
-  const bottomSection = document.querySelector('.bottom-section');
-  const settingsView = document.getElementById('settings-view');
-  const probesView = document.getElementById('probes-view');
-  const automationsView = document.getElementById('automations-view');
-  const devtoolsView = document.getElementById('developer-tools-view');
-  const hostsView = document.getElementById('hosts-view');
+  hideAllViews();
 
-  if (dashGrid) dashGrid.style.display = 'none';
-  if (bottomSection) bottomSection.style.display = 'none';
-  if (settingsView) settingsView.classList.add('hide');
-  if (probesView) probesView.classList.add('hide');
-  if (devtoolsView) devtoolsView.classList.add('hide');
-  if (hostsView) hostsView.classList.add('hide');
+  const automationsView = document.getElementById('automations-view');
   if (automationsView) automationsView.classList.remove('hide');
 
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navAutomations = document.getElementById('nav-automations');
   if (navAutomations) navAutomations.classList.add('active');
 
-  // Load Alert Router lists dynamically
   loadAlertRules();
   loadNotificationChannels();
 }
 
 function showDeveloperToolsView() {
-  // Exit edit mode if active
   const mainContent = document.getElementById('main-content');
   if (mainContent && mainContent.classList.contains('edit-mode')) {
     const editToggleBtn = document.getElementById('edit-toggle-btn');
@@ -1584,23 +1559,11 @@ function showDeveloperToolsView() {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   if (editToggleBtn) editToggleBtn.style.display = 'none';
 
-  const dashGrid = document.getElementById('dashboard-grid');
-  const bottomSection = document.querySelector('.bottom-section');
-  const settingsView = document.getElementById('settings-view');
-  const probesView = document.getElementById('probes-view');
-  const automationsView = document.getElementById('automations-view');
-  const devtoolsView = document.getElementById('developer-tools-view');
-  const hostsView = document.getElementById('hosts-view');
+  hideAllViews();
 
-  if (dashGrid) dashGrid.style.display = 'none';
-  if (bottomSection) bottomSection.style.display = 'none';
-  if (settingsView) settingsView.classList.add('hide');
-  if (probesView) probesView.classList.add('hide');
-  if (automationsView) automationsView.classList.add('hide');
-  if (hostsView) hostsView.classList.add('hide');
+  const devtoolsView = document.getElementById('developer-tools-view');
   if (devtoolsView) devtoolsView.classList.remove('hide');
 
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navDevtools = document.getElementById('nav-devtools');
   if (navDevtools) navDevtools.classList.add('active');
 }
@@ -4541,7 +4504,6 @@ async function toggleRuleEnabled(rid, enabled, event) {
 window.loadHistoryAnalytics = loadHistoryAnalytics;
 
 function showUptimeHistoryView() {
-  // Exit edit mode if active
   const mainContent = document.getElementById('main-content');
   if (mainContent && mainContent.classList.contains('edit-mode')) {
     const editToggleBtn = document.getElementById('edit-toggle-btn');
@@ -4551,29 +4513,14 @@ function showUptimeHistoryView() {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   if (editToggleBtn) editToggleBtn.style.display = 'none';
 
-  const dashGrid = document.getElementById('dashboard-grid');
-  const bottomSection = document.querySelector('.bottom-section');
-  const settingsView = document.getElementById('settings-view');
-  const probesView = document.getElementById('probes-view');
-  const automationsView = document.getElementById('automations-view');
-  const devtoolsView = document.getElementById('developer-tools-view');
-  const uptimeHistoryView = document.getElementById('uptime-history-view');
-  const hostsView = document.getElementById('hosts-view');
+  hideAllViews();
 
-  if (dashGrid) dashGrid.style.display = 'none';
-  if (bottomSection) bottomSection.style.display = 'none';
-  if (settingsView) settingsView.classList.add('hide');
-  if (probesView) probesView.classList.add('hide');
-  if (automationsView) automationsView.classList.add('hide');
-  if (devtoolsView) devtoolsView.classList.add('hide');
-  if (hostsView) hostsView.classList.add('hide');
+  const uptimeHistoryView = document.getElementById('uptime-history-view');
   if (uptimeHistoryView) uptimeHistoryView.classList.remove('hide');
 
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navHistory = document.getElementById('nav-history');
   if (navHistory) navHistory.classList.add('active');
 
-  // Load monitors select and render
   populateHistoryMonitorsDropdown();
 }
 
@@ -4859,6 +4806,8 @@ async function loadHosts() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const hosts = await response.json();
 
+    window.currentHosts = hosts;
+
     if (hosts.length === 0) {
       container.innerHTML = `
         <div style="grid-column: 1/-1; text-align:center; padding:48px 24px; border: 1px dashed var(--border-soft); border-radius: 8px;">
@@ -4886,7 +4835,7 @@ async function loadHosts() {
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
               <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
               <div style="display:flex; gap:6px;">
-                <button class="btn-icon" onclick="openEditHostModal(${JSON.stringify(host).replace(/"/g, '&quot;')})" style="padding:4px; opacity:0.8;" title="Edit Host">
+                <button class="btn-icon" onclick="openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
                   <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
                 </button>
                 <button class="btn-icon" onclick="deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
@@ -4926,7 +4875,10 @@ window.openAddHostModal = function () {
   document.getElementById('host-modal').style.display = 'flex';
 };
 
-window.openEditHostModal = function (host) {
+window.openEditHostModal = function (hostId) {
+  const host = (window.currentHosts || []).find(h => h.id === hostId);
+  if (!host) return;
+
   document.getElementById('host-modal-title').textContent = 'Modify Host Device';
   document.getElementById('host-modal-id').value = host.id;
   document.getElementById('host-name').value = host.name;
@@ -5006,6 +4958,33 @@ window.deleteHost = async function (id) {
     loadHosts();
   } catch (err) {
     alert(`Failed to delete host: ${err.message}`);
+  }
+};
+
+window.generateSupportLogs = async function () {
+  if (typeof showToast === 'function') showToast("Compiling support logs...", "info");
+  try {
+    const { httpUrl } = getApiUrls();
+    const res = await fetch(`${httpUrl}/api/support/logs`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `homepulse-support-logs-${dateStr}.json`;
+
+    // Download JSON file
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", filename);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+
+    if (typeof showToast === 'function') showToast("Support logs downloaded successfully!", "success");
+  } catch (err) {
+    if (typeof showToast === 'function') showToast(`Support log generation failed: ${err.message}`, "error");
+    else alert(`Support log generation failed: ${err.message}`);
   }
 };
 
