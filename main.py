@@ -10,7 +10,7 @@ import socket
 import urllib.request
 import urllib.error
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header
 from fastapi.responses import FileResponse, JSONResponse
 import smtplib
@@ -1200,7 +1200,7 @@ class HostPayload(BaseModel):
     https_enabled: bool = False
     ssl_enabled: bool = False
     port_enabled: bool = False
-    port_number: int = None
+    port_number: Optional[int] = None
 
 @app.get("/api/alerts/channels")
 async def get_channels():
