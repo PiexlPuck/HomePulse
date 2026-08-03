@@ -218,7 +218,7 @@ function initializeSidebar() {
       if (sidebarToggleIcon) {
         sidebarToggleIcon.setAttribute('data-lucide', isCollapsed ? 'chevron-right' : 'chevron-left');
       }
-      lucide.createIcons();
+      if (window.lucide) window.lucide.createIcons();
     });
   }
 
@@ -258,7 +258,7 @@ function initializeSidebar() {
       if (icon) {
         icon.setAttribute('data-lucide', isEditMode ? 'check' : 'edit-3');
       }
-      lucide.createIcons();
+      if (window.lucide) window.lucide.createIcons();
     });
   }
 }
@@ -802,7 +802,7 @@ function buildDashboardCards(entitiesMap) {
   });
 
   // Re-render Dynamic SVG icons via CDN
-  lucide.createIcons();
+  if (window.lucide) window.lucide.createIcons();
 
   // Highlight and filter tab state
   const tabButtons = document.querySelectorAll('.tab-btn');
@@ -1117,7 +1117,7 @@ function addAuditEntry(type, message) {
   }
 
   auditList.insertBefore(auditRow, auditList.firstChild);
-  lucide.createIcons();
+  if (window.lucide) window.lucide.createIcons();
 
   // Enforce scroll history item limit (only count entries that match current filter/all to prevent overflow)
   while (auditList.children.length > 25) {
@@ -1955,7 +1955,7 @@ function renderDashboards() {
     container.appendChild(plusBtn);
 
     // Re-render plus icon
-    setTimeout(() => lucide.createIcons(), 5);
+    setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 5);
   }
 }
 
@@ -4701,6 +4701,11 @@ function drawHistoryChart(labels, values, healths) {
   const canvas = document.getElementById('analytics-chart-canvas');
   if (!canvas) return;
 
+  if (typeof Chart === 'undefined') {
+    console.warn("Chart.js is not loaded. Skipping chart rendering.");
+    return;
+  }
+
   if (historyChartInstance) {
     historyChartInstance.destroy();
   }
@@ -4767,27 +4772,11 @@ function showHostsView() {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   if (editToggleBtn) editToggleBtn.style.display = 'none';
 
-  const dashGrid = document.getElementById('dashboard-grid');
-  const bottomSection = document.querySelector('.bottom-section');
+  hideAllViews();
 
-  const settingsView = document.getElementById('settings-view');
-  const probesView = document.getElementById('probes-view');
-  const automationsView = document.getElementById('automations-view');
-  const devtoolsView = document.getElementById('developer-tools-view');
-  const uptimeHistoryView = document.getElementById('uptime-history-view');
   const hostsView = document.getElementById('hosts-view');
-
-  if (dashGrid) dashGrid.style.display = 'none';
-  if (bottomSection) bottomSection.style.display = 'none';
-
-  if (settingsView) settingsView.classList.add('hide');
-  if (probesView) probesView.classList.add('hide');
-  if (automationsView) automationsView.classList.add('hide');
-  if (devtoolsView) devtoolsView.classList.add('hide');
-  if (uptimeHistoryView) uptimeHistoryView.classList.add('hide');
   if (hostsView) hostsView.classList.remove('hide');
 
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navHosts = document.getElementById('nav-hosts');
   if (navHosts) navHosts.classList.add('active');
 
@@ -4872,7 +4861,7 @@ window.openAddHostModal = function () {
   document.getElementById('host-port-number').value = '';
   document.getElementById('host-port-number').disabled = true;
 
-  document.getElementById('host-modal').style.display = 'flex';
+  window.openModal('host-modal');
 };
 
 window.openEditHostModal = function (hostId) {
@@ -4891,7 +4880,7 @@ window.openEditHostModal = function (hostId) {
   document.getElementById('host-port-number').value = host.port_number || '';
   document.getElementById('host-port-number').disabled = !host.port_enabled;
 
-  document.getElementById('host-modal').style.display = 'flex';
+  window.openModal('host-modal');
 };
 
 window.submitSaveHost = async function () {

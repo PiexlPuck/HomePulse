@@ -1635,7 +1635,14 @@ async def update_host(host_id: int, payload: HostPayload):
                 if not host_exists:
                     raise HTTPException(status_code=404, detail="Host not found.")
                 
-                # 2. Update Host
+                # 2. Clear old monitor IDs from memory cache before deleting from DB
+                mids = await conn.fetch("SELECT id FROM system_monitors WHERE host_id = $1;", host_id)
+                for r in mids:
+                    mid = r["id"]
+                    entity_states.pop(f"monitor-{mid}-status", None)
+                    entity_states.pop(f"monitor-{mid}-latency", None)
+
+                # 3. Update Host
                 await conn.execute(
                     """UPDATE hosts SET name=$1, target=$2, ping_enabled=$3, http_enabled=$4, 
                        https_enabled=$5, ssl_enabled=$6, port_enabled=$7, port_number=$8 WHERE id=$9;""",
@@ -1644,7 +1651,7 @@ async def update_host(host_id: int, payload: HostPayload):
                     payload.port_enabled, payload.port_number, host_id
                 )
                 
-                # 3. Re-sync probers for this host (delete existing ones first, then insert needed ones)
+                # 4. Re-sync probers for this host (delete existing ones first, then insert needed ones)
                 await conn.execute("DELETE FROM system_monitors WHERE host_id = $1;", host_id)
                 await sync_host_probers(conn, host_id, payload)
                 
@@ -1660,6 +1667,14 @@ async def delete_host(host_id: int):
         
     try:
         async with db_pool.acquire() as conn:
+            # 1. Clear old monitor IDs from memory cache before deleting from DB
+            mids = await conn.fetch("SELECT id FROM system_monitors WHERE host_id = $1;", host_id)
+            for r in mids:
+                mid = r["id"]
+                entity_states.pop(f"monitor-{mid}-status", None)
+                entity_states.pop(f"monitor-{mid}-latency", None)
+
+            # 2. Delete Host
             await conn.execute("DELETE FROM hosts WHERE id = $1;", host_id)
             return JSONResponse(content={"status": "success"})
     except Exception as e:

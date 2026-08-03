@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HomePulse Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>">
   <link rel="stylesheet" href="style.css">
 </head>
 
@@ -31,22 +32,10 @@
           <span>Dashboards</span>
         </div>
       </a>
-      <a href="#" class="nav-item" id="nav-discovery">
+      <a href="#" class="nav-item" id="nav-hosts">
         <div class="nav-item-left">
-          <i data-lucide="radio"></i>
-          <span>Discovery Queue</span>
-        </div>
-      </a>
-      <a href="#" class="nav-item" id="nav-automations">
-        <div class="nav-item-left">
-          <i data-lucide="bell-ring"></i>
-          <span>Alert Router</span>
-        </div>
-      </a>
-      <a href="#" class="nav-item" id="nav-devtools">
-        <div class="nav-item-left">
-          <i data-lucide="terminal"></i>
-          <span>Developer Tools</span>
+          <i data-lucide="server"></i>
+          <span>Host Manager</span>
         </div>
       </a>
       <a href="#" class="nav-item" id="nav-probes">
@@ -61,10 +50,22 @@
           <span>Uptime History</span>
         </div>
       </a>
-      <a href="#" class="nav-item" id="nav-hosts">
+      <a href="#" class="nav-item" id="nav-automations">
         <div class="nav-item-left">
-          <i data-lucide="server"></i>
-          <span>Host Manager</span>
+          <i data-lucide="bell-ring"></i>
+          <span>Alert Router</span>
+        </div>
+      </a>
+      <a href="#" class="nav-item" id="nav-discovery">
+        <div class="nav-item-left">
+          <i data-lucide="radio"></i>
+          <span>Discovery Queue</span>
+        </div>
+      </a>
+      <a href="#" class="nav-item" id="nav-devtools">
+        <div class="nav-item-left">
+          <i data-lucide="terminal"></i>
+          <span>Developer Tools</span>
         </div>
       </a>
       <a href="#" class="nav-item" id="nav-settings">
@@ -1186,7 +1187,7 @@
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=2.8"></script>
+    <script src="app.js?v=3.5"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
     <!-- Custom Alert Modal Overlay -->
