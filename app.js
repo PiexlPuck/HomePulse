@@ -2011,7 +2011,7 @@ function renameDashboardTab(tabId, newName) {
   }
 }
 
-function deleteDashboardTab(tabId) {
+async function deleteDashboardTab(tabId) {
   let list = [];
   try {
     list = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
@@ -2021,7 +2021,7 @@ function deleteDashboardTab(tabId) {
     alert("Cannot delete the only remaining dashboard tab.");
     return;
   }
-  if (!confirm("Are you sure you want to delete this tab? All cards inside it will be reassigned to the main dashboard tab.")) return;
+  if (!await showConfirm("Are you sure you want to delete this tab? All cards inside it will be reassigned to the main dashboard tab.", "Delete Dashboard Tab")) return;
 
   list = list.filter(t => t.id !== tabId);
   localStorage.setItem('hp_dashboards', JSON.stringify(list));
@@ -2383,9 +2383,9 @@ function syncYAMLToFormFields() {
   }
 }
 
-function deleteWidgetSettings() {
+async function deleteWidgetSettings() {
   const id = document.getElementById('edit-widget-id').value;
-  if (!confirm("Are you sure you want to remove this widget card?")) return;
+  if (!await showConfirm("Are you sure you want to remove this widget card?", "Delete Widget")) return;
 
   let widgets = [];
   try {
@@ -3378,27 +3378,32 @@ async function submitAddMonitor() {
 
 async function deleteMonitorSource(monId, e) {
   if (e) e.stopPropagation();
-  if (!confirm("Are you sure you want to remove this probe?")) return;
+  const confirmed = await showConfirm("Are you sure you want to remove this probe?", "Remove Monitor");
+  if (!confirmed) return;
 
   const { httpUrl } = getApiUrls();
   try {
     const resList = await fetch(`${httpUrl}/api/monitors`);
     if (!resList.ok) throw new Error(`HTTP ${resList.status}`);
     const monitors = await resList.json();
-    const targetMon = monitors.find(m => String(m.id) === String(monId));
 
-    let idsToDelete = [String(monId)];
-    if (targetMon && targetMon.type === 'http') {
-      let partner = null;
-      if (targetMon.name.endsWith(' (HTTP)')) {
-        const base = targetMon.name.substring(0, targetMon.name.length - 7);
-        partner = monitors.find(m => m.type === 'http' && m.name === base + ' (HTTPS)');
-      } else if (targetMon.name.endsWith(' (HTTPS)')) {
-        const base = targetMon.name.substring(0, targetMon.name.length - 8);
-        partner = monitors.find(m => m.type === 'http' && m.name === base + ' (HTTP)');
-      }
-      if (partner) {
-        idsToDelete.push(String(partner.id));
+    let idsToDelete = String(monId).split(',');
+
+    if (idsToDelete.length === 1) {
+      const singleId = idsToDelete[0];
+      const targetMon = monitors.find(m => String(m.id) === String(singleId));
+      if (targetMon && targetMon.type === 'http') {
+        let partner = null;
+        if (targetMon.name.endsWith(' (HTTP)')) {
+          const base = targetMon.name.substring(0, targetMon.name.length - 7);
+          partner = monitors.find(m => m.type === 'http' && m.name === base + ' (HTTPS)');
+        } else if (targetMon.name.endsWith(' (HTTPS)')) {
+          const base = targetMon.name.substring(0, targetMon.name.length - 8);
+          partner = monitors.find(m => m.type === 'http' && m.name === base + ' (HTTP)');
+        }
+        if (partner) {
+          idsToDelete.push(String(partner.id));
+        }
       }
     }
 
@@ -3408,7 +3413,9 @@ async function deleteMonitorSource(monId, e) {
     }
 
     loadProbesLevel1();
-    loadProbesLevel2(activeProbeEngineType);
+    if (activeProbeEngineType) {
+      loadProbesLevel2(activeProbeEngineType);
+    }
     showToast("Probe deleted successfully", "success");
   } catch (err) {
     alert(`Could not delete prober source: ${err.message}`);
@@ -3680,6 +3687,29 @@ window.showAlert = function (message, title = "System Alert", type = "error") {
 
 window.alert = function (message) {
   window.showAlert(message, "System Alert", "error");
+};
+
+let confirmResolver = null;
+window.showConfirm = function (message, title = "Confirm Action") {
+  return new Promise((resolve) => {
+    confirmResolver = resolve;
+    const modal = document.getElementById('custom-confirm-modal');
+    if (!modal) {
+      resolve(confirm(message));
+      return;
+    }
+    document.getElementById('custom-confirm-title').textContent = title;
+    document.getElementById('custom-confirm-body').textContent = message;
+    openModal('custom-confirm-modal');
+  });
+};
+
+window.closeConfirmModal = function (result) {
+  closeModal('custom-confirm-modal');
+  if (confirmResolver) {
+    confirmResolver(result);
+    confirmResolver = null;
+  }
 };
 
 let liveMonitorBuffer = {};
@@ -4251,7 +4281,7 @@ async function submitSaveChannel() {
 
 async function deleteChannelSource(cid, event) {
   if (event) event.stopPropagation();
-  if (!confirm("Are you sure you want to permanently delete this notification channel? Custom rules routing to it will lose reference.")) return;
+  if (!await showConfirm("Are you sure you want to permanently delete this notification channel? Custom rules routing to it will lose reference.", "Delete Channel")) return;
 
   const { httpUrl } = getApiUrls();
   try {
@@ -4455,7 +4485,7 @@ async function submitSaveRule() {
 
 async function deleteRuleSource(rid, event) {
   if (event) event.stopPropagation();
-  if (!confirm("Are you sure you want to delete this warning rule definition?")) return;
+  if (!await showConfirm("Are you sure you want to delete this warning rule definition?", "Delete Alert Rule")) return;
 
   const { httpUrl } = getApiUrls();
   try {
@@ -4936,7 +4966,7 @@ window.submitSaveHost = async function () {
 };
 
 window.deleteHost = async function (id) {
-  if (!confirm("Are you sure you want to delete this host? This will also remove all its monitored check probes.")) return;
+  if (!await showConfirm("Are you sure you want to delete this host? This will also remove all its monitored check probes.", "Delete Host")) return;
 
   const { httpUrl } = getApiUrls();
   try {
