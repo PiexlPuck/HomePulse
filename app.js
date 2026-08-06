@@ -4594,7 +4594,7 @@ async function loadHistoryAnalytics() {
   const selectedOpt = select.options[select.selectedIndex];
   const type = selectedOpt.getAttribute('data-type') || 'ping';
 
-  const rangeVal = rangeEl ? rangeEl.value : 'limit-100';
+  const rangeVal = rangeEl ? rangeEl.value : 'hours-1';
 
   let queryParams = '';
   if (rangeVal.startsWith('limit-')) {
@@ -4623,14 +4623,13 @@ async function loadHistoryAnalytics() {
       return;
     }
 
-    // Zip and calculate stats
+    // Zip and calculate stats by matching closest timestamp within 5 seconds
     let totalLatency = 0;
     let maxLatency = 0;
     let healthyCount = 0;
     let outages = 0;
     let prevUp = true;
 
-    let chartData = [];
     let tableRows = '';
 
     const sortedStatus = [...statusLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -4638,8 +4637,22 @@ async function loadHistoryAnalytics() {
 
     const chronologicalDetails = [];
 
-    sortedStatus.forEach((statusLog, idx) => {
-      const latVal = sortedLatency[idx] ? parseFloat(sortedLatency[idx].value) : 0;
+    sortedStatus.forEach(statusLog => {
+      const statusTime = new Date(statusLog.timestamp).getTime();
+      let closestLatency = null;
+      let minDiff = Infinity;
+
+      sortedLatency.forEach(latLog => {
+        const latTime = new Date(latLog.timestamp).getTime();
+        const diff = Math.abs(statusTime - latTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestLatency = latLog;
+        }
+      });
+
+      // Align only if they are within a 5-second interval of each other
+      const latVal = (closestLatency && minDiff < 5000) ? parseFloat(closestLatency.value) : 0.0;
       const isUpVal = isProbeStatusOnline(statusLog.value, type);
 
       chronologicalDetails.push({
@@ -4727,7 +4740,212 @@ function updateHistoryStats(avgLat, maxLat, outages, uptime) {
   }
 }
 
-function drawHistoryChart(labels, values, healths) {
+window.historyTimeOffsetHours = 0;
+
+window.resetHistoryTimeOffset = function () {
+  window.historyTimeOffsetHours = 0;
+  updateShiftButtonsState();
+};
+
+window.shiftHistoryTime = function (direction) {
+  const rangeEl = document.getElementById('history-timeframe-select');
+  if (!rangeEl) return;
+
+  const rangeVal = rangeEl.value;
+  let increment = 1;
+  if (rangeVal.startsWith('hours-')) {
+    increment = parseInt(rangeVal.split('-')[1]) || 1;
+  }
+
+  if (direction === -1) {
+    window.historyTimeOffsetHours += increment;
+  } else {
+    window.historyTimeOffsetHours = Math.max(0, window.historyTimeOffsetHours - increment);
+  }
+
+  updateShiftButtonsState();
+  loadHistoryAnalytics();
+};
+
+function updateShiftButtonsState() {
+  const btnForward = document.getElementById('btn-history-shift-forward');
+  if (btnForward) {
+    if (window.historyTimeOffsetHours === 0) {
+      btnForward.disabled = true;
+      btnForward.style.opacity = '0.5';
+      btnForward.style.cursor = 'default';
+      if (btnForward.querySelector('i')) {
+        btnForward.querySelector('i').style.color = 'var(--text-secondary)';
+      }
+    } else {
+      btnForward.disabled = false;
+      btnForward.style.opacity = '1.0';
+      btnForward.style.cursor = 'pointer';
+      if (btnForward.querySelector('i')) {
+        btnForward.querySelector('i').style.color = '#fff';
+      }
+    }
+  }
+}
+
+async function loadHistoryAnalytics() {
+  const select = document.getElementById('history-monitor-select');
+  const rangeEl = document.getElementById('history-timeframe-select');
+  const tableBody = document.getElementById('history-logs-table-body');
+  if (!select || !select.value || !tableBody) return;
+
+  const monId = select.value;
+  const selectedOpt = select.options[select.selectedIndex];
+  const type = selectedOpt.getAttribute('data-type') || 'ping';
+
+  const rangeVal = rangeEl ? rangeEl.value : 'hours-1';
+
+  let queryParams = '';
+  if (rangeVal.startsWith('limit-')) {
+    queryParams = `?limit=${rangeVal.split('-')[1]}`;
+  } else if (rangeVal.startsWith('hours-')) {
+    const hours = rangeVal.split('-')[1];
+    queryParams = `?hours=${hours}&offset=${window.historyTimeOffsetHours || 0}`;
+  }
+
+  tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Loading analytics...</td></tr>`;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const statusKey = `monitor-${monId}-status`;
+    const latencyKey = `monitor-${monId}-latency`;
+
+    const resStatus = await fetch(`${httpUrl}/api/monitors/logs/${statusKey}${queryParams}`);
+    const statusLogs = resStatus.ok ? await resStatus.json() : [];
+
+    const resLatency = await fetch(`${httpUrl}/api/monitors/logs/${latencyKey}${queryParams}`);
+    const latencyLogs = resLatency.ok ? await resLatency.json() : [];
+
+    if (statusLogs.length === 0) {
+      tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No logs items found for this prober range.</td></tr>`;
+      updateHistoryStats(0, 0, 0, 100);
+      drawHistoryChart([], []);
+      return;
+    }
+
+    // Zip and calculate stats by matching closest timestamp within 5 seconds
+    let totalLatency = 0;
+    let maxLatency = 0;
+    let healthyCount = 0;
+    let outages = 0;
+    let prevUp = true;
+
+    let tableRows = '';
+
+    const sortedStatus = [...statusLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const sortedLatency = [...latencyLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    const chronologicalDetails = [];
+
+    sortedStatus.forEach(statusLog => {
+      const statusTime = new Date(statusLog.timestamp).getTime();
+      let closestLatency = null;
+      let minDiff = Infinity;
+
+      sortedLatency.forEach(latLog => {
+        const latTime = new Date(latLog.timestamp).getTime();
+        const diff = Math.abs(statusTime - latTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestLatency = latLog;
+        }
+      });
+
+      // Align only if they are within a 5-second interval of each other
+      const latVal = (closestLatency && minDiff < 5000) ? parseFloat(closestLatency.value) : 0.0;
+      const isUpVal = isProbeStatusOnline(statusLog.value, type);
+
+      chronologicalDetails.push({
+        timestamp: statusLog.timestamp,
+        status: statusLog.value,
+        latency: latVal,
+        isUp: isUpVal
+      });
+    });
+
+    chronologicalDetails.forEach((log, idx) => {
+      totalLatency += log.latency;
+      if (log.latency > maxLatency) maxLatency = log.latency;
+      if (log.isUp) {
+        healthyCount++;
+        prevUp = true;
+      } else {
+        if (prevUp && idx > 0) {
+          outages++;
+        }
+        prevUp = false;
+      }
+    });
+
+    const avgLatency = chronologicalDetails.length > 0 ? (totalLatency / chronologicalDetails.length) : 0;
+    const uptimePct = chronologicalDetails.length > 0 ? (healthyCount / chronologicalDetails.length) * 100 : 100.0;
+
+    // Render stats
+    updateHistoryStats(avgLatency, maxLatency, outages, uptimePct);
+
+    // Build logs display (reverse chronological for table)
+    const reversedDetails = [...chronologicalDetails].reverse();
+    reversedDetails.forEach(log => {
+      const dt = new Date(log.timestamp).toLocaleString();
+      let statusStr = log.status;
+      if (statusStr === 'up' || statusStr === 'UP' || statusStr === 'ONLINE') {
+        statusStr = 'ONLINE';
+      } else if (statusStr === 'down' || statusStr === 'DOWN' || statusStr === 'OFFLINE') {
+        statusStr = 'OFFLINE';
+      } else {
+        const numCode = parseInt(statusStr);
+        if (!isNaN(numCode)) statusStr = `HTTP ${statusStr}`;
+      }
+      const isUp = log.isUp;
+      const color = isUp ? 'var(--color-optimal)' : '#f43f5e';
+
+      tableRows += `
+        <tr style="border-bottom:1px solid var(--border-soft);">
+          <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
+          <td style="padding:10px 14px; font-weight:700; color:${color};">${statusStr}</td>
+          <td style="padding:10px 14px; font-family:monospace;">${log.latency.toFixed(2)} ms</td>
+        </tr>`;
+    });
+    tableBody.innerHTML = tableRows;
+
+    // Render chart
+    const labels = chronologicalDetails.map(log => new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    const latencies = chronologicalDetails.map(log => log.latency);
+    const healthBooleans = chronologicalDetails.map(log => log.isUp);
+
+    drawHistoryChart(labels, latencies, healthBooleans, avgLatency);
+  } catch (err) {
+    tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:#f43f5e;">Error loading analytics: ${err.message}</td></tr>`;
+  }
+}
+
+function updateHistoryStats(avgLat, maxLat, outages, uptime) {
+  const avgEl = document.getElementById('history-stat-avg-latency');
+  const maxEl = document.getElementById('history-stat-max-latency');
+  const outagesEl = document.getElementById('history-stat-outages');
+  const uptimeEl = document.getElementById('history-stat-uptime');
+
+  if (avgEl) avgEl.textContent = `${avgLat.toFixed(1)} ms`;
+  if (maxEl) maxEl.textContent = `${maxLat.toFixed(1)} ms`;
+  if (outagesEl) outagesEl.textContent = String(outages);
+  if (uptimeEl) {
+    uptimeEl.textContent = `${uptime.toFixed(1)}%`;
+    if (uptime >= 99.0) {
+      uptimeEl.style.color = 'var(--color-optimal)';
+    } else if (uptime >= 95.0) {
+      uptimeEl.style.color = 'var(--accent-orange)';
+    } else {
+      uptimeEl.style.color = '#f43f5e';
+    }
+  }
+}
+
+function drawHistoryChart(labels, values, healths, avgLatency) {
   const canvas = document.getElementById('analytics-chart-canvas');
   if (!canvas) return;
 
@@ -4749,23 +4967,38 @@ function drawHistoryChart(labels, values, healths) {
   // Map bullet point colors depending on healthy statuses (green vs red)
   const pointColors = healths.map(h => h ? 'var(--color-optimal)' : '#f43f5e');
 
+  const datasets = [{
+    label: 'Ping Response Latency',
+    data: values,
+    borderColor: '#3b82f6',
+    borderWidth: 2,
+    backgroundColor: gradient,
+    fill: true,
+    tension: 0.3,
+    pointBackgroundColor: pointColors,
+    pointBorderColor: pointColors,
+    pointHoverRadius: 6,
+    pointRadius: values.length > 50 ? 2 : 4
+  }];
+
+  if (typeof avgLatency === 'number' && values.length > 0) {
+    datasets.push({
+      label: 'Average Latency',
+      data: Array(values.length).fill(avgLatency),
+      borderColor: 'rgba(244, 63, 94, 0.45)', // Rose-dashed guide line
+      borderWidth: 1.5,
+      borderDash: [5, 5],
+      fill: false,
+      pointRadius: 0,
+      pointHoverRadius: 0
+    });
+  }
+
   historyChartInstance = new Chart(ctx, {
     type: 'line',
     data: {
       labels: labels,
-      datasets: [{
-        label: 'Ping Response Latency',
-        data: values,
-        borderColor: '#3b82f6',
-        borderWidth: 2,
-        backgroundColor: gradient,
-        fill: true,
-        tension: 0.3,
-        pointBackgroundColor: pointColors,
-        pointBorderColor: pointColors,
-        pointHoverRadius: 6,
-        pointRadius: values.length > 50 ? 2 : 4
-      }]
+      datasets: datasets
     },
     options: {
       responsive: true,
@@ -4792,6 +5025,31 @@ function drawHistoryChart(labels, values, healths) {
 // HOST MANAGER PAGE LOGIC
 // ─────────────────────────────────────────
 
+window.hostsViewLayout = localStorage.getItem('hp_hosts_layout') || 'grid';
+
+window.setHostsLayout = function (layout) {
+  window.hostsViewLayout = layout;
+  localStorage.setItem('hp_hosts_layout', layout);
+
+  const btnGrid = document.getElementById('btn-hosts-grid');
+  const btnList = document.getElementById('btn-hosts-list');
+  if (btnGrid && btnList) {
+    if (layout === 'grid') {
+      btnGrid.style.background = 'rgba(255, 255, 255, 0.08)';
+      btnGrid.querySelector('i').style.color = '#fff';
+      btnList.style.background = 'none';
+      btnList.querySelector('i').style.color = 'var(--text-secondary)';
+    } else {
+      btnList.style.background = 'rgba(255, 255, 255, 0.08)';
+      btnList.querySelector('i').style.color = '#fff';
+      btnGrid.style.background = 'none';
+      btnGrid.querySelector('i').style.color = 'var(--text-secondary)';
+    }
+  }
+
+  loadHosts();
+};
+
 function showHostsView() {
   const mainContent = document.getElementById('main-content');
   if (mainContent && mainContent.classList.contains('edit-mode')) {
@@ -4809,6 +5067,24 @@ function showHostsView() {
 
   const navHosts = document.getElementById('nav-hosts');
   if (navHosts) navHosts.classList.add('active');
+
+  // Set visual toggle active style on load based on cached preference
+  const layout = window.hostsViewLayout;
+  const btnGrid = document.getElementById('btn-hosts-grid');
+  const btnList = document.getElementById('btn-hosts-list');
+  if (btnGrid && btnList) {
+    if (layout === 'grid') {
+      btnGrid.style.background = 'rgba(255, 255, 255, 0.08)';
+      btnGrid.querySelector('i').style.color = '#fff';
+      btnList.style.background = 'none';
+      btnList.querySelector('i').style.color = 'var(--text-secondary)';
+    } else {
+      btnList.style.background = 'rgba(255, 255, 255, 0.08)';
+      btnList.querySelector('i').style.color = '#fff';
+      btnGrid.style.background = 'none';
+      btnGrid.querySelector('i').style.color = 'var(--text-secondary)';
+    }
+  }
 
   loadHosts();
 }
@@ -4836,24 +5112,68 @@ async function loadHosts() {
       return;
     }
 
-    container.innerHTML = hosts.map(host => {
-      const activeCheckers = [];
-      if (host.ping_enabled) activeCheckers.push('Ping');
-      if (host.http_enabled) activeCheckers.push('HTTP');
-      if (host.https_enabled) activeCheckers.push('HTTPS');
-      if (host.ssl_enabled) activeCheckers.push('SSL');
-      if (host.port_enabled) activeCheckers.push(`Port ${host.port_number || ''}`);
+    const layout = window.hostsViewLayout || 'grid';
 
-      const checkersHtml = activeCheckers.length > 0
-        ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
-        : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
+    if (layout === 'grid') {
+      container.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;";
+      container.innerHTML = hosts.map(host => {
+        const activeCheckers = [];
+        if (host.ping_enabled) activeCheckers.push('Ping');
+        if (host.http_enabled) activeCheckers.push('HTTP');
+        if (host.https_enabled) activeCheckers.push('HTTPS');
+        if (host.ssl_enabled) activeCheckers.push('SSL');
+        if (host.port_enabled) activeCheckers.push(`Port ${host.port_number || ''}`);
 
-      return `
-        <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft);">
-          <div>
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+        const checkersHtml = activeCheckers.length > 0
+          ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
+          : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
+
+        return `
+          <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft);">
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
+                <div style="display:flex; gap:6px;">
+                  <button class="btn-icon" onclick="openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
+                    <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
+                  </button>
+                  <button class="btn-icon" onclick="deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
+                    <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
+                  </button>
+                </div>
+              </div>
+              <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">${host.target}</p>
+            </div>
+            <div style="border-top:1px solid var(--border-soft); padding-top:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+              ${checkersHtml}
+            </div>
+          </div>`;
+      }).join('');
+    } else {
+      container.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
+      container.innerHTML = hosts.map(host => {
+        const activeCheckers = [];
+        if (host.ping_enabled) activeCheckers.push('Ping');
+        if (host.http_enabled) activeCheckers.push('HTTP');
+        if (host.https_enabled) activeCheckers.push('HTTPS');
+        if (host.ssl_enabled) activeCheckers.push('SSL');
+        if (host.port_enabled) activeCheckers.push(`Port ${host.port_number || ''}`);
+
+        const checkersHtml = activeCheckers.length > 0
+          ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
+          : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
+
+        return `
+          <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; border-radius:8px; border:1px solid var(--border-soft); gap:16px; min-height:unset;">
+            <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
               <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
-              <div style="display:flex; gap:6px;">
+              <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">${host.target}</p>
+            </div>
+            <div style="display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
+              <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                ${checkersHtml}
+              </div>
+              <div style="display:flex; gap:6px; border-left:1px solid var(--border-soft); padding-left:16px;">
                 <button class="btn-icon" onclick="openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
                   <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
                 </button>
@@ -4862,13 +5182,9 @@ async function loadHosts() {
                 </button>
               </div>
             </div>
-            <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">${host.target}</p>
-          </div>
-          <div style="border-top:1px solid var(--border-soft); padding-top:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-            ${checkersHtml}
-          </div>
-        </div>`;
-    }).join('');
+          </div>`;
+      }).join('');
+    }
 
     if (window.lucide) window.lucide.createIcons();
 

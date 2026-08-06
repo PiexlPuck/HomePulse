@@ -1891,7 +1891,7 @@ async def toggle_monitor(monitor_id: int, payload: TogglePayload):
         raise HTTPException(status_code=500, detail="Database write error.")
 
 @app.get("/api/monitors/logs/{entity_key}")
-async def get_monitor_logs(entity_key: str, limit: int = 10, hours: int = None):
+async def get_monitor_logs(entity_key: str, limit: int = 10, hours: int = None, offset: int = 0):
     if not db_pool:
         return JSONResponse(content=[])
     try:
@@ -1900,9 +1900,10 @@ async def get_monitor_logs(entity_key: str, limit: int = 10, hours: int = None):
                 rows = await conn.fetch(
                     """SELECT timestamp, value FROM telemetry_logs 
                        WHERE entity_key = $1 
-                         AND timestamp >= NOW() - ($2::integer * INTERVAL '1 hour')
+                         AND timestamp >= NOW() - (($2::integer + $3::integer) * INTERVAL '1 hour')
+                         AND timestamp <= NOW() - ($3::integer * INTERVAL '1 hour')
                        ORDER BY timestamp DESC;""",
-                    entity_key, hours
+                    entity_key, hours, offset
                 )
             else:
                 rows = await conn.fetch(

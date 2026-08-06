@@ -640,14 +640,27 @@
               <div style="display: flex; flex-direction: column; gap: 2px;">
                 <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Time
                   Range</label>
-                <select id="history-timeframe-select" onchange="loadHistoryAnalytics()"
-                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 120px;">
-                  <option value="limit-100">Last 100 Runs</option>
-                  <option value="hours-1">Last 1 Hour</option>
-                  <option value="hours-24">Last 24 Hours</option>
-                  <option value="hours-168">Last 7 Days</option>
-                  <option value="hours-720">Last 30 Days</option>
-                </select>
+                <div style="display: flex; gap: 4px; align-items: center;">
+                  <button id="btn-history-shift-back" onclick="shiftHistoryTime(-1)"
+                    style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 30px; width: 30px; transition: all 0.2s;"
+                    title="Shift Backward">
+                    <i data-lucide="chevron-left" style="width: 14px; height: 14px; color: #fff;"></i>
+                  </button>
+                  <select id="history-timeframe-select" onchange="resetHistoryTimeOffset(); loadHistoryAnalytics()"
+                    style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 120px; height: 30px;">
+                    <option value="hours-1" selected>Last 1 Hour</option>
+                    <option value="hours-3">Last 3 Hours</option>
+                    <option value="hours-12">Last 12 Hours</option>
+                    <option value="hours-24">Last 24 Hours</option>
+                    <option value="hours-168">Last 7 Days</option>
+                    <option value="hours-720">Last 30 Days</option>
+                  </select>
+                  <button id="btn-history-shift-forward" onclick="shiftHistoryTime(1)"
+                    style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 4px; cursor: default; display: flex; align-items: center; justify-content: center; height: 30px; width: 30px; opacity: 0.5; transition: all 0.2s;"
+                    title="Shift Forward" disabled>
+                    <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -734,10 +747,25 @@
               <h3>Host Manager</h3>
               <p>Configure device hosts by IP/Hostname and automatically manage their associated health checks.</p>
             </div>
-            <button class="btn btn-primary" onclick="openAddHostModal()"
-              style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-              <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Host
-            </button>
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <div
+                style="display: flex; gap: 4px; border: 1px solid var(--border-soft); border-radius: 6px; padding: 2px; background: rgba(0,0,0,0.2);">
+                <button id="btn-hosts-grid" onclick="setHostsLayout('grid')"
+                  style="border: none; background: none; padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                  title="Grid View">
+                  <i data-lucide="grid" style="width: 14px; height: 14px; color: #fff;"></i>
+                </button>
+                <button id="btn-hosts-list" onclick="setHostsLayout('list')"
+                  style="border: none; background: none; padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                  title="List View">
+                  <i data-lucide="list" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
+                </button>
+              </div>
+              <button class="btn btn-primary" onclick="openAddHostModal()"
+                style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Host
+              </button>
+            </div>
           </div>
 
           <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
