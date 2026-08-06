@@ -1891,12 +1891,34 @@ async def toggle_monitor(monitor_id: int, payload: TogglePayload):
         raise HTTPException(status_code=500, detail="Database write error.")
 
 @app.get("/api/monitors/logs/{entity_key}")
-async def get_monitor_logs(entity_key: str, limit: int = 10, hours: int = None, offset: int = 0):
+async def get_monitor_logs(
+    entity_key: str, 
+    limit: int = 10, 
+    hours: int = None, 
+    offset: int = 0,
+    start_time: str = None,
+    end_time: str = None
+):
     if not db_pool:
         return JSONResponse(content=[])
     try:
         async with db_pool.acquire() as conn:
-            if hours is not None:
+            if start_time and end_time:
+                from datetime import datetime
+                # Parse to offset-naive datetimes to avoid timezone mismatch errors
+                t_start = datetime.fromisoformat(start_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                t_end = datetime.fromisoformat(end_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                
+                # Query custom date-time window
+                rows = await conn.fetch(
+                    """SELECT timestamp, value FROM telemetry_logs 
+                       WHERE entity_key = $1 
+                         AND timestamp >= $2 
+                         AND timestamp <= $3 
+                       ORDER BY timestamp DESC;""",
+                    entity_key, t_start, t_end
+                )
+            elif hours is not None:
                 rows = await conn.fetch(
                     """SELECT timestamp, value FROM telemetry_logs 
                        WHERE entity_key = $1 

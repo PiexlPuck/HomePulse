@@ -654,11 +654,24 @@
                     <option value="hours-24">Last 24 Hours</option>
                     <option value="hours-168">Last 7 Days</option>
                     <option value="hours-720">Last 30 Days</option>
+                    <option value="custom">Custom Range</option>
                   </select>
                   <button id="btn-history-shift-forward" onclick="shiftHistoryTime(1)"
                     style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 4px; cursor: default; display: flex; align-items: center; justify-content: center; height: 30px; width: 30px; opacity: 0.5; transition: all 0.2s;"
                     title="Shift Forward" disabled>
                     <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
+                  </button>
+                </div>
+                <div id="history-custom-range-inputs"
+                  style="display: none; align-items: center; gap: 4px; margin-top: 6px;">
+                  <input type="datetime-local" id="history-custom-start"
+                    style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.7rem; height: 30px;">
+                  <span style="color: var(--text-secondary); font-size: 0.7rem;">to</span>
+                  <input type="datetime-local" id="history-custom-end"
+                    style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.7rem; height: 30px;">
+                  <button onclick="loadHistoryAnalytics()" class="btn-primary"
+                    style="padding: 4px 8px; font-size: 0.7rem; border-radius: 4px; height: 30px; display: flex; align-items: center; cursor: pointer; border: none; background: var(--color-primary); color: #fff;">
+                    Apply
                   </button>
                 </div>
               </div>
@@ -713,27 +726,32 @@
             </div>
 
             <!-- Historical Detailed Log Table -->
-            <h4 style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Detailed
-              Log View</h4>
-            <div style="overflow-x:auto;">
-              <table
-                style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; border:1px solid var(--border-soft); border-radius:6px;">
-                <thead>
-                  <tr
-                    style="background:rgba(255,255,255,0.01); border-bottom:1px solid var(--border-soft); color:var(--text-secondary);">
-                    <th style="padding:10px 14px;">Timestamp</th>
-                    <th style="padding:10px 14px;">Event Status</th>
-                    <th style="padding:10px 14px;">Response latency</th>
-                  </tr>
-                </thead>
-                <tbody id="history-logs-table-body">
-                  <tr>
-                    <td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Please select
-                      a monitor to view detailed results.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <details id="history-logs-advanced-details"
+              style="border: 1px solid var(--border-soft); border-radius: 6px; padding: 12px; margin-top: 20px; background: rgba(255,255,255,0.01);">
+              <summary
+                style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); cursor: pointer; outline: none; user-select: none;">
+                Advanced Telemetry Records
+              </summary>
+              <div style="overflow-x:auto; margin-top: 12px;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left;">
+                  <thead>
+                    <tr
+                      style="background:rgba(255,255,255,0.01); border-bottom:1px solid var(--border-soft); color:var(--text-secondary);">
+                      <th style="padding:10px 14px;">Timestamp</th>
+                      <th style="padding:10px 14px;">Event Status</th>
+                      <th style="padding:10px 14px;">Response latency</th>
+                    </tr>
+                  </thead>
+                  <tbody id="history-logs-table-body">
+                    <tr>
+                      <td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Please
+                        select
+                        a monitor to view detailed results.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </details>
           </div>
         </div>
       </div>

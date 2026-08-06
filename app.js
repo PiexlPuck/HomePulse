@@ -4584,162 +4584,6 @@ async function populateHistoryMonitorsDropdown() {
 
 let historyChartInstance = null;
 
-async function loadHistoryAnalytics() {
-  const select = document.getElementById('history-monitor-select');
-  const rangeEl = document.getElementById('history-timeframe-select');
-  const tableBody = document.getElementById('history-logs-table-body');
-  if (!select || !select.value || !tableBody) return;
-
-  const monId = select.value;
-  const selectedOpt = select.options[select.selectedIndex];
-  const type = selectedOpt.getAttribute('data-type') || 'ping';
-
-  const rangeVal = rangeEl ? rangeEl.value : 'hours-1';
-
-  let queryParams = '';
-  if (rangeVal.startsWith('limit-')) {
-    queryParams = `?limit=${rangeVal.split('-')[1]}`;
-  } else if (rangeVal.startsWith('hours-')) {
-    queryParams = `?hours=${rangeVal.split('-')[1]}`;
-  }
-
-  tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Loading analytics...</td></tr>`;
-
-  const { httpUrl } = getApiUrls();
-  try {
-    const statusKey = `monitor-${monId}-status`;
-    const latencyKey = `monitor-${monId}-latency`;
-
-    const resStatus = await fetch(`${httpUrl}/api/monitors/logs/${statusKey}${queryParams}`);
-    const statusLogs = resStatus.ok ? await resStatus.json() : [];
-
-    const resLatency = await fetch(`${httpUrl}/api/monitors/logs/${latencyKey}${queryParams}`);
-    const latencyLogs = resLatency.ok ? await resLatency.json() : [];
-
-    if (statusLogs.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No logs items found for this prober range.</td></tr>`;
-      updateHistoryStats(0, 0, 0, 100);
-      drawHistoryChart([], []);
-      return;
-    }
-
-    // Zip and calculate stats by matching closest timestamp within 5 seconds
-    let totalLatency = 0;
-    let maxLatency = 0;
-    let healthyCount = 0;
-    let outages = 0;
-    let prevUp = true;
-
-    let tableRows = '';
-
-    const sortedStatus = [...statusLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    const sortedLatency = [...latencyLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-    const chronologicalDetails = [];
-
-    sortedStatus.forEach(statusLog => {
-      const statusTime = new Date(statusLog.timestamp).getTime();
-      let closestLatency = null;
-      let minDiff = Infinity;
-
-      sortedLatency.forEach(latLog => {
-        const latTime = new Date(latLog.timestamp).getTime();
-        const diff = Math.abs(statusTime - latTime);
-        if (diff < minDiff) {
-          minDiff = diff;
-          closestLatency = latLog;
-        }
-      });
-
-      // Align only if they are within a 5-second interval of each other
-      const latVal = (closestLatency && minDiff < 5000) ? parseFloat(closestLatency.value) : 0.0;
-      const isUpVal = isProbeStatusOnline(statusLog.value, type);
-
-      chronologicalDetails.push({
-        timestamp: statusLog.timestamp,
-        status: statusLog.value,
-        latency: latVal,
-        isUp: isUpVal
-      });
-    });
-
-    chronologicalDetails.forEach((log, idx) => {
-      totalLatency += log.latency;
-      if (log.latency > maxLatency) maxLatency = log.latency;
-      if (log.isUp) {
-        healthyCount++;
-        prevUp = true;
-      } else {
-        if (prevUp && idx > 0) {
-          outages++;
-        }
-        prevUp = false;
-      }
-    });
-
-    const avgLatency = chronologicalDetails.length > 0 ? (totalLatency / chronologicalDetails.length) : 0;
-    const uptimePct = chronologicalDetails.length > 0 ? (healthyCount / chronologicalDetails.length) * 100 : 100.0;
-
-    // Render stats
-    updateHistoryStats(avgLatency, maxLatency, outages, uptimePct);
-
-    // Build logs display (reverse chronological for table)
-    const reversedDetails = [...chronologicalDetails].reverse();
-    reversedDetails.forEach(log => {
-      const dt = new Date(log.timestamp).toLocaleString();
-      let statusStr = log.status;
-      if (statusStr === 'up' || statusStr === 'UP' || statusStr === 'ONLINE') {
-        statusStr = 'ONLINE';
-      } else if (statusStr === 'down' || statusStr === 'DOWN' || statusStr === 'OFFLINE') {
-        statusStr = 'OFFLINE';
-      } else {
-        const numCode = parseInt(statusStr);
-        if (!isNaN(numCode)) statusStr = `HTTP ${statusStr}`;
-      }
-      const isUp = log.isUp;
-      const color = isUp ? 'var(--color-optimal)' : '#f43f5e';
-
-      tableRows += `
-        <tr style="border-bottom:1px solid var(--border-soft);">
-          <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
-          <td style="padding:10px 14px; font-weight:700; color:${color};">${statusStr}</td>
-          <td style="padding:10px 14px; font-family:monospace;">${log.latency.toFixed(2)} ms</td>
-        </tr>`;
-    });
-    tableBody.innerHTML = tableRows;
-
-    // Render chart
-    const labels = chronologicalDetails.map(log => new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    const latencies = chronologicalDetails.map(log => log.latency);
-    const healthBooleans = chronologicalDetails.map(log => log.isUp);
-
-    drawHistoryChart(labels, latencies, healthBooleans);
-  } catch (err) {
-    tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:#f43f5e;">Error loading analytics: ${err.message}</td></tr>`;
-  }
-}
-
-function updateHistoryStats(avgLat, maxLat, outages, uptime) {
-  const avgEl = document.getElementById('history-stat-avg-latency');
-  const maxEl = document.getElementById('history-stat-max-latency');
-  const outagesEl = document.getElementById('history-stat-outages');
-  const uptimeEl = document.getElementById('history-stat-uptime');
-
-  if (avgEl) avgEl.textContent = `${avgLat.toFixed(1)} ms`;
-  if (maxEl) maxEl.textContent = `${maxLat.toFixed(1)} ms`;
-  if (outagesEl) outagesEl.textContent = String(outages);
-  if (uptimeEl) {
-    uptimeEl.textContent = `${uptime.toFixed(1)}%`;
-    if (uptime >= 99.0) {
-      uptimeEl.style.color = 'var(--color-optimal)';
-    } else if (uptime >= 95.0) {
-      uptimeEl.style.color = 'var(--accent-orange)';
-    } else {
-      uptimeEl.style.color = '#f43f5e';
-    }
-  }
-}
-
 window.historyTimeOffsetHours = 0;
 
 window.resetHistoryTimeOffset = function () {
@@ -4774,15 +4618,17 @@ function updateShiftButtonsState() {
       btnForward.disabled = true;
       btnForward.style.opacity = '0.5';
       btnForward.style.cursor = 'default';
-      if (btnForward.querySelector('i')) {
-        btnForward.querySelector('i').style.color = 'var(--text-secondary)';
+      const icon = btnForward.querySelector('i, svg');
+      if (icon) {
+        icon.style.color = 'var(--text-secondary)';
       }
     } else {
       btnForward.disabled = false;
       btnForward.style.opacity = '1.0';
       btnForward.style.cursor = 'pointer';
-      if (btnForward.querySelector('i')) {
-        btnForward.querySelector('i').style.color = '#fff';
+      const icon = btnForward.querySelector('i, svg');
+      if (icon) {
+        icon.style.color = '#fff';
       }
     }
   }
@@ -4801,11 +4647,33 @@ async function loadHistoryAnalytics() {
   const rangeVal = rangeEl ? rangeEl.value : 'hours-1';
 
   let queryParams = '';
-  if (rangeVal.startsWith('limit-')) {
-    queryParams = `?limit=${rangeVal.split('-')[1]}`;
-  } else if (rangeVal.startsWith('hours-')) {
-    const hours = rangeVal.split('-')[1];
-    queryParams = `?hours=${hours}&offset=${window.historyTimeOffsetHours || 0}`;
+  let hoursCount = 0;
+  if (rangeVal === 'custom') {
+    const startInput = document.getElementById('history-custom-start');
+    const endInput = document.getElementById('history-custom-end');
+    const customDiv = document.getElementById('history-custom-range-inputs');
+    if (customDiv) customDiv.style.display = 'flex';
+
+    if (!startInput || !endInput || !startInput.value || !endInput.value) {
+      tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Please choose start and end dates and click Apply.</td></tr>`;
+      return;
+    }
+
+    const startISO = new Date(startInput.value).toISOString();
+    const endISO = new Date(endInput.value).toISOString();
+    queryParams = `?start_time=${encodeURIComponent(startISO)}&end_time=${encodeURIComponent(endISO)}`;
+    hoursCount = Math.abs(new Date(endISO) - new Date(startISO)) / (1000 * 60 * 60);
+  } else {
+    const customDiv = document.getElementById('history-custom-range-inputs');
+    if (customDiv) customDiv.style.display = 'none';
+
+    if (rangeVal.startsWith('limit-')) {
+      queryParams = `?limit=${rangeVal.split('-')[1]}`;
+    } else if (rangeVal.startsWith('hours-')) {
+      const hours = rangeVal.split('-')[1];
+      queryParams = `?hours=${hours}&offset=${window.historyTimeOffsetHours || 0}`;
+      hoursCount = parseInt(hours) || 0;
+    }
   }
 
   tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Loading analytics...</td></tr>`;
@@ -4824,7 +4692,7 @@ async function loadHistoryAnalytics() {
     if (statusLogs.length === 0) {
       tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No logs items found for this prober range.</td></tr>`;
       updateHistoryStats(0, 0, 0, 100);
-      drawHistoryChart([], []);
+      drawHistoryChart([], [], [], 0, []);
       return;
     }
 
@@ -4913,12 +4781,23 @@ async function loadHistoryAnalytics() {
     });
     tableBody.innerHTML = tableRows;
 
-    // Render chart
-    const labels = chronologicalDetails.map(log => new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    // Render chart using compact 24h labels or multi-day labels
+    const includeDate = hoursCount >= 24;
+    const labels = chronologicalDetails.map(log => {
+      const d = new Date(log.timestamp);
+      if (includeDate) {
+        const month = d.toLocaleDateString([], { month: 'short' });
+        const day = d.toLocaleDateString([], { day: 'numeric' });
+        const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        return `${month} ${day} ${timeStr}`;
+      } else {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      }
+    });
     const latencies = chronologicalDetails.map(log => log.latency);
     const healthBooleans = chronologicalDetails.map(log => log.isUp);
 
-    drawHistoryChart(labels, latencies, healthBooleans, avgLatency);
+    drawHistoryChart(labels, latencies, healthBooleans, avgLatency, chronologicalDetails);
   } catch (err) {
     tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:#f43f5e;">Error loading analytics: ${err.message}</td></tr>`;
   }
@@ -4945,7 +4824,42 @@ function updateHistoryStats(avgLat, maxLat, outages, uptime) {
   }
 }
 
-function drawHistoryChart(labels, values, healths, avgLatency) {
+window.filterLogsTableToHighlight = function (timestampStr) {
+  const tableBody = document.getElementById('history-logs-table-body');
+  if (!tableBody) return;
+  const refTime = new Date(timestampStr).getTime();
+
+  const rows = tableBody.querySelectorAll('tr');
+  rows.forEach(row => {
+    const cell = row.querySelector('td');
+    if (!cell) return;
+    const rowTime = new Date(cell.textContent.trim()).getTime();
+    if (isNaN(rowTime)) return;
+
+    if (Math.abs(refTime - rowTime) <= 120000) {
+      row.style.display = '';
+      if (Math.abs(refTime - rowTime) <= 15000) {
+        row.style.background = 'rgba(59, 130, 246, 0.18)';
+      } else {
+        row.style.background = '';
+      }
+    } else {
+      row.style.display = 'none';
+    }
+  });
+};
+
+window.clearLogsTableFilter = function () {
+  const tableBody = document.getElementById('history-logs-table-body');
+  if (!tableBody) return;
+  const rows = tableBody.querySelectorAll('tr');
+  rows.forEach(row => {
+    row.style.display = '';
+    row.style.background = '';
+  });
+};
+
+function drawHistoryChart(labels, values, healths, avgLatency, chronologicalDetails) {
   const canvas = document.getElementById('analytics-chart-canvas');
   if (!canvas) return;
 
@@ -4958,13 +4872,11 @@ function drawHistoryChart(labels, values, healths, avgLatency) {
     historyChartInstance.destroy();
   }
 
-  // Create gradient fill
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createLinearGradient(0, 0, 0, 300);
   gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
   gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
 
-  // Map bullet point colors depending on healthy statuses (green vs red)
   const pointColors = healths.map(h => h ? 'var(--color-optimal)' : '#f43f5e');
 
   const datasets = [{
@@ -4985,7 +4897,7 @@ function drawHistoryChart(labels, values, healths, avgLatency) {
     datasets.push({
       label: 'Average Latency',
       data: Array(values.length).fill(avgLatency),
-      borderColor: 'rgba(244, 63, 94, 0.45)', // Rose-dashed guide line
+      borderColor: 'rgba(244, 63, 94, 0.45)',
       borderWidth: 1.5,
       borderDash: [5, 5],
       fill: false,
@@ -5003,18 +4915,86 @@ function drawHistoryChart(labels, values, healths, avgLatency) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onHover: (event, activeElements) => {
+        const detailsEl = document.getElementById('history-logs-advanced-details');
+        if (!detailsEl || !detailsEl.open) return;
+
+        if (activeElements && activeElements.length > 0) {
+          const idx = activeElements[0].index;
+          const selectedLog = chronologicalDetails[idx];
+          if (selectedLog && selectedLog.timestamp) {
+            window.filterLogsTableToHighlight(selectedLog.timestamp);
+          }
+        } else {
+          window.clearLogsTableFilter();
+        }
+      },
       plugins: {
-        legend: { display: false }
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#fff',
+          bodyColor: '#e2e8f0',
+          callbacks: {
+            title: function (context) {
+              const idx = context[0].dataIndex;
+              const logItem = chronologicalDetails[idx];
+              if (logItem && logItem.timestamp) {
+                const date = new Date(logItem.timestamp);
+                return date.toLocaleString([], {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: false
+                });
+              }
+              return context[0].label;
+            }
+          },
+          titleFont: {
+            family: "'Inter', system-ui, -apple-system, sans-serif",
+            weight: '600',
+            size: 11
+          },
+          bodyFont: {
+            family: "'Inter', system-ui, -apple-system, sans-serif",
+            size: 11
+          },
+          borderColor: 'var(--border-soft)',
+          borderWidth: 1,
+          padding: 10,
+          displayColors: true
+        }
       },
       scales: {
         x: {
-          grid: { color: 'rgba(255,255,255,0.05)' },
-          ticks: { color: 'var(--text-secondary)', maxRotation: 45, maxTicksLimit: 12 }
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          ticks: {
+            color: '#cbd5e1',
+            font: {
+              family: "'Inter', system-ui, -apple-system, sans-serif",
+              size: 11,
+              weight: '500'
+            },
+            maxRotation: 0,
+            maxTicksLimit: 8
+          }
         },
         y: {
-          grid: { color: 'rgba(255,255,255,0.05)' },
-          ticks: { color: 'var(--text-secondary)' },
-          suggestedMin: 0
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          ticks: {
+            color: '#cbd5e1',
+            font: {
+              family: "'Inter', system-ui, -apple-system, sans-serif",
+              size: 11,
+              weight: '500'
+            },
+            suggestedMin: 0
+          }
         }
       }
     }
@@ -5034,16 +5014,18 @@ window.setHostsLayout = function (layout) {
   const btnGrid = document.getElementById('btn-hosts-grid');
   const btnList = document.getElementById('btn-hosts-list');
   if (btnGrid && btnList) {
+    const gridIcon = btnGrid.querySelector('i, svg');
+    const listIcon = btnList.querySelector('i, svg');
     if (layout === 'grid') {
       btnGrid.style.background = 'rgba(255, 255, 255, 0.08)';
-      btnGrid.querySelector('i').style.color = '#fff';
+      if (gridIcon) gridIcon.style.color = '#fff';
       btnList.style.background = 'none';
-      btnList.querySelector('i').style.color = 'var(--text-secondary)';
+      if (listIcon) listIcon.style.color = 'var(--text-secondary)';
     } else {
       btnList.style.background = 'rgba(255, 255, 255, 0.08)';
-      btnList.querySelector('i').style.color = '#fff';
+      if (listIcon) listIcon.style.color = '#fff';
       btnGrid.style.background = 'none';
-      btnGrid.querySelector('i').style.color = 'var(--text-secondary)';
+      if (gridIcon) gridIcon.style.color = 'var(--text-secondary)';
     }
   }
 
@@ -5073,16 +5055,18 @@ function showHostsView() {
   const btnGrid = document.getElementById('btn-hosts-grid');
   const btnList = document.getElementById('btn-hosts-list');
   if (btnGrid && btnList) {
+    const gridIcon = btnGrid.querySelector('i, svg');
+    const listIcon = btnList.querySelector('i, svg');
     if (layout === 'grid') {
       btnGrid.style.background = 'rgba(255, 255, 255, 0.08)';
-      btnGrid.querySelector('i').style.color = '#fff';
+      if (gridIcon) gridIcon.style.color = '#fff';
       btnList.style.background = 'none';
-      btnList.querySelector('i').style.color = 'var(--text-secondary)';
+      if (listIcon) listIcon.style.color = 'var(--text-secondary)';
     } else {
       btnList.style.background = 'rgba(255, 255, 255, 0.08)';
-      btnList.querySelector('i').style.color = '#fff';
+      if (listIcon) listIcon.style.color = '#fff';
       btnGrid.style.background = 'none';
-      btnGrid.querySelector('i').style.color = 'var(--text-secondary)';
+      if (gridIcon) gridIcon.style.color = 'var(--text-secondary)';
     }
   }
 
