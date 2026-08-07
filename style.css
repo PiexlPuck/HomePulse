@@ -540,6 +540,13 @@ header {
 main.edit-mode .edit-handle,
 main.edit-mode .edit-settings,
 main.edit-mode .edit-code {
+  opacity: 0;
+  pointer-events: none;
+}
+
+main.edit-mode .card:hover .edit-handle,
+main.edit-mode .card:hover .edit-settings,
+main.edit-mode .card:hover .edit-code {
   opacity: 1;
   pointer-events: auto;
 }
@@ -702,11 +709,15 @@ main.edit-mode .card:hover {
   overflow: hidden;
   border-bottom-left-radius: 7px;
   border-bottom-right-radius: 7px;
+  display: flex;
+  align-items: stretch;
 }
 
 .sparkline {
+  flex-grow: 1;
   width: 100%;
   height: 100%;
+  display: block;
 }
 
 /* Flat colored bottom line graphic (e.g. Firewall card) */
@@ -1610,9 +1621,9 @@ main.edit-mode .status-pill {
   display: none !important;
 }
 
-/* Give header title some spacing so it doesn't collide with edit buttons */
+/* Give header title some spacing so it doesn't collide with edit buttons on hover */
 main.edit-mode .card-header {
-  padding-right: 64px;
+  padding-right: 0px;
 }
 
 /* ──────────────────────────────────────────

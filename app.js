@@ -153,6 +153,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Sync dashboard layout and configuration registry from database
   await syncDashboardConfigFromServer();
 
+  // Load and apply system settings immediately on load for initial clock timezone alignment
+  await loadInitialSettingsOnStart();
+
   // Initialize header timestamp
   updateHeaderTime();
   setInterval(updateHeaderTime, 1000);
@@ -179,6 +182,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Sync discovery queue badge on load - Deactivated per request
   // syncDiscoveryBadge();
 });
+
+async function loadInitialSettingsOnStart() {
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/settings`);
+    if (res.ok) {
+      const data = await res.json();
+      window.currentSettingsData = data;
+      applyGlobalSettings(data);
+    }
+  } catch (err) {
+    console.warn("Could not load initial settings:", err);
+  }
+}
 
 // Active settings state
 let currentTimezone = 'UTC';
@@ -387,6 +404,24 @@ function buildDashboardCards(entitiesMap) {
     syncLocalConfigToServer();
   }
 
+  // Normalize widgets: resolve sensor_id strings to { nodeId, entityKey } structures to support HA style entity tags
+  widgets.forEach(widget => {
+    if (widget.entity && typeof widget.entity === 'string') {
+      const ref = window.resolveSensorIdToEntityRef(widget.entity);
+      if (ref) {
+        widget.entities = [ref];
+      }
+    }
+    if (widget.entities && Array.isArray(widget.entities)) {
+      widget.entities = widget.entities.map(item => {
+        if (typeof item === 'string') {
+          return window.resolveSensorIdToEntityRef(item) || item;
+        }
+        return item;
+      });
+    }
+  });
+
   // Preserve the plus-circle add placeholder
   const placeholder = grid.querySelector('.card-placeholder');
 
@@ -446,12 +481,14 @@ function buildDashboardCards(entitiesMap) {
         const displayName = widget.title || item.name || item.entity_key;
         const displayUnit = widget.options.unit !== undefined ? widget.options.unit : (item.unit || '');
         const displayColor = widget.options.color || item.color || 'var(--color-optimal)';
+        const sensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
 
         let headerHTML = `
           <div class="card-header">
             <div class="card-title-area">
               <span class="card-title">${displayName}</span>
               <span class="card-subtitle">${item.node_id}.local</span>
+              <span class="card-subtitle" style="font-size:0.6rem; opacity:0.5; margin-top:2px;">Entity ID: ${sensorId}</span>
             </div>
             <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
           </div>
@@ -768,18 +805,29 @@ function buildDashboardCards(entitiesMap) {
     // TYPE E: System Audit list panel widget
     else if (widget.type === 'audit') {
       cardEl.innerHTML = `
-        <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
+        <div class="card-header" style="flex-wrap: wrap; gap: 12px; display: flex; justify-content: space-between; align-items: center;">
           <div class="card-title-area">
             <span class="card-title">${widget.title || "Global System Audit"}</span>
             <span class="card-subtitle">Realtime DB event tracking</span>
           </div>
-          <!-- Severity Filtering Controls -->
-          <div style="display: flex; gap: 4px;">
-            <button class="audit-filter-btn active" data-filter="all" onclick="filterAuditLogs('all')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: var(--bg-secondary); color: var(--text-primary); border-radius: 4px; cursor: pointer;">All</button>
-            <button class="audit-filter-btn" data-filter="info" onclick="filterAuditLogs('info')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Info</button>
-            <button class="audit-filter-btn" data-filter="success" onclick="filterAuditLogs('success')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Success</button>
-            <button class="audit-filter-btn" data-filter="warning" onclick="filterAuditLogs('warning')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Warning</button>
-            <button class="audit-filter-btn" data-filter="error" onclick="filterAuditLogs('error')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Error</button>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <!-- Severity Filtering Controls -->
+            <div style="display: flex; gap: 4px;">
+              <button class="audit-filter-btn active" data-filter="all" onclick="filterAuditLogs('all')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: var(--bg-secondary); color: var(--text-primary); border-radius: 4px; cursor: pointer;">All</button>
+              <button class="audit-filter-btn" data-filter="info" onclick="filterAuditLogs('info')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Info</button>
+              <button class="audit-filter-btn" data-filter="success" onclick="filterAuditLogs('success')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Success</button>
+              <button class="audit-filter-btn" data-filter="warning" onclick="filterAuditLogs('warning')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Warning</button>
+              <button class="audit-filter-btn" data-filter="error" onclick="filterAuditLogs('error')" style="font-size:0.56rem; padding: 2px 6px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Error</button>
+            </div>
+            <!-- Exporter Mappings -->
+            <div style="display: flex; gap: 4px; border-left: 1px solid var(--border-soft); padding-left: 10px;">
+              <button onclick="exportAuditLogs('json')" title="Export JSON" style="background: transparent; border: 1px solid var(--border-soft); color: var(--text-secondary); padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.56rem; display: flex; gap: 4px; align-items: center;">
+                <i data-lucide="download" style="width: 10px; height: 10px;"></i> JSON
+              </button>
+              <button onclick="exportAuditLogs('csv')" title="Export CSV" style="background: transparent; border: 1px solid var(--border-soft); color: var(--text-secondary); padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.56rem; display: flex; gap: 4px; align-items: center;">
+                <i data-lucide="download" style="width: 10px; height: 10px;"></i> CSV
+              </button>
+            </div>
           </div>
         </div>
         <div class="card-body" style="padding:0 16px 16px 16px;">
@@ -1095,6 +1143,12 @@ function addAuditEntry(type, message) {
   const pad = (num) => String(num).padStart(2, '0');
   const timestamp = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
+  if (!window.latestAuditLogs) window.latestAuditLogs = [];
+  window.latestAuditLogs.unshift({ timestamp, type, message });
+  if (window.latestAuditLogs.length > 25) {
+    window.latestAuditLogs.pop();
+  }
+
   const auditRow = document.createElement('div');
   auditRow.className = `audit-row`;
   auditRow.dataset.severity = type;
@@ -1119,11 +1173,55 @@ function addAuditEntry(type, message) {
   auditList.insertBefore(auditRow, auditList.firstChild);
   if (window.lucide) window.lucide.createIcons();
 
-  // Enforce scroll history item limit (only count entries that match current filter/all to prevent overflow)
+  // Enforce scroll history item limit
   while (auditList.children.length > 25) {
     auditList.removeChild(auditList.lastChild);
   }
 }
+
+window.exportAuditLogs = function (format) {
+  const logs = window.latestAuditLogs || [];
+  if (logs.length === 0) {
+    showToast("No audit logs available to export.", "warning");
+    return;
+  }
+
+  const filter = window.activeAuditFilter || 'all';
+  const filteredLogs = logs.filter(log => filter === 'all' || log.type === filter);
+  if (filteredLogs.length === 0) {
+    showToast(`No audit logs of severity "${filter}" available to export.`, "warning");
+    return;
+  }
+
+  let content = '';
+  let filename = `audit_logs_${Date.now()}`;
+  let mimeType = 'text/plain';
+
+  if (format === 'json') {
+    content = JSON.stringify(filteredLogs, null, 2);
+    filename += '.json';
+    mimeType = 'application/json';
+  } else if (format === 'csv') {
+    content = 'Timestamp,Level,Message\n';
+    filteredLogs.forEach(log => {
+      const safeMsg = (log.message || '').replace(/"/g, '""');
+      content += `"${log.timestamp}","${log.type}","${safeMsg}"\n`;
+    });
+    filename += '.csv';
+    mimeType = 'text/csv';
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast(`Successfully exported audit logs to ${format.toUpperCase()}`, 'success');
+};
 
 // 10. mDNS Node Discovery Handlers
 function showDiscoveryAlert(nodeId, name, ip) {
@@ -1457,6 +1555,7 @@ function hideAllViews() {
   const devtoolsView = document.getElementById('developer-tools-view');
   const uptimeHistoryView = document.getElementById('uptime-history-view');
   const hostsView = document.getElementById('hosts-view');
+  const hostDetailView = document.getElementById('host-detail-view');
 
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
@@ -1466,6 +1565,10 @@ function hideAllViews() {
   if (devtoolsView) devtoolsView.classList.add('hide');
   if (uptimeHistoryView) uptimeHistoryView.classList.add('hide');
   if (hostsView) hostsView.classList.add('hide');
+  if (hostDetailView) hostDetailView.classList.add('hide');
+
+  const tabBar = document.getElementById('tab-bar');
+  if (tabBar) tabBar.style.display = 'none';
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 }
@@ -1501,6 +1604,9 @@ function showDashboardView() {
   const bottomSection = document.querySelector('.bottom-section');
   if (dashGrid) dashGrid.style.display = '';
   if (bottomSection) bottomSection.style.display = '';
+
+  const tabBar = document.getElementById('tab-bar');
+  if (tabBar) tabBar.style.display = 'flex';
 
   const navDashboard = document.getElementById('nav-dashboard');
   if (navDashboard) navDashboard.classList.add('active');
@@ -1679,20 +1785,8 @@ async function loadSettings() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    // Populate controls with loaded values
-    const intervalEl = document.getElementById('setting-interval');
-    const intervalVal = document.getElementById('setting-interval-val');
-    if (intervalEl && data.telemetry_interval) {
-      intervalEl.value = data.telemetry_interval;
-      if (intervalVal) intervalVal.textContent = `${data.telemetry_interval}s`;
-    }
-
-    const retentionEl = document.getElementById('setting-retention');
-    const retentionVal = document.getElementById('setting-retention-val');
-    if (retentionEl && data.log_retention) {
-      retentionEl.value = data.log_retention;
-      if (retentionVal) retentionVal.textContent = `${data.log_retention} days`;
-    }
+    // Cache settings globally for header theme sync checks
+    window.currentSettingsData = data;
 
     const tzEl = document.getElementById('setting-timezone');
     if (tzEl && data.timezone) {
@@ -1715,28 +1809,11 @@ async function loadSettings() {
 
   // Always initialize interactive bindings
   initSettingsControls();
+  loadPruneDropdowns();
 }
 
 // Bind all interactive settings controls
 function initSettingsControls() {
-  // Slider: polling interval
-  const intervalEl = document.getElementById('setting-interval');
-  const intervalVal = document.getElementById('setting-interval-val');
-  if (intervalEl) {
-    intervalEl.addEventListener('input', () => {
-      if (intervalVal) intervalVal.textContent = `${intervalEl.value}s`;
-    });
-  }
-
-  // Slider: log retention
-  const retentionEl = document.getElementById('setting-retention');
-  const retentionVal = document.getElementById('setting-retention-val');
-  if (retentionEl) {
-    retentionEl.addEventListener('input', () => {
-      if (retentionVal) retentionVal.textContent = `${retentionEl.value} days`;
-    });
-  }
-
   // Timezone dropdown: instantly update header clock
   const tzEl = document.getElementById('setting-timezone');
   if (tzEl) {
@@ -1763,21 +1840,31 @@ function initSettingsControls() {
     });
   }
 
-
-
   // Save settings button
   const saveBtn = document.getElementById('btn-save-settings');
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
       const { httpUrl } = getApiUrls();
       const payload = {
-        telemetry_interval: parseInt(document.getElementById('setting-interval')?.value || '3'),
-        log_retention: parseInt(document.getElementById('setting-retention')?.value || '7'),
         timezone: document.getElementById('setting-timezone')?.value || 'UTC',
         preshared_key: document.getElementById('setting-psk')?.value || 'device_pin_12345',
         theme: document.querySelector('.theme-btn.active')?.getAttribute('data-theme') || 'midnight',
         layout_compact: String(document.getElementById('setting-compact')?.checked || false)
       };
+
+      // Preserve current background telemetry settings if they exist
+      if (window.currentSettingsData) {
+        if (window.currentSettingsData.telemetry_interval !== undefined) {
+          payload.telemetry_interval = parseInt(window.currentSettingsData.telemetry_interval);
+        }
+        if (window.currentSettingsData.log_retention !== undefined) {
+          payload.log_retention = parseInt(window.currentSettingsData.log_retention);
+        }
+        if (window.currentSettingsData.auto_prune_enabled !== undefined) {
+          payload.auto_prune_enabled = String(window.currentSettingsData.auto_prune_enabled);
+        }
+      }
+
       try {
         const res = await fetch(`${httpUrl}/api/settings`, {
           method: 'POST',
@@ -1786,6 +1873,8 @@ function initSettingsControls() {
         });
         if (res.ok) {
           showToast('Settings saved successfully', 'success');
+          if (!window.currentSettingsData) window.currentSettingsData = {};
+          Object.assign(window.currentSettingsData, payload);
           // Navigate back to dashboard
           setTimeout(showDashboardView, 800);
         } else {
@@ -1809,6 +1898,235 @@ function applyTheme(theme) {
     btn.classList.toggle('active', btn.getAttribute('data-theme') === theme);
   });
 }
+
+function updateRetentionVisualizer(days) {
+  const bar = document.getElementById('visualizer-bar');
+  const pctText = document.getElementById('visualizer-load-pct');
+  const desc = document.getElementById('visualizer-desc');
+  if (!bar || !pctText || !desc) return;
+
+  const pct = Math.min(100, Math.round((days / 30) * 100));
+  bar.style.width = `${pct}%`;
+
+  let scale = 'Low';
+  let color = 'var(--color-optimal)';
+  let impact = 'Minimal';
+  let mb = Math.round(days * 6.5);
+
+  if (pct > 75) {
+    scale = 'High';
+    color = '#ef4444';
+    impact = 'Moderate impact on query speed';
+    bar.style.background = 'linear-gradient(90deg, #10b981, #f59e0b, #ef4444)';
+  } else if (pct > 35) {
+    scale = 'Medium';
+    color = '#f59e0b';
+    impact = 'Negligible';
+    bar.style.background = 'linear-gradient(90deg, #10b981, #f59e0b)';
+  } else {
+    scale = 'Optimized';
+    color = 'var(--color-optimal)';
+    impact = 'None';
+    bar.style.background = 'var(--color-optimal)';
+  }
+
+  pctText.textContent = `${scale} (${pct}%)`;
+  pctText.style.color = color;
+  desc.textContent = `Storing logs for ${days} days. Estimated database storage requirement: ~${mb} MB. Performance impact: ${impact}.`;
+}
+
+window.triggerManualPrune = async function (options) {
+  const { httpUrl } = getApiUrls();
+  const formatText = options.age === 'all' ? 'All historical logs (TRUNCATE)' : `logs older than ${options.age === 'year' ? '1 Year' : '30 Days'}`;
+
+  try {
+    // 1. Dry run check
+    const checkRes = await fetch(`${httpUrl}/api/support/prune`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...options, dry_run: true })
+    });
+    if (!checkRes.ok) throw new Error(`HTTP ${checkRes.status}`);
+    const dryData = await checkRes.json();
+
+    const count = parseInt(dryData.deleted_logs) + parseInt(dryData.deleted_audits);
+    if (count === 0 && options.age !== 'all') {
+      showToast('Dry run check: No matching logs found to prune.', 'info');
+      return;
+    }
+
+    // 2. Warn user with detailed information
+    const userMsg = `Dry run estimation: This will delete approximately ${dryData.deleted_logs} telemetry logs and ${dryData.deleted_audits} system audits. Are you sure you want to permanently prune this data?`;
+    if (!await showConfirm(userMsg, "Confirm Manual Database Pruning")) {
+      return;
+    }
+
+    // 3. Execution
+    showToast('Executing manual database pruning...', 'info');
+    const pruneRes = await fetch(`${httpUrl}/api/support/prune`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...options, dry_run: false })
+    });
+    if (!pruneRes.ok) throw new Error(`HTTP ${pruneRes.status}`);
+    const pruneData = await pruneRes.json();
+    showToast(`Prune completed. Cleaned ${pruneData.deleted_logs} logs and ${pruneData.deleted_audits} audits.`, 'success');
+  } catch (err) {
+    alert(`Failed to execute manual database check or prune: ${err.message}`);
+  }
+};
+
+// Dynamic host/entity loading for Advanced DB Pruning
+async function loadPruneDropdowns() {
+  const hostSelect = document.getElementById('prune-host-select');
+  const entitySelect = document.getElementById('prune-entity-select');
+  if (!hostSelect || !entitySelect) return;
+
+  hostSelect.innerHTML = '<option value="">-- All Hosts --</option>';
+  entitySelect.innerHTML = '<option value="">-- All Entities --</option>';
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/hosts`);
+    if (res.ok) {
+      const hosts = await res.json();
+      hosts.forEach(h => {
+        const opt = document.createElement('option');
+        opt.value = h.id;
+        opt.textContent = `${h.name} (${h.target})`;
+        hostSelect.appendChild(opt);
+      });
+    }
+  } catch (err) {
+    console.error("Failed to load hosts for pruning:", err);
+  }
+
+  // Populate entities
+  if (window.cachedEntities) {
+    Object.keys(window.cachedEntities).forEach(key => {
+      const ent = window.cachedEntities[key];
+      const opt = document.createElement('option');
+      opt.value = ent.entity_key;
+      opt.textContent = `${ent.name || ent.entity_key} [${ent.node_id}]`;
+      entitySelect.appendChild(opt);
+    });
+  }
+}
+
+window.clearPruneFilters = function () {
+  const hostSel = document.getElementById('prune-host-select');
+  const entSel = document.getElementById('prune-entity-select');
+  const startD = document.getElementById('prune-start-date');
+  const endD = document.getElementById('prune-end-date');
+  if (hostSel) hostSel.value = "";
+  if (entSel) entSel.value = "";
+  if (startD) startD.value = "";
+  if (endD) endD.value = "";
+};
+
+window.executeAdvancedPrune = async function () {
+  const hostId = document.getElementById('prune-host-select')?.value;
+  const entityKey = document.getElementById('prune-entity-select')?.value;
+  const startDate = document.getElementById('prune-start-date')?.value;
+  const endDate = document.getElementById('prune-end-date')?.value;
+
+  const payload = {};
+  if (hostId) payload.host_id = parseInt(hostId);
+  if (entityKey) payload.entity_key = entityKey;
+  if (startDate) payload.start_date = startDate;
+  if (endDate) payload.end_date = endDate;
+
+  if (Object.keys(payload).length === 0) {
+    alert("Please select at least one filter (Host, Entity metric, Start date, or End date). To clean the whole DB, please use the TRUNCATE preset button.");
+    return;
+  }
+
+  const { httpUrl } = getApiUrls();
+  try {
+    // 1. Dry run confirmation
+    const checkRes = await fetch(`${httpUrl}/api/support/prune`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, dry_run: true })
+    });
+    if (!checkRes.ok) throw new Error(`HTTP ${checkRes.status}`);
+    const dryData = await checkRes.json();
+
+    const count = parseInt(dryData.deleted_logs) + parseInt(dryData.deleted_audits);
+    if (count === 0) {
+      showToast('Dry run check: No matching records found for these pruning filters.', 'info');
+      return;
+    }
+
+    const userMsg = `Dry run estimation: This will delete approximately ${dryData.deleted_logs} telemetry logs and ${dryData.deleted_audits} audits. Are you sure you want to permanently prune this data?`;
+    if (!await showConfirm(userMsg, "Confirm Filtered Database Pruning")) {
+      return;
+    }
+
+    // 2. Real prune execution
+    showToast('Executing custom database pruning...', 'info');
+    const pruneRes = await fetch(`${httpUrl}/api/support/prune`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, dry_run: false })
+    });
+    if (!pruneRes.ok) throw new Error(`HTTP ${pruneRes.status}`);
+    const pruneData = await pruneRes.json();
+    showToast(`Prune completed. Cleaned ${pruneData.deleted_logs} logs and ${pruneData.deleted_audits} audits.`, 'success');
+    clearPruneFilters();
+  } catch (err) {
+    alert(`Failed to execute custom database prune: ${err.message}`);
+  }
+};
+
+window.cycleTheme = async function () {
+  const themes = ['midnight', 'glass', 'cozy', 'cyber'];
+  let currentTheme = 'midnight';
+  if (document.body.classList.contains('theme-glass')) {
+    currentTheme = 'glass';
+  } else if (document.body.classList.contains('theme-cozy')) {
+    currentTheme = 'cozy';
+  } else if (document.body.classList.contains('theme-cyber')) {
+    currentTheme = 'cyber';
+  }
+
+  const currentIndex = themes.indexOf(currentTheme);
+  const nextTheme = themes[(currentIndex + 1) % themes.length];
+
+  applyTheme(nextTheme);
+
+  const { httpUrl } = getApiUrls();
+  try {
+    let settings = {};
+    if (window.currentSettingsData) {
+      settings = { ...window.currentSettingsData };
+    } else {
+      const res = await fetch(`${httpUrl}/api/settings`);
+      if (res.ok) {
+        settings = await res.json();
+      }
+    }
+
+    settings.theme = nextTheme;
+    // ensure defaults are met for backend schema validation
+    if (!settings.telemetry_interval) settings.telemetry_interval = 3;
+    if (!settings.log_retention) settings.log_retention = 7;
+    if (!settings.timezone) settings.timezone = 'UTC';
+    if (!settings.preshared_key) settings.preshared_key = 'device_pin_12345';
+    if (!settings.layout_compact) settings.layout_compact = 'false';
+    if (!settings.auto_prune_enabled) settings.auto_prune_enabled = 'false';
+
+    await fetch(`${httpUrl}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    window.currentSettingsData = settings;
+    showToast(`Theme switched to ${nextTheme}`, 'info');
+  } catch (err) {
+    console.error('Failed to auto-save cycled theme:', err);
+  }
+};
 
 // ─────────────────────────────────────────
 // DRAG-AND-DROP & CARD EDITOR IMPLEMENTATION
@@ -2066,7 +2384,8 @@ function initializeWidgets() {
     tab: "main",
     entities: [
       { nodeId: "core-mon", entityKey: "database-status" },
-      { nodeId: "core-mon", entityKey: "database-latency" }
+      { nodeId: "core-mon", entityKey: "database-latency" },
+      { nodeId: "core-mon", entityKey: "database-storage-pct" }
     ],
     options: { gridWidth: 2, gridHeight: 1 }
   });
@@ -2074,7 +2393,7 @@ function initializeWidgets() {
   // Add remaining entities as standard single-widget cards
   Object.keys(cachedEntities).forEach(key => {
     const item = cachedEntities[key];
-    if (item.entity_key === 'database-status' || item.entity_key === 'database-latency') return;
+    if (item.entity_key === 'database-status' || item.entity_key === 'database-latency' || item.entity_key === 'database-storage-pct') return;
 
     const widgetId = `widget-${item.node_id}-${item.entity_key}`;
     if (item.type === 'control') {
@@ -2196,6 +2515,18 @@ function openCardEditor(widgetId, initialMode = 'ui') {
 
   // Bind initial tab state to UI
   toggleWidgetEditorMode(initialMode);
+
+  // Initialize and bind YAML Live Preview
+  const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+  if (yamlTextarea) {
+    updateYamlPreview(yamlTextarea.value);
+
+    const onYamlInput = () => {
+      updateYamlPreview(yamlTextarea.value);
+    };
+    yamlTextarea.removeEventListener('input', onYamlInput);
+    yamlTextarea.addEventListener('input', onYamlInput);
+  }
 }
 
 function saveWidgetSettings() {
@@ -2381,6 +2712,108 @@ function syncYAMLToFormFields() {
   } catch (err) {
     // Ignore draft parse errors during typing switches
   }
+}
+
+function updateYamlPreview(yamlStr) {
+  const errBanner = document.getElementById('edit-widget-yaml-error');
+  const previewWrapper = document.getElementById('yaml-preview-card-wrapper');
+  if (!previewWrapper) return;
+
+  try {
+    const parsed = jsyaml.load(yamlStr);
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error("YAML must represent a valid Lovelace card object structure.");
+    }
+    if (!parsed.type) {
+      throw new Error("Card configuration is missing a 'type' field.");
+    }
+
+    if (parsed.entity && typeof parsed.entity === 'string') {
+      const ref = window.resolveSensorIdToEntityRef(parsed.entity);
+      if (ref) parsed.entities = [ref];
+    }
+    if (parsed.entities && Array.isArray(parsed.entities)) {
+      parsed.entities = parsed.entities.map(item => {
+        if (typeof item === 'string') {
+          return window.resolveSensorIdToEntityRef(item) || item;
+        }
+        return item;
+      });
+    }
+
+    if (errBanner) errBanner.style.display = 'none';
+    previewWrapper.innerHTML = renderMockCardHTML(parsed);
+  } catch (e) {
+    if (errBanner) {
+      errBanner.textContent = "Live Parse Warning: " + e.message;
+      errBanner.style.display = 'block';
+    }
+  }
+}
+
+function renderMockCardHTML(widget) {
+  const title = widget.title || "Untitled Card";
+  const type = widget.type || "sensor";
+  const unit = (widget.options && widget.options.unit) || "";
+  const color = (widget.options && widget.options.color) || "var(--color-optimal)";
+
+  let body = '';
+  if (type === 'gauge') {
+    body = `
+      <div class="card-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1;">
+        <div style="width:70px; height:35px; background:rgba(255,255,255,0.05); border-radius:35px 35px 0 0; position:relative; overflow:hidden; border:1px solid var(--border-soft);">
+          <div style="position:absolute; bottom:0; left:0; width:100%; height:100%; background:${color}; transform:rotate(45deg); transform-origin:bottom center;"></div>
+        </div>
+        <div style="font-size:0.8rem; font-weight:bold; margin-top:6px;">50<span style="font-size:0.55rem;"> ${unit}</span></div>
+      </div>
+    `;
+  } else if (type === 'control') {
+    body = `
+      <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+        <div style="font-size:0.8rem; font-weight:bold; margin-bottom:4px;">ON</div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:0.6rem; color:var(--text-secondary);">Active</span>
+          <label class="switch" style="scale:0.7; pointer-events:none;"><input type="checkbox" checked><span class="slider"></span></label>
+        </div>
+      </div>
+    `;
+  } else if (type === 'value') {
+    body = `
+      <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+        <div style="font-size:0.9rem; font-weight:bold;">84.2<span style="font-size:0.6rem;"> ${unit}</span></div>
+        <div style="height:3px; background:${color}; margin-top:8px; border-radius:1px;"></div>
+      </div>
+    `;
+  } else {
+    // sensor
+    body = `
+      <div class="card-body" style="padding-bottom: 0; flex:1; display:flex; flex-direction:column; justify-content:flex-end;">
+        <div style="font-size:0.9rem; font-weight:bold; margin-bottom:6px;">32<span style="font-size:0.6rem;"> ${unit}</span></div>
+        <div style="height:24px; width:100%; display:flex; align-items:flex-end; gap:2px;">
+          <div style="flex:1; height:8px; background:${color}; opacity:0.8; border-radius:1px;"></div>
+          <div style="flex:1; height:12px; background:${color}; opacity:0.8; border-radius:1px;"></div>
+          <div style="flex:1; height:18px; background:${color}; opacity:0.8; border-radius:1px;"></div>
+          <div style="flex:1; height:14px; background:${color}; opacity:0.8; border-radius:1px;"></div>
+          <div style="flex:1; height:20px; background:${color}; opacity:0.8; border-radius:1px;"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:rgba(255,255,255,0.02); pointer-events:none; display:flex; flex-direction:column; min-height:120px; box-sizing:border-box; margin:0; width: 100%;">
+      <div class="card-header" style="padding:8px 12px; border-bottom:1px solid var(--border-soft); display:flex; justify-content:space-between; align-items:center;">
+        <div class="card-title-area" style="display:flex; flex-direction:column;">
+          <span class="card-title" style="font-size:0.75rem; font-weight:bold; color:#fff;">${title}</span>
+          <span class="card-subtitle" style="font-size:0.55rem; color:var(--text-secondary);">preview-node.local</span>
+        </div>
+        <span class="status-pill success" style="font-size:0.5rem; padding:1px 4px;">Stable</span>
+      </div>
+      <div style="padding:8px 12px; flex:1; display:flex; flex-direction:column; justify-content:space-between; min-height:80px;">
+        ${body}
+      </div>
+    </div>
+  `;
 }
 
 async function deleteWidgetSettings() {
@@ -5113,15 +5546,15 @@ async function loadHosts() {
           : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
 
         return `
-          <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft);">
+          <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft); cursor:pointer;" onclick="openHostDetail(${host.id})">
             <div>
               <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
                 <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
                 <div style="display:flex; gap:6px;">
-                  <button class="btn-icon" onclick="openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
+                  <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
                     <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
                   </button>
-                  <button class="btn-icon" onclick="deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
+                  <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
                     <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
                   </button>
                 </div>
@@ -5148,23 +5581,25 @@ async function loadHosts() {
           : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
 
         return `
-          <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; border-radius:8px; border:1px solid var(--border-soft); gap:16px; min-height:unset;">
-            <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
-              <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
-              <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">${host.target}</p>
+          <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; border-radius:8px; border:1px solid var(--border-soft); gap:12px; min-height:unset; cursor:pointer;" onclick="openHostDetail(${host.id})">
+            <div style="display:flex; justify-content:space-between; align-items:center; width: 100%;">
+              <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
+                <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
+                <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">${host.target}</p>
+              </div>
+              <div style="display:flex; align-items:center; gap:20px;">
+                <div style="display:flex; gap:6px; border-left:1px solid var(--border-soft); padding-left:16px;">
+                  <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
+                    <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
+                  </button>
+                  <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
+                    <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div style="display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
-              <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-                ${checkersHtml}
-              </div>
-              <div style="display:flex; gap:6px; border-left:1px solid var(--border-soft); padding-left:16px;">
-                <button class="btn-icon" onclick="openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
-                  <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
-                </button>
-                <button class="btn-icon" onclick="deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
-                  <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
-                </button>
-              </div>
+            <div style="border-top:1px solid var(--border-soft); padding-top:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; width: 100%;">
+              ${checkersHtml}
             </div>
           </div>`;
       }).join('');
@@ -5191,6 +5626,12 @@ window.openAddHostModal = function () {
   document.getElementById('host-port-number').value = '';
   document.getElementById('host-port-number').disabled = true;
 
+  const intervalEl = document.getElementById('host-polling-interval');
+  if (intervalEl) {
+    intervalEl.value = 3;
+    document.getElementById('host-polling-interval-val').textContent = '3s';
+  }
+
   window.openModal('host-modal');
 };
 
@@ -5209,6 +5650,12 @@ window.openEditHostModal = function (hostId) {
   document.getElementById('host-check-port').checked = host.port_enabled;
   document.getElementById('host-port-number').value = host.port_number || '';
   document.getElementById('host-port-number').disabled = !host.port_enabled;
+
+  const intervalEl = document.getElementById('host-polling-interval');
+  if (intervalEl) {
+    intervalEl.value = host.polling_interval || 3;
+    document.getElementById('host-polling-interval-val').textContent = (host.polling_interval || 3) + 's';
+  }
 
   window.openModal('host-modal');
 };
@@ -5234,7 +5681,8 @@ window.submitSaveHost = async function () {
     port_enabled: document.getElementById('host-check-port').checked,
     port_number: document.getElementById('host-check-port').checked
       ? parseInt(document.getElementById('host-port-number').value) || null
-      : null
+      : null,
+    polling_interval: parseInt(document.getElementById('host-polling-interval')?.value || '3')
   };
 
   try {
@@ -5304,6 +5752,186 @@ window.generateSupportLogs = async function () {
   } catch (err) {
     if (typeof showToast === 'function') showToast(`Support log generation failed: ${err.message}`, "error");
     else alert(`Support log generation failed: ${err.message}`);
+  }
+};
+
+window.getSensorIdForEntity = function (nodeId, entityKey, name, type) {
+  if (nodeId === 'core-mon') {
+    if (entityKey === 'cpu-utilization') return 'sensor.cpu_utilization';
+    if (entityKey === 'memory-saturation') return 'sensor.memory_saturation';
+    if (entityKey === 'network-throughput') return 'sensor.network_throughput';
+    if (entityKey === 'server-room-temp') return 'sensor.cpu_temperature';
+    if (entityKey === 'database-status') return 'sensor.database_status';
+    if (entityKey === 'database-latency') return 'sensor.database_latency';
+    if (entityKey === 'database-storage-pct') return 'sensor.database_storage_pct';
+  }
+
+  if (nodeId === 'monitors') {
+    const match = entityKey.match(/^monitor-(\d+)-(status|latency)$/);
+    if (match) {
+      const monId = match[1];
+      const category = match[2];
+
+      const slugify = (str) => {
+        return str
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/[\s_-]+/g, '_')
+          .replace(/^-+|-+$/g, '');
+      };
+
+      let monNameSlug = `monitor_${monId}`;
+      let monType = 'ping';
+
+      if (name) {
+        monNameSlug = slugify(name
+          .replace(/\s+Status$/i, '')
+          .replace(/\s+Latency$/i, '')
+          .replace(/\s+Check$/i, '')
+          .replace(/\s*\(Ping\)$/i, '')
+          .replace(/\s*\(HTTP\)$/i, '')
+          .replace(/\s*\(HTTPS\)$/i, '')
+          .replace(/\s*\(SSL\)$/i, '')
+          .replace(/\s*\(Port\)$/i, '')
+        );
+      }
+      if (type) {
+        monType = type;
+      }
+
+      if (category === 'status') {
+        const domain = (monType === 'ping') ? 'ping' : 'binary_sensor';
+        return `${domain}.${monNameSlug}`;
+      } else {
+        return `sensor.${monNameSlug}_latency`;
+      }
+    }
+  }
+
+  return `${nodeId}.${entityKey}`.replace(/-/g, '_');
+};
+
+window.resolveSensorIdToEntityRef = function (sensorId) {
+  if (!cachedEntities) return null;
+  const matched = Object.keys(cachedEntities).find(key => {
+    const item = cachedEntities[key];
+    const id = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
+    return id === sensorId;
+  });
+
+  if (matched) {
+    const item = cachedEntities[matched];
+    return { nodeId: item.node_id, entityKey: item.entity_key };
+  }
+
+  const parts = sensorId.split('.');
+  if (parts.length === 2) {
+    const slug = parts[1];
+    if (slug === 'cpu_utilization') return { nodeId: 'core-mon', entityKey: 'cpu-utilization' };
+    if (slug === 'memory_saturation') return { nodeId: 'core-mon', entityKey: 'memory-saturation' };
+    if (slug === 'network_throughput') return { nodeId: 'core-mon', entityKey: 'network-throughput' };
+    if (slug === 'cpu_temperature') return { nodeId: 'core-mon', entityKey: 'server-room-temp' };
+    if (slug === 'database_status') return { nodeId: 'core-mon', entityKey: 'database-status' };
+    if (slug === 'database_latency') return { nodeId: 'core-mon', entityKey: 'database-latency' };
+    if (slug === 'database_storage_pct') return { nodeId: 'core-mon', entityKey: 'database-storage-pct' };
+  }
+  return null;
+};
+
+window.openHostDetail = async function (hostId) {
+  if (!window.currentHosts) return;
+  const host = window.currentHosts.find(h => h.id === hostId);
+  if (!host) return;
+
+  document.getElementById('host-detail-title-full').textContent = host.name;
+  document.getElementById('host-detail-target-full').textContent = host.target;
+
+  // Show system telemetry stats if Core Monitor Host (127.0.0.1)
+  const isCore = host.target === '127.0.0.1' || host.name.includes("Core Monitor");
+  const statsSection = document.getElementById('host-detail-stats-section-full');
+  if (statsSection) {
+    if (isCore) {
+      statsSection.style.display = 'block';
+
+      const cpu = (cachedEntities && cachedEntities['cpu-utilization']) ? cachedEntities['cpu-utilization'].value : '--';
+      const mem = (cachedEntities && cachedEntities['memory-saturation']) ? cachedEntities['memory-saturation'].value : '--';
+      const net = (cachedEntities && cachedEntities['network-throughput']) ? cachedEntities['network-throughput'].value : '--';
+      const temp = (cachedEntities && cachedEntities['server-room-temp']) ? cachedEntities['server-room-temp'].value : '--';
+
+      document.getElementById('host-detail-cpu-val-full').textContent = `${cpu}%`;
+      document.getElementById('host-detail-mem-val-full').textContent = `${mem}%`;
+      document.getElementById('host-detail-net-val-full').textContent = `${net} MB/s`;
+      document.getElementById('host-detail-temp-val-full').textContent = `${temp}°C`;
+    } else {
+      statsSection.style.display = 'none';
+    }
+  }
+
+  // Fetch checkers linked to this host ID
+  const probersList = document.getElementById('host-detail-probers-list-full');
+  if (probersList) {
+    probersList.innerHTML = `<p style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">Querying probers list...</p>`;
+
+    try {
+      const { httpUrl } = getApiUrls();
+      const res = await fetch(`${httpUrl}/api/monitors`);
+      if (res.ok) {
+        const monitors = await res.json();
+        const hostMonitors = monitors.filter(m => m.host_id === hostId);
+
+        if (hostMonitors.length === 0) {
+          probersList.innerHTML = `<span style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">No checkers configured for this host node.</span>`;
+        } else {
+          probersList.innerHTML = hostMonitors.map(m => {
+            const statusVal = (cachedEntities && cachedEntities[`monitor-${m.id}-status`]) ? cachedEntities[`monitor-${m.id}-status`].value : 'unknown';
+            const latencyVal = (cachedEntities && cachedEntities[`monitor-${m.id}-latency`]) ? cachedEntities[`monitor-${m.id}-latency`].value : '--';
+
+            const sensorIdStatus = window.getSensorIdForEntity('monitors', `monitor-${m.id}-status`, m.name, m.type);
+            const sensorIdLatency = window.getSensorIdForEntity('monitors', `monitor-${m.id}-latency`, m.name, m.type);
+
+            const isOnline = statusVal === 'healthy' || statusVal === 'stable' || statusVal === 'online' || statusVal === 'up';
+            const statusClass = isOnline ? 'online' : 'offline';
+            const statusLabel = isOnline ? 'Online' : statusVal.toUpperCase();
+
+            return `
+              <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-size:0.8rem; font-weight:700; color:#fff;">${m.name}</span>
+                  <span class="status-pill ${statusClass === 'online' ? 'stable' : 'critical'}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:var(--text-secondary);">
+                  <span>Target: <span style="font-family:monospace; color:#fff;">${m.target}</span></span>
+                  <span>Latency: <span style="color:#fff;">${latencyVal} ms</span></span>
+                </div>
+                <div style="border-top: 1px dashed var(--border-soft); padding-top:4px; margin-top:2px; font-size:0.65rem; color:var(--text-secondary); display:flex; flex-direction:column; gap:2px;">
+                  <div>Status Sensor: <code style="color:var(--accent-orange);">${sensorIdStatus}</code></div>
+                  <div>Latency Sensor: <code style="color:var(--accent-orange);">${sensorIdLatency}</code></div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      } else {
+        probersList.innerHTML = `<span style="font-size:0.75rem; color:#f43f5e;">Failed to fetch host prober elements.</span>`;
+      }
+    } catch (e) {
+      probersList.innerHTML = `<span style="font-size:0.75rem; color:#f43f5e;">Error processing checkers: ${e.message}</span>`;
+    }
+  }
+
+  // Connect Edit Configuration Button inside overview
+  const editBtn = document.getElementById('btn-edit-host-from-detail-full');
+  if (editBtn) {
+    editBtn.onclick = function () {
+      openEditHostModal(hostId);
+    };
+  }
+
+  // Hide other views and show the host-detail-view full page
+  hideAllViews();
+  const hostDetailView = document.getElementById('host-detail-view');
+  if (hostDetailView) {
+    hostDetailView.classList.remove('hide');
   }
 };
 

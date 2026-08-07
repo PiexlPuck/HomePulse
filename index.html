@@ -98,7 +98,13 @@
     <header>
       <div class="header-left">
         <div class="page-title">Observer View: Core Cluster Alpha</div>
-        <div class="page-subtitle" id="refresh-time-text">Last refreshed: 08:59:29 UTC • Live connection active</div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="page-subtitle" id="refresh-time-text">Last refreshed: 08:59:29 UTC • Live connection active</div>
+          <button id="header-theme-toggle" class="btn-theme-loop" onclick="cycleTheme()" title="Cycle Theme"
+            style="background: transparent; border: 1px solid var(--border-soft); color: var(--text-secondary); border-radius: 4px; padding: 2px 6px; cursor: pointer; display: flex; align-items: center; gap: 4px; height: 20px; font-size: 0.65rem;">
+            <i data-lucide="palette" style="width: 11px; height: 11px;"></i> Theme
+          </button>
+        </div>
       </div>
 
       <div class="header-actions">
@@ -158,695 +164,866 @@
         <div class="settings-card">
           <div class="settings-header">
             <h3>System Settings</h3>
-            <p>Configure dashboard behavior, data logs retention, and UI visual skins</p>
+            <p>Configure dashboard behavior and UI visual skins</p>
           </div>
 
           <div class="settings-form">
-            <!-- Polling Interval -->
-            <div class="settings-group">
-              <label for="setting-interval">Telemetry Polling Frequency</label>
-              <div class="slider-container">
-                <input type="range" id="setting-interval" min="1" max="15" value="3">
-                <span class="slider-badge" id="setting-interval-val">3s</span>
+          </div>
+
+
+
+          <!-- Timezone -->
+          <div class="settings-group">
+            <label for="setting-timezone">Display Timezone</label>
+            <select id="setting-timezone">
+              <option value="UTC">UTC — Universal Coordinated Time</option>
+              <option value="local">⟳ Local Host Time (auto-detect)</option>
+              <optgroup label="── Americas ──">
+                <option value="America/New_York">EST — New York (UTC-5)</option>
+                <option value="America/Chicago">CST — Chicago (UTC-6)</option>
+                <option value="America/Denver">MST — Denver (UTC-7)</option>
+                <option value="America/Los_Angeles">PST — Los Angeles (UTC-8)</option>
+                <option value="America/Anchorage">AKST — Anchorage (UTC-9)</option>
+                <option value="Pacific/Honolulu">HST — Honolulu (UTC-10)</option>
+                <option value="America/Toronto">EST — Toronto (UTC-5)</option>
+                <option value="America/Vancouver">PST — Vancouver (UTC-8)</option>
+                <option value="America/Sao_Paulo">BRT — São Paulo (UTC-3)</option>
+                <option value="America/Argentina/Buenos_Aires">ART — Buenos Aires (UTC-3)</option>
+                <option value="America/Mexico_City">CST — Mexico City (UTC-6)</option>
+              </optgroup>
+              <optgroup label="── Europe ──">
+                <option value="Europe/London">GMT — London (UTC+0/+1)</option>
+                <option value="Europe/Dublin">IST — Dublin (UTC+0/+1)</option>
+                <option value="Europe/Lisbon">WET — Lisbon (UTC+0/+1)</option>
+                <option value="Europe/Paris">CET — Paris (UTC+1/+2)</option>
+                <option value="Europe/Berlin">CET — Berlin (UTC+1/+2)</option>
+                <option value="Europe/Amsterdam">CET — Amsterdam (UTC+1/+2)</option>
+                <option value="Europe/Madrid">CET — Madrid (UTC+1/+2)</option>
+                <option value="Europe/Rome">CET — Rome (UTC+1/+2)</option>
+                <option value="Europe/Warsaw">CET — Warsaw (UTC+1/+2)</option>
+                <option value="Europe/Stockholm">CET — Stockholm (UTC+1/+2)</option>
+                <option value="Europe/Moscow">MSK — Moscow (UTC+3)</option>
+                <option value="Europe/Istanbul">TRT — Istanbul (UTC+3)</option>
+                <option value="Europe/Athens">EET — Athens (UTC+2/+3)</option>
+                <option value="Europe/Helsinki">EET — Helsinki (UTC+2/+3)</option>
+                <option value="Europe/Bucharest">EET — Bucharest (UTC+2/+3)</option>
+                <option value="Europe/Kyiv">EET — Kyiv (UTC+2/+3)</option>
+              </optgroup>
+              <optgroup label="── Africa / Middle East ──">
+                <option value="Africa/Cairo">EET — Cairo (UTC+2)</option>
+                <option value="Africa/Johannesburg">SAST — Johannesburg (UTC+2)</option>
+                <option value="Africa/Lagos">WAT — Lagos (UTC+1)</option>
+                <option value="Africa/Nairobi">EAT — Nairobi (UTC+3)</option>
+                <option value="Asia/Dubai">GST — Dubai (UTC+4)</option>
+                <option value="Asia/Riyadh">AST — Riyadh (UTC+3)</option>
+                <option value="Asia/Tehran">IRST — Tehran (UTC+3:30)</option>
+              </optgroup>
+              <optgroup label="── Asia / Pacific ──">
+                <option value="Asia/Kolkata">IST — Kolkata (UTC+5:30)</option>
+                <option value="Asia/Karachi">PKT — Karachi (UTC+5)</option>
+                <option value="Asia/Dhaka">BST — Dhaka (UTC+6)</option>
+                <option value="Asia/Kathmandu">NPT — Kathmandu (UTC+5:45)</option>
+                <option value="Asia/Bangkok">ICT — Bangkok (UTC+7)</option>
+                <option value="Asia/Singapore">SGT — Singapore (UTC+8)</option>
+                <option value="Asia/Shanghai">CST — Shanghai (UTC+8)</option>
+                <option value="Asia/Hong_Kong">HKT — Hong Kong (UTC+8)</option>
+                <option value="Asia/Taipei">CST — Taipei (UTC+8)</option>
+                <option value="Asia/Seoul">KST — Seoul (UTC+9)</option>
+                <option value="Asia/Tokyo">JST — Tokyo (UTC+9)</option>
+                <option value="Australia/Sydney">AEDT — Sydney (UTC+10/+11)</option>
+                <option value="Australia/Melbourne">AEDT — Melbourne (UTC+10/+11)</option>
+                <option value="Australia/Brisbane">AEST — Brisbane (UTC+10)</option>
+                <option value="Australia/Perth">AWST — Perth (UTC+8)</option>
+                <option value="Pacific/Auckland">NZDT — Auckland (UTC+12/+13)</option>
+                <option value="Pacific/Fiji">FJT — Fiji (UTC+12)</option>
+              </optgroup>
+            </select>
+            <small>Target timezone used to format refreshed and audit event timestamps.</small>
+          </div>
+
+          <!-- Access Token -->
+          <div class="settings-group">
+            <label for="setting-psk">Pre-Shared Pairing Key</label>
+            <input type="text" id="setting-psk" class="settings-input" value="device_pin_12345">
+            <small>Access PIN required to approve and authenticate new mDNS nodes.</small>
+          </div>
+
+          <!-- Themes Select -->
+          <div class="settings-group">
+            <label>Visual Skin Theme</label>
+            <div class="theme-grid">
+              <button class="theme-btn active" data-theme="midnight">Midnight</button>
+              <button class="theme-btn" data-theme="glass">Nebula Glass</button>
+              <button class="theme-btn" data-theme="cozy">Cozy Amber</button>
+              <button class="theme-btn" data-theme="cyber">Cyberpunk</button>
+            </div>
+          </div>
+
+          <!-- Grid Style Compact -->
+          <div class="settings-group checkbox-group">
+            <label class="switch">
+              <input type="checkbox" id="setting-compact">
+              <span class="slider-checkbox round"></span>
+            </label>
+            <div class="checkbox-label-area">
+              <span class="checkbox-title">Enable Compact Grid Layout</span>
+              <span class="checkbox-desc">Decompress card margins and compress text spacing for high density
+                screens.</span>
+            </div>
+          </div>
+
+
+          <div class="settings-actions">
+            <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+            <button class="btn btn-secondary" onclick="generateSupportLogs()"
+              style="margin-left: 10px; display: inline-flex; align-items: center; gap: 6px;">
+              <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+              Generate Support Logs
+            </button>
+          </div>
+        </div>
+
+        <!-- Danger Zone: Database Pruning & Maintenance -->
+        <div class="settings-card"
+          style="margin-top: 24px; background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 12px; padding: 24px; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.05);">
+
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="font-size: 1.25rem;">⚠️</span>
+            <h3
+              style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px;">
+              Danger Zone: Database Maintenance</h3>
+          </div>
+          <p style="margin: 0 0 16px 0; color: var(--text-secondary); font-size: 0.82rem; line-height: 1.4;">
+            Critical database purging operations. Pruning deletes telemetry histories immediately and irreversibly. Use
+            dry-run confirmation mode.
+          </p>
+
+          <!-- Advanced Pruning Filters Form -->
+          <div
+            style="display: flex; flex-direction: column; gap: 16px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+              <div>
+                <label for="prune-host-select"
+                  style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Filter
+                  by
+                  Host:</label>
+                <select id="prune-host-select" class="settings-input"
+                  style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary);">
+                  <option value="">-- All Hosts --</option>
+                </select>
               </div>
-              <small>Time delay between background host stats collection runs.</small>
-            </div>
-
-            <!-- Log Retention -->
-            <div class="settings-group">
-              <label for="setting-retention">Log Retention History</label>
-              <div class="slider-container">
-                <input type="range" id="setting-retention" min="1" max="30" value="7">
-                <span class="slider-badge" id="setting-retention-val">7 days</span>
-              </div>
-              <small>Auto-purge telemetry logs from PostgreSQL after this number of days.</small>
-            </div>
-
-            <!-- Timezone -->
-            <div class="settings-group">
-              <label for="setting-timezone">Display Timezone</label>
-              <select id="setting-timezone">
-                <option value="UTC">UTC — Universal Coordinated Time</option>
-                <option value="local">⟳ Local Host Time (auto-detect)</option>
-                <optgroup label="── Americas ──">
-                  <option value="America/New_York">EST — New York (UTC-5)</option>
-                  <option value="America/Chicago">CST — Chicago (UTC-6)</option>
-                  <option value="America/Denver">MST — Denver (UTC-7)</option>
-                  <option value="America/Los_Angeles">PST — Los Angeles (UTC-8)</option>
-                  <option value="America/Anchorage">AKST — Anchorage (UTC-9)</option>
-                  <option value="Pacific/Honolulu">HST — Honolulu (UTC-10)</option>
-                  <option value="America/Toronto">EST — Toronto (UTC-5)</option>
-                  <option value="America/Vancouver">PST — Vancouver (UTC-8)</option>
-                  <option value="America/Sao_Paulo">BRT — São Paulo (UTC-3)</option>
-                  <option value="America/Argentina/Buenos_Aires">ART — Buenos Aires (UTC-3)</option>
-                  <option value="America/Mexico_City">CST — Mexico City (UTC-6)</option>
-                </optgroup>
-                <optgroup label="── Europe ──">
-                  <option value="Europe/London">GMT — London (UTC+0/+1)</option>
-                  <option value="Europe/Dublin">IST — Dublin (UTC+0/+1)</option>
-                  <option value="Europe/Lisbon">WET — Lisbon (UTC+0/+1)</option>
-                  <option value="Europe/Paris">CET — Paris (UTC+1/+2)</option>
-                  <option value="Europe/Berlin">CET — Berlin (UTC+1/+2)</option>
-                  <option value="Europe/Amsterdam">CET — Amsterdam (UTC+1/+2)</option>
-                  <option value="Europe/Madrid">CET — Madrid (UTC+1/+2)</option>
-                  <option value="Europe/Rome">CET — Rome (UTC+1/+2)</option>
-                  <option value="Europe/Warsaw">CET — Warsaw (UTC+1/+2)</option>
-                  <option value="Europe/Stockholm">CET — Stockholm (UTC+1/+2)</option>
-                  <option value="Europe/Moscow">MSK — Moscow (UTC+3)</option>
-                  <option value="Europe/Istanbul">TRT — Istanbul (UTC+3)</option>
-                  <option value="Europe/Athens">EET — Athens (UTC+2/+3)</option>
-                  <option value="Europe/Helsinki">EET — Helsinki (UTC+2/+3)</option>
-                  <option value="Europe/Bucharest">EET — Bucharest (UTC+2/+3)</option>
-                  <option value="Europe/Kyiv">EET — Kyiv (UTC+2/+3)</option>
-                </optgroup>
-                <optgroup label="── Africa / Middle East ──">
-                  <option value="Africa/Cairo">EET — Cairo (UTC+2)</option>
-                  <option value="Africa/Johannesburg">SAST — Johannesburg (UTC+2)</option>
-                  <option value="Africa/Lagos">WAT — Lagos (UTC+1)</option>
-                  <option value="Africa/Nairobi">EAT — Nairobi (UTC+3)</option>
-                  <option value="Asia/Dubai">GST — Dubai (UTC+4)</option>
-                  <option value="Asia/Riyadh">AST — Riyadh (UTC+3)</option>
-                  <option value="Asia/Tehran">IRST — Tehran (UTC+3:30)</option>
-                </optgroup>
-                <optgroup label="── Asia / Pacific ──">
-                  <option value="Asia/Kolkata">IST — Kolkata (UTC+5:30)</option>
-                  <option value="Asia/Karachi">PKT — Karachi (UTC+5)</option>
-                  <option value="Asia/Dhaka">BST — Dhaka (UTC+6)</option>
-                  <option value="Asia/Kathmandu">NPT — Kathmandu (UTC+5:45)</option>
-                  <option value="Asia/Bangkok">ICT — Bangkok (UTC+7)</option>
-                  <option value="Asia/Singapore">SGT — Singapore (UTC+8)</option>
-                  <option value="Asia/Shanghai">CST — Shanghai (UTC+8)</option>
-                  <option value="Asia/Hong_Kong">HKT — Hong Kong (UTC+8)</option>
-                  <option value="Asia/Taipei">CST — Taipei (UTC+8)</option>
-                  <option value="Asia/Seoul">KST — Seoul (UTC+9)</option>
-                  <option value="Asia/Tokyo">JST — Tokyo (UTC+9)</option>
-                  <option value="Australia/Sydney">AEDT — Sydney (UTC+10/+11)</option>
-                  <option value="Australia/Melbourne">AEDT — Melbourne (UTC+10/+11)</option>
-                  <option value="Australia/Brisbane">AEST — Brisbane (UTC+10)</option>
-                  <option value="Australia/Perth">AWST — Perth (UTC+8)</option>
-                  <option value="Pacific/Auckland">NZDT — Auckland (UTC+12/+13)</option>
-                  <option value="Pacific/Fiji">FJT — Fiji (UTC+12)</option>
-                </optgroup>
-              </select>
-              <small>Target timezone used to format refreshed and audit event timestamps.</small>
-            </div>
-
-            <!-- Access Token -->
-            <div class="settings-group">
-              <label for="setting-psk">Pre-Shared Pairing Key</label>
-              <input type="text" id="setting-psk" class="settings-input" value="device_pin_12345">
-              <small>Access PIN required to approve and authenticate new mDNS nodes.</small>
-            </div>
-
-            <!-- Themes Select -->
-            <div class="settings-group">
-              <label>Visual Skin Theme</label>
-              <div class="theme-grid">
-                <button class="theme-btn active" data-theme="midnight">Midnight</button>
-                <button class="theme-btn" data-theme="glass">Nebula Glass</button>
-                <button class="theme-btn" data-theme="cozy">Cozy Amber</button>
-                <button class="theme-btn" data-theme="cyber">Cyberpunk</button>
+              <div>
+                <label for="prune-entity-select"
+                  style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Filter
+                  by
+                  Entity Metric:</label>
+                <select id="prune-entity-select" class="settings-input"
+                  style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary);">
+                  <option value="">-- All Entities --</option>
+                </select>
               </div>
             </div>
 
-            <!-- Grid Style Compact -->
-            <div class="settings-group checkbox-group">
-              <label class="switch">
-                <input type="checkbox" id="setting-compact">
-                <span class="slider-checkbox round"></span>
-              </label>
-              <div class="checkbox-label-area">
-                <span class="checkbox-title">Enable Compact Grid Layout</span>
-                <span class="checkbox-desc">Decompress card margins and compress text spacing for high density
-                  screens.</span>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+              <div>
+                <label for="prune-start-date"
+                  style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Start
+                  Date
+                  Range:</label>
+                <input type="date" id="prune-start-date" class="settings-input"
+                  style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary); color-scheme: dark;">
+              </div>
+              <div>
+                <label for="prune-end-date"
+                  style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">End Date
+                  Range:</label>
+                <input type="date" id="prune-end-date" class="settings-input"
+                  style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary); color-scheme: dark;">
               </div>
             </div>
 
+            <div style="display: flex; gap: 10px; margin-top: 4px;">
+              <button type="button" class="btn btn-primary" id="btn-execute-prune" onclick="executeAdvancedPrune()"
+                style="font-size: 0.75rem; font-weight: bold; background: #ef4444; border-color: rgba(239, 68, 68, 0.4); color: white; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                <span>🧹</span> Execute Custom Prune
+              </button>
+              <button type="button" class="btn btn-secondary" onclick="clearPruneFilters()"
+                style="font-size: 0.75rem; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                Reset Filters
+              </button>
+            </div>
+          </div>
 
-            <div class="settings-actions">
-              <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
-              <button class="btn btn-secondary" onclick="generateSupportLogs()"
-                style="margin-left: 10px; display: inline-flex; align-items: center; gap: 6px;">
-                <i data-lucide="download" style="width: 14px; height: 14px;"></i>
-                Generate Support Logs
+          <!-- Quick presets section -->
+          <div
+            style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
+            Quick Purge Presets</div>
+          <div id="maintenance-prune-container" style="display: flex; flex-direction: column; gap: 10px;">
+            <button type="button" class="btn-danger" onclick="triggerManualPrune({age: 'year'})"
+              style="font-size: 0.75rem; padding: 10px 16px; text-align: left; justify-content: flex-start; width: 100%; display: flex; gap: 10px; align-items: center; border-radius: 6px; cursor: pointer; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.05); color: #fda4af; font-weight: 600; transition: all 0.2s;">
+              <span>🧹</span> <span>Delete Last Year of Oldest Data (Older Than 365 Days)</span>
+            </button>
+            <button type="button" class="btn-danger" onclick="triggerManualPrune({age: 'custom', custom_days: 90})"
+              style="font-size: 0.75rem; padding: 10px 16px; text-align: left; justify-content: flex-start; width: 100%; display: flex; gap: 10px; align-items: center; border-radius: 6px; cursor: pointer; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.05); color: #fda4af; font-weight: 600; transition: all 0.2s;">
+              <span>🧹</span> <span>Delete Oldest Data (Older Than 90 Days)</span>
+            </button>
+            <button type="button" class="btn-danger" onclick="triggerManualPrune({age: 'all'})"
+              style="font-size: 0.75rem; padding: 10px 16px; text-align: left; justify-content: flex-start; width: 100%; display: flex; gap: 10px; align-items: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 6px; cursor: pointer; color: #fecaca; font-weight: 700; transition: all 0.2s;">
+              <span>🚨</span> <span>EXPRESS TRUNCATE: Purge Entire Database Logs (Destructive)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Monitors/Probes Panel -->
+    <div class="settings-view hide" id="probes-view">
+
+      <!-- Standalone Launchers Row (Top Left Corner) -->
+      <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px; padding: 4px 0 0 4px;">
+        <button id="btn-configure-new-probe" class="btn btn-primary" onclick="openAddMonitorModal()"
+          style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
+          Configure New Probe
+        </button>
+        <button id="btn-install-custom-monitors" class="btn btn-secondary" onclick="openMarketplaceModal()"
+          style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <i data-lucide="shopping-bag" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
+          Install Custom Monitors
+        </button>
+      </div>
+
+      <!-- LEVEL 1: Engines Grid -->
+      <div id="probes-level-1" class="settings-card">
+        <div class="settings-form" style="padding-top: 10px;">
+          <div id="engines-grid" class="monitor-picker-grid"
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+            <!-- Filled dynamically by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- LEVEL 2: Engine Sources List -->
+      <div id="probes-level-2" class="settings-card" style="display: none;">
+        <div class="settings-header"
+          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h3 id="lvl2-engine-title">Ping Engine</h3>
+            <p id="lvl2-engine-desc">Configure active IP reachability probes.</p>
+          </div>
+          <button class="btn btn-secondary" onclick="navigateProbesLevel(1)"
+            style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Engines
+          </button>
+        </div>
+
+        <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
+          <!-- Sources List -->
+          <div id="probes-source-list" style="display:flex; flex-direction:column; gap:10px;">
+            <!-- Filled dynamically by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- LEVEL 3: Source Detail View -->
+      <div id="probes-level-3" class="settings-card" style="display: none;">
+        <div class="settings-header"
+          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h3 id="lvl3-probe-title">Probe Info</h3>
+            <p id="lvl3-probe-meta">Metadata details</p>
+          </div>
+          <button class="btn btn-secondary" onclick="navigateProbesLevel(2)"
+            style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Probes
+          </button>
+        </div>
+
+        <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
+          <!-- Stats -->
+          <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <div
+              style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
+              <small
+                style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Current
+                Status</small>
+              <h4 id="lvl3-stat-status" style="font-size:1.4rem; font-weight:700; margin:0;">UNKNOWN</h4>
+            </div>
+            <div
+              style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
+              <small
+                style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Last
+                Response Latency</small>
+              <h4 id="lvl3-stat-latency" style="font-size:1.4rem; font-weight:700; margin:0;">-- ms</h4>
+            </div>
+            <div
+              style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
+              <small
+                style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Check
+                Frequency</small>
+              <h4 id="lvl3-stat-interval" style="font-size:1.4rem; font-weight:700; margin:0;">-- s</h4>
+            </div>
+          </div>
+
+          <!-- History log -->
+          <div
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 20px; flex-wrap: wrap; gap: 10px;">
+            <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0;">
+              Check Telemetry History (Last 10 events)
+            </h4>
+          </div>
+          <div id="lvl3-history-table-container" style="overflow-x:auto;">
+            <table
+              style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; border:1px solid var(--border-soft); border-radius:6px;">
+              <thead>
+                <tr
+                  style="background:rgba(255,255,255,0.01); border-bottom:1px solid var(--border-soft); color:var(--text-secondary);">
+                  <th style="padding:10px 14px;">Timestamp Tag</th>
+                  <th style="padding:10px 14px;">Status Result</th>
+                  <th style="padding:10px 14px;">Response Latency Query</th>
+                </tr>
+              </thead>
+              <tbody id="lvl3-history-table-body">
+                <!-- Dynamic rows dynamically appended -->
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- LEVEL CATALOG: Engines & Integrations Catalog Grid -->
+      <div id="probes-level-catalog" class="settings-card" style="display: none;">
+        <div class="settings-header"
+          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h3>Monitoring Engines &amp; Integrations Catalog</h3>
+            <p>Configure built-in active background probers or preview deployable custom server modules.</p>
+          </div>
+          <button class="btn btn-secondary" onclick="navigateProbesLevel(1)"
+            style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Monitors
+          </button>
+        </div>
+
+        <div class="settings-form"
+          style="border-top:1px solid var(--border-soft); padding-top:20px; display:flex; flex-direction:column; gap:24px;">
+
+          <!-- Group 1: Included Monitoring Engines -->
+          <div>
+            <h4
+              style="font-size:0.88rem; font-weight:700; color:var(--accent-orange); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+              <i data-lucide="cpu" style="width:16px; height:16px;"></i> Included Monitoring Engines
+            </h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+
+              <!-- HTTP/HTTPS Tile -->
+              <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('http')"
+                style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                <div
+                  style="display:flex; align-items:center; justify-content:center; background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                  <i data-lucide="globe" style="width: 22px; height: 22px;"></i>
+                </div>
+                <div style="flex:1;">
+                  <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">
+                    HTTP/HTTPS</h5>
+                  <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Verify website
+                    availability, trace response codes and load latencies.</p>
+                </div>
+              </div>
+
+              <!-- WebSocket Tile -->
+              <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('websocket')"
+                style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                <div
+                  style="display:flex; align-items:center; justify-content:center; background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                  <i data-lucide="message-square" style="width: 22px; height: 22px;"></i>
+                </div>
+                <div style="flex:1;">
+                  <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">
+                    WebSocket Feed</h5>
+                  <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Test WebSocket
+                    socket link integrity and message push rates (Beta).</p>
+                </div>
+              </div>
+
+              <!-- ICMP Ping Tile -->
+              <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('ping')"
+                style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                <div
+                  style="display:flex; align-items:center; justify-content:center; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                  <i data-lucide="activity" style="width: 22px; height: 22px;"></i>
+                </div>
+                <div style="flex:1;">
+                  <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">ICMP
+                    Network Ping</h5>
+                  <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Verify server
+                    reachability and packet round-trip times via raw network pings.</p>
+                </div>
+              </div>
+
+              <!-- TCP Port Tile -->
+              <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('port')"
+                style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                <div
+                  style="display:flex; align-items:center; justify-content:center; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                  <i data-lucide="hash" style="width: 22px; height: 22px;"></i>
+                </div>
+                <div style="flex:1;">
+                  <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">TCP
+                    Port Probe</h5>
+                  <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Probe external
+                    target application ports (such as SSH, PostgreSQL, Redis) status.</p>
+                </div>
+              </div>
+
+              <!-- DNS Resolve Tile -->
+              <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('dns')"
+                style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                <div
+                  style="display:flex; align-items:center; justify-content:center; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                  <i data-lucide="server" style="width: 22px; height: 22px;"></i>
+                </div>
+                <div style="flex:1;">
+                  <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">DNS
+                    Name Resolution</h5>
+                  <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Verify
+                    resolution speed and validity mapping target hostname to IP entries.</p>
+                </div>
+              </div>
+
+              <!-- SSL Certificate Expiration Tile -->
+              <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('ssl')"
+                style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
+                <div
+                  style="display:flex; align-items:center; justify-content:center; background: rgba(244, 63, 94, 0.1); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
+                  <i data-lucide="lock" style="width: 22px; height: 22px;"></i>
+                </div>
+                <div style="flex:1;">
+                  <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">SSL
+                    Certificate Expiry</h5>
+                  <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Monitor
+                    SSL/TLS validity, warning threshold flags, and verify renewal dates.</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Alert Router View Panel -->
+    <div class="settings-view hide" id="automations-view">
+      <div class="settings-card"
+        style="max-width: 1000px; display: flex; flex-direction: row; gap: 0; padding: 0; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden;">
+
+        <!-- Sub-sidebar for Alert Router -->
+        <div
+          style="width: 220px; border-right: 1px solid var(--border-soft); background: rgba(15, 13, 11, 0.4); display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div
+              style="padding: 18px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="bell" style="width: 18px; height: 18px; color: var(--accent-orange);"></i>
+              <span
+                style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.05em; color: var(--text-primary); text-transform: uppercase;">Alert
+                Router</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px;" id="alert-sub-navigation">
+              <button class="sub-nav-btn active" id="alert-subnav-rules" onclick="switchAlertSubView('rules')"
+                style="background: var(--bg-secondary); border: none; text-align: left; width: 100%; padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--text-primary); cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                <i data-lucide="shield-alert" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
+                Alert Rules
+              </button>
+              <button class="sub-nav-btn" id="alert-subnav-channels" onclick="switchAlertSubView('channels')"
+                style="background: none; border: none; text-align: left; width: 100%; padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                <i data-lucide="send" style="width: 14px; height: 14px;"></i>
+                Notification Channels
               </button>
             </div>
           </div>
         </div>
 
+        <!-- Main Content Area -->
+        <div style="flex: 1; display: flex; flex-direction: column; background: transparent;">
+
+          <!-- SUB-VIEW 1: Rules List -->
+          <div id="alert-sub-view-rules" class="alert-content-pane"
+            style="padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; max-height: 520px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Alert Rules
+                </h3>
+                <p style="margin: 2px 0 0 0; font-size: 0.72rem; color: var(--text-secondary);">Rule conditions
+                  evaluated dynamically to trigger notifications.</p>
+              </div>
+              <button class="btn btn-primary" onclick="openRuleComposer()"
+                style="font-size: 0.72rem; padding: 6px 14px; cursor: pointer;">+ Create Alert Rule</button>
+            </div>
+
+            <!-- Rules Container List -->
+            <div id="alert-rules-list" style="display: flex; flex-direction: column; gap: 12px;">
+              <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No warning
+                rules configured yet.</p>
+            </div>
+          </div>
+
+          <!-- SUB-VIEW 2: Channels List -->
+          <div id="alert-sub-view-channels" class="alert-content-pane hide"
+            style="padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; max-height: 520px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Notification
+                  Channels</h3>
+                <p style="margin: 2px 0 0 0; font-size: 0.72rem; color: var(--text-secondary);">Manage destination
+                  profiles for SMTP email, Telegram, and Pushover alerts.</p>
+              </div>
+              <button class="btn btn-primary" onclick="openChannelComposer()"
+                style="font-size: 0.72rem; padding: 6px 14px; cursor: pointer;">+ Add Channel Profile</button>
+            </div>
+
+            <!-- Channels Container List -->
+            <div id="alert-channels-list" style="display: flex; flex-direction: column; gap: 12px;">
+              <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No
+                notification channels configured yet.</p>
+            </div>
+          </div>
+
+        </div>
       </div>
+    </div>
 
-      <!-- Monitors/Probes Panel -->
-      <div class="settings-view hide" id="probes-view">
-
-        <!-- Standalone Launchers Row (Top Left Corner) -->
-        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px; padding: 4px 0 0 4px;">
-          <button id="btn-configure-new-probe" class="btn btn-primary" onclick="openAddMonitorModal()"
-            style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
-            Configure New Probe
-          </button>
-          <button id="btn-install-custom-monitors" class="btn btn-secondary" onclick="openMarketplaceModal()"
-            style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <i data-lucide="shopping-bag" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
-            Install Custom Monitors
-          </button>
-        </div>
-
-        <!-- LEVEL 1: Engines Grid -->
-        <div id="probes-level-1" class="settings-card">
-          <div class="settings-form" style="padding-top: 10px;">
-            <div id="engines-grid" class="monitor-picker-grid"
-              style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-              <!-- Filled dynamically by JS -->
+    <!-- Uptime History View Panel -->
+    <div class="settings-view hide" id="uptime-history-view">
+      <div class="settings-card" style="max-width: 1000px;">
+        <div class="settings-header"
+          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h3>Uptime History &amp; Analytics</h3>
+            <p>Visualize latency charts and uptime timelines for configured health checkers.</p>
+          </div>
+          <!-- Filters -->
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Monitor
+                Source</label>
+              <select id="history-monitor-select" onchange="loadHistoryAnalytics()"
+                style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 180px;">
+                <!-- Dynamically populated with monitors -->
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Time
+                Range</label>
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <button id="btn-history-shift-back" onclick="shiftHistoryTime(-1)"
+                  style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 30px; width: 30px; transition: all 0.2s;"
+                  title="Shift Backward">
+                  <i data-lucide="chevron-left" style="width: 14px; height: 14px; color: #fff;"></i>
+                </button>
+                <select id="history-timeframe-select" onchange="resetHistoryTimeOffset(); loadHistoryAnalytics()"
+                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 120px; height: 30px;">
+                  <option value="hours-1" selected>Last 1 Hour</option>
+                  <option value="hours-3">Last 3 Hours</option>
+                  <option value="hours-12">Last 12 Hours</option>
+                  <option value="hours-24">Last 24 Hours</option>
+                  <option value="hours-168">Last 7 Days</option>
+                  <option value="hours-720">Last 30 Days</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+                <button id="btn-history-shift-forward" onclick="shiftHistoryTime(1)"
+                  style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 4px; cursor: default; display: flex; align-items: center; justify-content: center; height: 30px; width: 30px; opacity: 0.5; transition: all 0.2s;"
+                  title="Shift Forward" disabled>
+                  <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
+                </button>
+              </div>
+              <div id="history-custom-range-inputs"
+                style="display: none; align-items: center; gap: 4px; margin-top: 6px;">
+                <input type="datetime-local" id="history-custom-start"
+                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.7rem; height: 30px;">
+                <span style="color: var(--text-secondary); font-size: 0.7rem;">to</span>
+                <input type="datetime-local" id="history-custom-end"
+                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.7rem; height: 30px;">
+                <button onclick="loadHistoryAnalytics()" class="btn-primary"
+                  style="padding: 4px 8px; font-size: 0.7rem; border-radius: 4px; height: 30px; display: flex; align-items: center; cursor: pointer; border: none; background: var(--color-primary); color: #fff;">
+                  Apply
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- LEVEL 2: Engine Sources List -->
-        <div id="probes-level-2" class="settings-card" style="display: none;">
-          <div class="settings-header"
-            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div>
-              <h3 id="lvl2-engine-title">Ping Engine</h3>
-              <p id="lvl2-engine-desc">Configure active IP reachability probes.</p>
-            </div>
-            <button class="btn btn-secondary" onclick="navigateProbesLevel(1)"
-              style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
-              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Engines
-            </button>
-          </div>
-
-          <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
-            <!-- Sources List -->
-            <div id="probes-source-list" style="display:flex; flex-direction:column; gap:10px;">
-              <!-- Filled dynamically by JS -->
-            </div>
-          </div>
-        </div>
-
-        <!-- LEVEL 3: Source Detail View -->
-        <div id="probes-level-3" class="settings-card" style="display: none;">
-          <div class="settings-header"
-            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div>
-              <h3 id="lvl3-probe-title">Probe Info</h3>
-              <p id="lvl3-probe-meta">Metadata details</p>
-            </div>
-            <button class="btn btn-secondary" onclick="navigateProbesLevel(2)"
-              style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
-              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Probes
-            </button>
-          </div>
-
-          <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
-            <!-- Stats -->
+        <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
+          <!-- Stats Summary Cards Row -->
+          <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; margin-bottom: 24px;">
             <div
-              style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
-              <div
-                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
-                <small
-                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Current
-                  Status</small>
-                <h4 id="lvl3-stat-status" style="font-size:1.4rem; font-weight:700; margin:0;">UNKNOWN</h4>
-              </div>
-              <div
-                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
-                <small
-                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Last
-                  Response Latency</small>
-                <h4 id="lvl3-stat-latency" style="font-size:1.4rem; font-weight:700; margin:0;">-- ms</h4>
-              </div>
-              <div
-                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:16px; text-align:center;">
-                <small
-                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.7rem; font-weight:600; text-transform:uppercase;">Check
-                  Frequency</small>
-                <h4 id="lvl3-stat-interval" style="font-size:1.4rem; font-weight:700; margin:0;">-- s</h4>
-              </div>
+              style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
+              <small
+                style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Uptime
+                Ratio</small>
+              <h4 id="history-stat-uptime"
+                style="font-size:1.3rem; font-weight:700; margin:0; color:var(--color-optimal);">-- %</h4>
             </div>
-
-            <!-- History log -->
             <div
-              style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 20px; flex-wrap: wrap; gap: 10px;">
-              <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 0;">
-                Check Telemetry History (Last 10 events)
+              style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
+              <small
+                style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Average
+                Response</small>
+              <h4 id="history-stat-avg-latency" style="font-size:1.3rem; font-weight:700; margin:0;">-- ms</h4>
+            </div>
+            <div
+              style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
+              <small
+                style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Peak
+                Latency</small>
+              <h4 id="history-stat-max-latency" style="font-size:1.3rem; font-weight:700; margin:0;">-- ms</h4>
+            </div>
+            <div
+              style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
+              <small
+                style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Outages
+                Detected</small>
+              <h4 id="history-stat-outages" style="font-size:1.3rem; font-weight:700; margin:0; color:#f43f5e;">--
               </h4>
             </div>
-            <div id="lvl3-history-table-container" style="overflow-x:auto;">
-              <table
-                style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; border:1px solid var(--border-soft); border-radius:6px;">
+          </div>
+
+          <!-- Interactive Latency Graph Container -->
+          <div
+            style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; margin-bottom: 24px; position: relative;">
+            <small
+              style="position: absolute; top: 12px; right: 16px; font-size: 0.65rem; color: var(--text-secondary); font-family: monospace;">LATENCY
+              (MS) OVER TIME</small>
+            <div style="height: 320px; width: 100%;">
+              <canvas id="analytics-chart-canvas"></canvas>
+            </div>
+          </div>
+
+          <!-- Historical Detailed Log Table -->
+          <details id="history-logs-advanced-details"
+            style="border: 1px solid var(--border-soft); border-radius: 6px; padding: 12px; margin-top: 20px; background: rgba(255,255,255,0.01);">
+            <summary
+              style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); cursor: pointer; outline: none; user-select: none;">
+              Advanced Telemetry Records
+            </summary>
+            <div style="overflow-x:auto; margin-top: 12px;">
+              <table style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left;">
                 <thead>
                   <tr
                     style="background:rgba(255,255,255,0.01); border-bottom:1px solid var(--border-soft); color:var(--text-secondary);">
-                    <th style="padding:10px 14px;">Timestamp Tag</th>
-                    <th style="padding:10px 14px;">Status Result</th>
-                    <th style="padding:10px 14px;">Response Latency Query</th>
+                    <th style="padding:10px 14px;">Timestamp</th>
+                    <th style="padding:10px 14px;">Event Status</th>
+                    <th style="padding:10px 14px;">Response latency</th>
                   </tr>
                 </thead>
-                <tbody id="lvl3-history-table-body">
-                  <!-- Dynamic rows dynamically appended -->
+                <tbody id="history-logs-table-body">
+                  <tr>
+                    <td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Please
+                      select
+                      a monitor to view detailed results.</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
-
-          </div>
-        </div>
-
-        <!-- LEVEL CATALOG: Engines & Integrations Catalog Grid -->
-        <div id="probes-level-catalog" class="settings-card" style="display: none;">
-          <div class="settings-header"
-            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div>
-              <h3>Monitoring Engines &amp; Integrations Catalog</h3>
-              <p>Configure built-in active background probers or preview deployable custom server modules.</p>
-            </div>
-            <button class="btn btn-secondary" onclick="navigateProbesLevel(1)"
-              style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px;">
-              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Monitors
-            </button>
-          </div>
-
-          <div class="settings-form"
-            style="border-top:1px solid var(--border-soft); padding-top:20px; display:flex; flex-direction:column; gap:24px;">
-
-            <!-- Group 1: Included Monitoring Engines -->
-            <div>
-              <h4
-                style="font-size:0.88rem; font-weight:700; color:var(--accent-orange); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-                <i data-lucide="cpu" style="width:16px; height:16px;"></i> Included Monitoring Engines
-              </h4>
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
-
-                <!-- HTTP/HTTPS Tile -->
-                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('http')"
-                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
-                  <div
-                    style="display:flex; align-items:center; justify-content:center; background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
-                    <i data-lucide="globe" style="width: 22px; height: 22px;"></i>
-                  </div>
-                  <div style="flex:1;">
-                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">
-                      HTTP/HTTPS</h5>
-                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Verify website
-                      availability, trace response codes and load latencies.</p>
-                  </div>
-                </div>
-
-                <!-- WebSocket Tile -->
-                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('websocket')"
-                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
-                  <div
-                    style="display:flex; align-items:center; justify-content:center; background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
-                    <i data-lucide="message-square" style="width: 22px; height: 22px;"></i>
-                  </div>
-                  <div style="flex:1;">
-                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">
-                      WebSocket Feed</h5>
-                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Test WebSocket
-                      socket link integrity and message push rates (Beta).</p>
-                  </div>
-                </div>
-
-                <!-- ICMP Ping Tile -->
-                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('ping')"
-                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
-                  <div
-                    style="display:flex; align-items:center; justify-content:center; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
-                    <i data-lucide="activity" style="width: 22px; height: 22px;"></i>
-                  </div>
-                  <div style="flex:1;">
-                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">ICMP
-                      Network Ping</h5>
-                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Verify server
-                      reachability and packet round-trip times via raw network pings.</p>
-                  </div>
-                </div>
-
-                <!-- TCP Port Tile -->
-                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('port')"
-                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
-                  <div
-                    style="display:flex; align-items:center; justify-content:center; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
-                    <i data-lucide="hash" style="width: 22px; height: 22px;"></i>
-                  </div>
-                  <div style="flex:1;">
-                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">TCP
-                      Port Probe</h5>
-                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Probe external
-                      target application ports (such as SSH, PostgreSQL, Redis) status.</p>
-                  </div>
-                </div>
-
-                <!-- DNS Resolve Tile -->
-                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('dns')"
-                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
-                  <div
-                    style="display:flex; align-items:center; justify-content:center; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
-                    <i data-lucide="server" style="width: 22px; height: 22px;"></i>
-                  </div>
-                  <div style="flex:1;">
-                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">DNS
-                      Name Resolution</h5>
-                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Verify
-                      resolution speed and validity mapping target hostname to IP entries.</p>
-                  </div>
-                </div>
-
-                <!-- SSL Certificate Expiration Tile -->
-                <div class="catalog-tile-btn" onclick="selectProbeTypeToConfigure('ssl')"
-                  style="border-radius: 8px; padding: 16px; cursor: pointer; display: flex; gap: 12px; transition: all 0.2s;">
-                  <div
-                    style="display:flex; align-items:center; justify-content:center; background: rgba(244, 63, 94, 0.1); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.2); border-radius: 8px; width: 42px; height: 42px; flex-shrink:0;">
-                    <i data-lucide="lock" style="width: 22px; height: 22px;"></i>
-                  </div>
-                  <div style="flex:1;">
-                    <h5 style="font-size:0.86rem; font-weight:600; color:var(--text-primary); margin:0 0 4px 0;">SSL
-                      Certificate Expiry</h5>
-                    <p style="font-size:0.72rem; color:var(--text-secondary); line-height:1.4; margin:0;">Monitor
-                      SSL/TLS validity, warning threshold flags, and verify renewal dates.</p>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-
-
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Alert Router View Panel -->
-      <div class="settings-view hide" id="automations-view">
-        <div class="settings-card"
-          style="max-width: 1000px; display: flex; flex-direction: row; gap: 0; padding: 0; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden;">
-
-          <!-- Sub-sidebar for Alert Router -->
-          <div
-            style="width: 220px; border-right: 1px solid var(--border-soft); background: rgba(15, 13, 11, 0.4); display: flex; flex-direction: column; justify-content: space-between;">
-            <div>
-              <div
-                style="padding: 18px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px;">
-                <i data-lucide="bell" style="width: 18px; height: 18px; color: var(--accent-orange);"></i>
-                <span
-                  style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.05em; color: var(--text-primary); text-transform: uppercase;">Alert
-                  Router</span>
-              </div>
-              <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px;" id="alert-sub-navigation">
-                <button class="sub-nav-btn active" id="alert-subnav-rules" onclick="switchAlertSubView('rules')"
-                  style="background: var(--bg-secondary); border: none; text-align: left; width: 100%; padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--text-primary); cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
-                  <i data-lucide="shield-alert" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
-                  Alert Rules
-                </button>
-                <button class="sub-nav-btn" id="alert-subnav-channels" onclick="switchAlertSubView('channels')"
-                  style="background: none; border: none; text-align: left; width: 100%; padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
-                  <i data-lucide="send" style="width: 14px; height: 14px;"></i>
-                  Notification Channels
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Main Content Area -->
-          <div style="flex: 1; display: flex; flex-direction: column; background: transparent;">
-
-            <!-- SUB-VIEW 1: Rules List -->
-            <div id="alert-sub-view-rules" class="alert-content-pane"
-              style="padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; max-height: 520px;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Alert Rules
-                  </h3>
-                  <p style="margin: 2px 0 0 0; font-size: 0.72rem; color: var(--text-secondary);">Rule conditions
-                    evaluated dynamically to trigger notifications.</p>
-                </div>
-                <button class="btn btn-primary" onclick="openRuleComposer()"
-                  style="font-size: 0.72rem; padding: 6px 14px; cursor: pointer;">+ Create Alert Rule</button>
-              </div>
-
-              <!-- Rules Container List -->
-              <div id="alert-rules-list" style="display: flex; flex-direction: column; gap: 12px;">
-                <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No warning
-                  rules configured yet.</p>
-              </div>
-            </div>
-
-            <!-- SUB-VIEW 2: Channels List -->
-            <div id="alert-sub-view-channels" class="alert-content-pane hide"
-              style="padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; max-height: 520px;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Notification
-                    Channels</h3>
-                  <p style="margin: 2px 0 0 0; font-size: 0.72rem; color: var(--text-secondary);">Manage destination
-                    profiles for SMTP email, Telegram, and Pushover alerts.</p>
-                </div>
-                <button class="btn btn-primary" onclick="openChannelComposer()"
-                  style="font-size: 0.72rem; padding: 6px 14px; cursor: pointer;">+ Add Channel Profile</button>
-              </div>
-
-              <!-- Channels Container List -->
-              <div id="alert-channels-list" style="display: flex; flex-direction: column; gap: 12px;">
-                <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No
-                  notification channels configured yet.</p>
-              </div>
-            </div>
-
-          </div>
+          </details>
         </div>
       </div>
+    </div>
 
-      <!-- Uptime History View Panel -->
-      <div class="settings-view hide" id="uptime-history-view">
-        <div class="settings-card" style="max-width: 1000px;">
-          <div class="settings-header"
-            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-            <div>
-              <h3>Uptime History &amp; Analytics</h3>
-              <p>Visualize latency charts and uptime timelines for configured health checkers.</p>
-            </div>
-            <!-- Filters -->
-            <div style="display: flex; gap: 10px; align-items: center;">
-              <div style="display: flex; flex-direction: column; gap: 2px;">
-                <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Monitor
-                  Source</label>
-                <select id="history-monitor-select" onchange="loadHistoryAnalytics()"
-                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 180px;">
-                  <!-- Dynamically populated with monitors -->
-                </select>
-              </div>
-              <div style="display: flex; flex-direction: column; gap: 2px;">
-                <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Time
-                  Range</label>
-                <div style="display: flex; gap: 4px; align-items: center;">
-                  <button id="btn-history-shift-back" onclick="shiftHistoryTime(-1)"
-                    style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 30px; width: 30px; transition: all 0.2s;"
-                    title="Shift Backward">
-                    <i data-lucide="chevron-left" style="width: 14px; height: 14px; color: #fff;"></i>
-                  </button>
-                  <select id="history-timeframe-select" onchange="resetHistoryTimeOffset(); loadHistoryAnalytics()"
-                    style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 120px; height: 30px;">
-                    <option value="hours-1" selected>Last 1 Hour</option>
-                    <option value="hours-3">Last 3 Hours</option>
-                    <option value="hours-12">Last 12 Hours</option>
-                    <option value="hours-24">Last 24 Hours</option>
-                    <option value="hours-168">Last 7 Days</option>
-                    <option value="hours-720">Last 30 Days</option>
-                    <option value="custom">Custom Range</option>
-                  </select>
-                  <button id="btn-history-shift-forward" onclick="shiftHistoryTime(1)"
-                    style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 4px; cursor: default; display: flex; align-items: center; justify-content: center; height: 30px; width: 30px; opacity: 0.5; transition: all 0.2s;"
-                    title="Shift Forward" disabled>
-                    <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
-                  </button>
-                </div>
-                <div id="history-custom-range-inputs"
-                  style="display: none; align-items: center; gap: 4px; margin-top: 6px;">
-                  <input type="datetime-local" id="history-custom-start"
-                    style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.7rem; height: 30px;">
-                  <span style="color: var(--text-secondary); font-size: 0.7rem;">to</span>
-                  <input type="datetime-local" id="history-custom-end"
-                    style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.7rem; height: 30px;">
-                  <button onclick="loadHistoryAnalytics()" class="btn-primary"
-                    style="padding: 4px 8px; font-size: 0.7rem; border-radius: 4px; height: 30px; display: flex; align-items: center; cursor: pointer; border: none; background: var(--color-primary); color: #fff;">
-                    Apply
-                  </button>
-                </div>
-              </div>
-            </div>
+    <!-- Host Manager View Panel -->
+    <div class="settings-view hide" id="hosts-view">
+      <div class="settings-card" style="max-width: 1000px;">
+        <div class="settings-header"
+          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h3>Host Manager</h3>
+            <p>Configure device hosts by IP/Hostname and automatically manage their associated health checks.</p>
           </div>
-
-          <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
-            <!-- Stats Summary Cards Row -->
+          <div style="display: flex; gap: 12px; align-items: center;">
             <div
-              style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; margin-bottom: 24px;">
-              <div
-                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
-                <small
-                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Uptime
-                  Ratio</small>
-                <h4 id="history-stat-uptime"
-                  style="font-size:1.3rem; font-weight:700; margin:0; color:var(--color-optimal);">-- %</h4>
-              </div>
-              <div
-                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
-                <small
-                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Average
-                  Response</small>
-                <h4 id="history-stat-avg-latency" style="font-size:1.3rem; font-weight:700; margin:0;">-- ms</h4>
-              </div>
-              <div
-                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
-                <small
-                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Peak
-                  Latency</small>
-                <h4 id="history-stat-max-latency" style="font-size:1.3rem; font-weight:700; margin:0;">-- ms</h4>
-              </div>
-              <div
-                style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
-                <small
-                  style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Outages
-                  Detected</small>
-                <h4 id="history-stat-outages" style="font-size:1.3rem; font-weight:700; margin:0; color:#f43f5e;">--
-                </h4>
-              </div>
-            </div>
-
-            <!-- Interactive Latency Graph Container -->
-            <div
-              style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; margin-bottom: 24px; position: relative;">
-              <small
-                style="position: absolute; top: 12px; right: 16px; font-size: 0.65rem; color: var(--text-secondary); font-family: monospace;">LATENCY
-                (MS) OVER TIME</small>
-              <div style="height: 320px; width: 100%;">
-                <canvas id="analytics-chart-canvas"></canvas>
-              </div>
-            </div>
-
-            <!-- Historical Detailed Log Table -->
-            <details id="history-logs-advanced-details"
-              style="border: 1px solid var(--border-soft); border-radius: 6px; padding: 12px; margin-top: 20px; background: rgba(255,255,255,0.01);">
-              <summary
-                style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); cursor: pointer; outline: none; user-select: none;">
-                Advanced Telemetry Records
-              </summary>
-              <div style="overflow-x:auto; margin-top: 12px;">
-                <table style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left;">
-                  <thead>
-                    <tr
-                      style="background:rgba(255,255,255,0.01); border-bottom:1px solid var(--border-soft); color:var(--text-secondary);">
-                      <th style="padding:10px 14px;">Timestamp</th>
-                      <th style="padding:10px 14px;">Event Status</th>
-                      <th style="padding:10px 14px;">Response latency</th>
-                    </tr>
-                  </thead>
-                  <tbody id="history-logs-table-body">
-                    <tr>
-                      <td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Please
-                        select
-                        a monitor to view detailed results.</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          </div>
-        </div>
-      </div>
-
-      <!-- Host Manager View Panel -->
-      <div class="settings-view hide" id="hosts-view">
-        <div class="settings-card" style="max-width: 1000px;">
-          <div class="settings-header"
-            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-            <div>
-              <h3>Host Manager</h3>
-              <p>Configure device hosts by IP/Hostname and automatically manage their associated health checks.</p>
-            </div>
-            <div style="display: flex; gap: 12px; align-items: center;">
-              <div
-                style="display: flex; gap: 4px; border: 1px solid var(--border-soft); border-radius: 6px; padding: 2px; background: rgba(0,0,0,0.2);">
-                <button id="btn-hosts-grid" onclick="setHostsLayout('grid')"
-                  style="border: none; background: none; padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
-                  title="Grid View">
-                  <i data-lucide="grid" style="width: 14px; height: 14px; color: #fff;"></i>
-                </button>
-                <button id="btn-hosts-list" onclick="setHostsLayout('list')"
-                  style="border: none; background: none; padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
-                  title="List View">
-                  <i data-lucide="list" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
-                </button>
-              </div>
-              <button class="btn btn-primary" onclick="openAddHostModal()"
-                style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Host
+              style="display: flex; gap: 4px; border: 1px solid var(--border-soft); border-radius: 6px; padding: 2px; background: rgba(0,0,0,0.2);">
+              <button id="btn-hosts-grid" onclick="setHostsLayout('grid')"
+                style="border: none; background: none; padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                title="Grid View">
+                <i data-lucide="grid" style="width: 14px; height: 14px; color: #fff;"></i>
+              </button>
+              <button id="btn-hosts-list" onclick="setHostsLayout('list')"
+                style="border: none; background: none; padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                title="List View">
+                <i data-lucide="list" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
               </button>
             </div>
+            <button class="btn btn-primary" onclick="openAddHostModal()"
+              style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Host
+            </button>
           </div>
+        </div>
 
-          <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
-            <!-- Hosts Grid/List -->
-            <div id="hosts-list-container"
-              style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
-              <!-- Dynamically populated with host cards -->
-            </div>
+        <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
+          <!-- Hosts Grid/List -->
+          <div id="hosts-list-container"
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+            <!-- Dynamically populated with host cards -->
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Developer Tools View Panel -->
-      <div class="settings-view hide" id="developer-tools-view">
-        <div class="settings-card" style="max-width: 800px;">
-          <div class="settings-header">
-            <h3>Developer Tools &amp; Web Shell</h3>
-            <p>Access background system diagnostics, debug logs, and execute terminal test queries.</p>
+    <!-- Host Detail View Panel (Full Page) -->
+    <div class="settings-view hide" id="host-detail-view">
+      <div class="settings-card" style="max-width: 1000px; padding: 24px;">
+        <div class="settings-header"
+          style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-soft); padding-bottom: 16px; margin-bottom: 20px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <button class="btn btn-secondary" onclick="showHostsView()"
+                style="padding: 6px 12px; font-size: 0.75rem; display: flex; align-items: center; gap: 6px; cursor: pointer; background: rgba(255,255,255,0.05); border: 1px solid var(--border-soft); color: var(--text-primary); border-radius: 6px;">
+                <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to Host Manager
+              </button>
+              <h3 id="host-detail-title-full" style="margin: 0; font-size: 1.4rem; color: #fff;">Host Detail</h3>
+            </div>
+            <p id="host-detail-target-full"
+              style="font-family: monospace; color: var(--text-secondary); margin: 6px 0 0 0; font-size: 0.85rem; padding-left: 4px;">
+            </p>
           </div>
-          <div class="settings-form">
-            <!-- Simulated Diagnostic Shell -->
+          <div>
+            <button class="btn btn-primary" id="btn-edit-host-from-detail-full"
+              style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i> Edit Config
+            </button>
+          </div>
+        </div>
+
+        <!-- Telemetry Stats Section -->
+        <div id="host-detail-stats-section-full" style="margin-bottom: 32px; display: none;">
+          <h4
+            style="margin: 0 0 16px 0; font-size: 0.8rem; font-weight: 700; color: var(--accent-orange); text-transform: uppercase; letter-spacing: 0.5px;">
+            System Telemetry</h4>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+            <!-- CPU -->
             <div
-              style="background: #09090b; border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; font-family: monospace;">
-              <div
-                style="background: #18181b; padding: 8px 16px; font-size: 0.72rem; color: var(--text-secondary); border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px;">
-                <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></span>
-                <span style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></span>
-                <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></span>
-                <span style="margin-left: 8px; font-weight: 600;">bash — core-mon.local</span>
-              </div>
-              <div
-                style="padding: 16px; font-size: 0.78rem; line-height: 1.5; color: #a1a1aa; height: 280px; overflow-y: auto;">
-                <div style="color: #3b82f6;">HomePulse Diagnostic Console (V1.2.0-stable)</div>
-                <div style="color: var(--text-secondary); margin-bottom: 10px;">Type 'help' to view available commands.
-                </div>
-                <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span style="color: #f4f4f5;">pulse-status
-                    --verify-metrics</span></div>
-                <div style="color: #10b981; margin-bottom: 10px;">[SUCCESS] telemetry stream link validated. All active
-                  listeners (4) connected.</div>
-                <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span style="color: #f4f4f5;">cat
-                    /etc/homepulse/config.json</span></div>
-                <div style="color: #71717a; margin-bottom: 10px;">{ "db_pool_size": 10, "mdns_broadcast": true,
-                  "token_auth": "enabled" }</div>
-                <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span
-                    style="position: relative; display: inline-block;">
-                    <input type="text" id="shell-mock-input" value="pulse-ping gateway.local" readonly
-                      style="background:transparent; border:none; color:#f0e6d3; font-family:monospace; font-size:0.78rem; outline:none; padding:0; width:300px;">
-                  </span></div>
+              style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; align-items: center; gap: 16px;">
+              <div style="font-size: 1.8rem; line-height: 1;">💻</div>
+              <div>
+                <div
+                  style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">
+                  CPU Cycles</div>
+                <div id="host-detail-cpu-val-full"
+                  style="font-size: 1.25rem; font-weight: 700; color: #fff; margin-top: 2px;">--</div>
               </div>
             </div>
-            <div style="display: flex; gap: 10px; margin-top: 16px;">
-              <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 6px 14px; cursor: pointer;">Clear
-                Terminal</button>
-              <button class="btn btn-primary"
-                style="font-size: 0.75rem; padding: 6px 14px; cursor: not-allowed; opacity: 0.6;" disabled>Execute
-                Command</button>
+            <!-- Memory -->
+            <div
+              style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; align-items: center; gap: 16px;">
+              <div style="font-size: 1.8rem; line-height: 1;">💾</div>
+              <div>
+                <div
+                  style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">
+                  Memory Usage</div>
+                <div id="host-detail-mem-val-full"
+                  style="font-size: 1.25rem; font-weight: 700; color: #fff; margin-top: 2px;">--</div>
+              </div>
+            </div>
+            <!-- Network IO -->
+            <div
+              style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; align-items: center; gap: 16px;">
+              <div style="font-size: 1.8rem; line-height: 1;">🌐</div>
+              <div>
+                <div
+                  style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">
+                  Network IO</div>
+                <div id="host-detail-net-val-full"
+                  style="font-size: 1.25rem; font-weight: 700; color: #fff; margin-top: 2px;">--</div>
+              </div>
+            </div>
+            <!-- CPU Temp -->
+            <div
+              style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; display: flex; align-items: center; gap: 16px;">
+              <div style="font-size: 1.8rem; line-height: 1;">🌡️</div>
+              <div>
+                <div
+                  style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px;">
+                  CPU Temp</div>
+                <div id="host-detail-temp-val-full"
+                  style="font-size: 1.25rem; font-weight: 700; color: #fff; margin-top: 2px;">--</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Bottom section spacer -->
-      <div style="height: 40px;"></div>
+        <!-- Active Health Probers Section -->
+        <div>
+          <h4
+            style="margin: 0 0 16px 0; font-size: 0.8rem; font-weight: 700; color: var(--accent-orange); text-transform: uppercase; letter-spacing: 0.5px;">
+            Active Health Probers</h4>
+          <div id="host-detail-probers-list-full"
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+            <!-- Dynamically populated probers rows -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Developer Tools View Panel -->
+    <div class="settings-view hide" id="developer-tools-view">
+      <div class="settings-card" style="max-width: 800px;">
+        <div class="settings-header">
+          <h3>Developer Tools &amp; Web Shell</h3>
+          <p>Access background system diagnostics, debug logs, and execute terminal test queries.</p>
+        </div>
+        <div class="settings-form">
+          <!-- Simulated Diagnostic Shell -->
+          <div
+            style="background: #09090b; border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; font-family: monospace;">
+            <div
+              style="background: #18181b; padding: 8px 16px; font-size: 0.72rem; color: var(--text-secondary); border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px;">
+              <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></span>
+              <span style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></span>
+              <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></span>
+              <span style="margin-left: 8px; font-weight: 600;">bash — core-mon.local</span>
+            </div>
+            <div
+              style="padding: 16px; font-size: 0.78rem; line-height: 1.5; color: #a1a1aa; height: 280px; overflow-y: auto;">
+              <div style="color: #3b82f6;">HomePulse Diagnostic Console (V1.2.0-stable)</div>
+              <div style="color: var(--text-secondary); margin-bottom: 10px;">Type 'help' to view available commands.
+              </div>
+              <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span style="color: #f4f4f5;">pulse-status
+                  --verify-metrics</span></div>
+              <div style="color: #10b981; margin-bottom: 10px;">[SUCCESS] telemetry stream link validated. All active
+                listeners (4) connected.</div>
+              <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span style="color: #f4f4f5;">cat
+                  /etc/homepulse/config.json</span></div>
+              <div style="color: #71717a; margin-bottom: 10px;">{ "db_pool_size": 10, "mdns_broadcast": true,
+                "token_auth": "enabled" }</div>
+              <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span
+                  style="position: relative; display: inline-block;">
+                  <input type="text" id="shell-mock-input" value="pulse-ping gateway.local" readonly
+                    style="background:transparent; border:none; color:#f0e6d3; font-family:monospace; font-size:0.78rem; outline:none; padding:0; width:300px;">
+                </span></div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; margin-top: 16px;">
+            <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 6px 14px; cursor: pointer;">Clear
+              Terminal</button>
+            <button class="btn btn-primary"
+              style="font-size: 0.75rem; padding: 6px 14px; cursor: not-allowed; opacity: 0.6;" disabled>Execute
+              Command</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom section spacer -->
+    <div style="height: 40px;"></div>
 
     </div>
     </div>
@@ -1013,14 +1190,23 @@
         </div>
 
         <!-- YAML Container -->
-        <div id="editor-yaml-container" style="display: none; flex-direction: column; gap: 8px;">
+        <div id="editor-yaml-container" style="display: none; flex-direction: column; gap: 8px; width: 100%;">
           <span style="font-size:0.7rem; color:var(--text-secondary);">Directly edit this card's Lovelace parameters
             using YAML:</span>
           <div id="edit-widget-yaml-error"
             style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 8px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
           </div>
-          <textarea id="edit-widget-yaml-textarea"
-            style="background:#121214; border: 1px solid var(--border-soft); border-radius: 6px; color:#e4e4e7; font-family:monospace; font-size:0.8rem; padding:12px; height:320px; resize:none; outline:none; line-height:1.4;"></textarea>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; width: 100%;">
+            <textarea id="edit-widget-yaml-textarea"
+              style="background:#121214; border: 1px solid var(--border-soft); border-radius: 6px; color:#e4e4e7; font-family:monospace; font-size:0.8rem; padding:12px; height:320px; resize:none; outline:none; line-height:1.4; box-sizing: border-box; width: 100%;"></textarea>
+            <div id="yaml-preview-panel"
+              style="border: 1px solid var(--border-soft); border-radius: 6px; background: rgba(0,0,0,0.2); padding: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 320px; box-sizing: border-box; position: relative; overflow: hidden; width: 100%;">
+              <span
+                style="position: absolute; top: 8px; left: 8px; font-size: 0.65rem; text-transform: uppercase; color: var(--accent-orange); font-weight: bold; letter-spacing: 0.5px;">Live
+                Preview</span>
+              <div id="yaml-preview-card-wrapper" style="width: 100%; max-width: 250px;"></div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -1629,6 +1815,19 @@
               </div>
 
               <div class="modal-group">
+                <label for="host-polling-interval">Telemetry Polling Frequency (seconds)</label>
+                <div class="slider-container" style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+                  <input type="range" id="host-polling-interval" min="1" max="15" value="3"
+                    oninput="document.getElementById('host-polling-interval-val').textContent = this.value + 's'"
+                    style="flex: 1; accent-color: var(--accent-orange);">
+                  <span class="slider-badge" id="host-polling-interval-val"
+                    style="display: inline-block; background: var(--bg-secondary); border: 1px solid var(--border-soft); padding: 2px 8px; border-radius: 4px; font-weight: bold; min-width: 32px; text-align: center;">3s</span>
+                </div>
+                <small style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Custom
+                  background stats collection frequency for this specific host device.</small>
+              </div>
+
+              <div class="modal-group">
                 <label style="margin-bottom: 8px; display: block;">Enable Health Diagnostic Checkers</label>
                 <div
                   style="display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border-soft); padding: 12px; border-radius: 6px; background: rgba(0,0,0,0.15);">
@@ -1683,6 +1882,7 @@
             </div>
           </div>
         </div>
+
 </body>
 
 </html>

@@ -9,7 +9,7 @@ import asyncpg
 import socket
 import urllib.request
 import urllib.error
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header
 from fastapi.responses import FileResponse, JSONResponse
@@ -231,6 +231,21 @@ entity_states = {
         "icon": "database",
         "color": "#10b981",
         "graphic": "bottom-bar"
+    },
+    "database-storage-pct": {
+        "node_id": "core-mon",
+        "entity_key": "database-storage-pct",
+        "name": "Database Storage Space Full",
+        "type": "sensor",
+        "value_type": "float",
+        "unit": "%",
+        "value": 0.0,
+        "status": "Healthy",
+        "status_type": "healthy",
+        "tags": "main,server",
+        "icon": "database",
+        "color": "#10b981",
+        "graphic": "sparkline"
     }
 }
 
@@ -287,6 +302,7 @@ async def init_db_pool():
                     INSERT INTO system_settings (key, value) VALUES 
                     ('telemetry_interval', '3'),
                     ('log_retention', '7'),
+                    ('auto_prune_enabled', 'false'),
                     ('timezone', 'UTC'),
                     ('preshared_key', 'device_pin_12345'),
                     ('theme', 'midnight'),
@@ -376,11 +392,15 @@ async def init_db_pool():
                             ssl_enabled BOOLEAN DEFAULT FALSE,
                             port_enabled BOOLEAN DEFAULT FALSE,
                             port_number INT,
+                            polling_interval INT DEFAULT 3,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         );
                     """)
+                    await conn.execute("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS polling_interval INT DEFAULT 3;")
                     await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS host_id INT REFERENCES hosts(id) ON DELETE CASCADE;")
-                    logger.info("hosts database schema and relationships verified.")
+                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs (timestamp);")
+                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_system_audits_timestamp ON system_audits (timestamp);")
+                    logger.info("hosts database schema, indexes, and relationships verified.")
                 except Exception as hosts_err:
                     logger.warning(f"Error establishing hosts and schemas: {hosts_err}")
 
@@ -436,6 +456,58 @@ async def init_db_pool():
                         }
                 except Exception as e:
                     logger.error(f"Failed to pre-register monitor entities: {e}")
+
+                # Auto-provision "Main Monitor Host" and "Database Node" if not exist in hosts table
+                try:
+                    host_exists = await conn.fetchrow("SELECT id FROM hosts WHERE target = '127.0.0.1';")
+                    if not host_exists:
+                        logger.info("Auto-provisioning default Core Monitor Host and PostgreSQL host...")
+                        
+                        # 1. Main Host
+                        host_payload_main = HostPayload(
+                            name="Core Monitor Host",
+                            target="127.0.0.1",
+                            ping_enabled=True,
+                            http_enabled=False,
+                            https_enabled=False,
+                            ssl_enabled=False,
+                            port_enabled=False,
+                            port_number=None,
+                            polling_interval=3
+                        )
+                        # Insert Core Host
+                        host_id_main = await conn.fetchval(
+                            """INSERT INTO hosts (name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval) 
+                               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;""",
+                            host_payload_main.name, host_payload_main.target, host_payload_main.ping_enabled,
+                            host_payload_main.http_enabled, host_payload_main.https_enabled, host_payload_main.ssl_enabled,
+                            host_payload_main.port_enabled, host_payload_main.port_number, host_payload_main.polling_interval
+                        )
+                        await sync_host_probers(conn, host_id_main, host_payload_main)
+
+                        # 2. Database Server Host
+                        host_payload_db = HostPayload(
+                            name="PostgreSQL Database Node",
+                            target="localhost",
+                            ping_enabled=False,
+                            http_enabled=False,
+                            https_enabled=False,
+                            ssl_enabled=False,
+                            port_enabled=True,
+                            port_number=5432,
+                            polling_interval=5
+                        )
+                        host_id_db = await conn.fetchval(
+                            """INSERT INTO hosts (name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval) 
+                               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;""",
+                            host_payload_db.name, host_payload_db.target, host_payload_db.ping_enabled,
+                            host_payload_db.http_enabled, host_payload_db.https_enabled, host_payload_db.ssl_enabled,
+                            host_payload_db.port_enabled, host_payload_db.port_number, host_payload_db.polling_interval
+                        )
+                        await sync_host_probers(conn, host_id_db, host_payload_db)
+                        logger.info("Default hosts successfully auto-provisioned.")
+                except Exception as prov_err:
+                    logger.error(f"Failed to auto-provision default hosts: {prov_err}")
 
                 tables = await conn.fetch("SELECT table_name FROM information_schema.tables WHERE table_schema='public';")
                 logger.info(f"Database schema verification complete. Tables: {[t['table_name'] for t in tables]}")
@@ -637,6 +709,16 @@ async def collect_system_statistics_task():
             entity_states["database-latency"]["status"] = "Optimal" if db_latency < 20 else "Caution"
             entity_states["database-latency"]["status_type"] = "optimal" if db_latency < 20 else "caution"
 
+            # Disk Partition Space checks for DB Footprint capacity
+            try:
+                storage_pct = psutil.disk_usage('/').percent
+            except Exception as disk_err:
+                logger.warning(f"Failed to query disk storage stats: {disk_err}")
+                storage_pct = 0.0
+            entity_states["database-storage-pct"]["value"] = storage_pct
+            entity_states["database-storage-pct"]["status"] = "Optimal" if storage_pct < 80 else ("Caution" if storage_pct < 90 else "Alarm")
+            entity_states["database-storage-pct"]["status_type"] = "optimal" if storage_pct < 80 else ("caution" if storage_pct < 90 else "alarm")
+
             # E. Write to Postgres telemetry logs and system audits if connected
             if db_pool and db_status == "CONNECTED":
                 try:
@@ -649,6 +731,10 @@ async def collect_system_statistics_task():
                         await conn.execute(
                             "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
                             "core-mon", "database-latency", str(db_latency)
+                        )
+                        await conn.execute(
+                            "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
+                            "core-mon", "database-storage-pct", str(storage_pct)
                         )
                         
                         # Occasional systemic check audits
@@ -667,21 +753,23 @@ async def collect_system_statistics_task():
 
                 # G. Perform log retention pruning
                 try:
-                    retention = app_settings.get("log_retention", 7)
-                    async with db_pool.acquire() as conn:
-                        await conn.execute(
-                            "DELETE FROM telemetry_logs WHERE timestamp < NOW() - ($1::integer * INTERVAL '1 day');",
-                            retention
-                        )
-                        await conn.execute(
-                            "DELETE FROM system_audits WHERE timestamp < NOW() - ($1::integer * INTERVAL '1 day');",
-                            retention
-                        )
+                    auto_prune = app_settings.get("auto_prune_enabled", "false") == "true"
+                    if auto_prune:
+                        retention = app_settings.get("log_retention", 7)
+                        async with db_pool.acquire() as conn:
+                            await conn.execute(
+                                "DELETE FROM telemetry_logs WHERE timestamp < NOW() - ($1::integer * INTERVAL '1 day');",
+                                retention
+                            )
+                            await conn.execute(
+                                "DELETE FROM system_audits WHERE timestamp < NOW() - ($1::integer * INTERVAL '1 day');",
+                                retention
+                            )
                 except Exception as prune_err:
                     logger.error(f"Failed to prune retention logs: {prune_err}")
 
             # F. Broadcast WebSocket notifications
-            for key in ["cpu-utilization", "memory-saturation", "network-throughput", "database-latency", "database-status"]:
+            for key in ["cpu-utilization", "memory-saturation", "network-throughput", "database-latency", "database-status", "database-storage-pct"]:
                 state = entity_states[key]
                 await manager.broadcast({
                     "event": "state_changed",
@@ -1074,12 +1162,12 @@ async def get_discovery_queue():
     return JSONResponse(content=discovery_queue)
 
 class SettingsPayload(BaseModel):
-    telemetry_interval: int
-    log_retention: int
     timezone: str
     preshared_key: str
     theme: str
     layout_compact: str
+    telemetry_interval: Optional[int] = None
+    log_retention: Optional[int] = None
 
 @app.get("/api/settings")
 async def get_settings():
@@ -1088,8 +1176,10 @@ async def get_settings():
 @app.post("/api/settings")
 async def post_settings(payload: SettingsPayload):
     # Update cache
-    app_settings["telemetry_interval"] = payload.telemetry_interval
-    app_settings["log_retention"] = payload.log_retention
+    if payload.telemetry_interval is not None:
+        app_settings["telemetry_interval"] = payload.telemetry_interval
+    if payload.log_retention is not None:
+        app_settings["log_retention"] = payload.log_retention
     app_settings["timezone"] = payload.timezone
     app_settings["preshared_key"] = payload.preshared_key
     app_settings["theme"] = payload.theme
@@ -1201,6 +1291,7 @@ class HostPayload(BaseModel):
     ssl_enabled: bool = False
     port_enabled: bool = False
     port_number: Optional[int] = None
+    polling_interval: int = 3
 
 @app.get("/api/alerts/channels")
 async def get_channels():
@@ -1367,7 +1458,7 @@ async def get_monitors():
         return JSONResponse(content=[])
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name, type, target, check_interval, timeout, last_status, last_latency, last_checked, enabled FROM system_monitors ORDER BY id ASC;")
+            rows = await conn.fetch("SELECT id, name, type, target, check_interval, timeout, last_status, last_latency, last_checked, enabled, host_id FROM system_monitors ORDER BY id ASC;")
             res = []
             for r in rows:
                 d = dict(r)
@@ -1582,7 +1673,7 @@ async def get_hosts():
         raise HTTPException(status_code=503, detail="Database connection not available")
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number FROM hosts ORDER BY id DESC;")
+            rows = await conn.fetch("SELECT id, name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval FROM hosts ORDER BY id DESC;")
             res = []
             for r in rows:
                 res.append(dict(r))
@@ -1604,11 +1695,11 @@ async def add_host(payload: HostPayload):
             async with conn.transaction():
                 # 1. Insert Host
                 host_id = await conn.fetchval(
-                    """INSERT INTO hosts (name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number) 
-                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id;""",
+                    """INSERT INTO hosts (name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval) 
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;""",
                     payload.name.strip(), payload.target.strip(), payload.ping_enabled,
                     payload.http_enabled, payload.https_enabled, payload.ssl_enabled,
-                    payload.port_enabled, payload.port_number
+                    payload.port_enabled, payload.port_number, payload.polling_interval
                 )
                 
                 # 2. Sync Probers to system_monitors
@@ -1645,10 +1736,10 @@ async def update_host(host_id: int, payload: HostPayload):
                 # 3. Update Host
                 await conn.execute(
                     """UPDATE hosts SET name=$1, target=$2, ping_enabled=$3, http_enabled=$4, 
-                       https_enabled=$5, ssl_enabled=$6, port_enabled=$7, port_number=$8 WHERE id=$9;""",
+                       https_enabled=$5, ssl_enabled=$6, port_enabled=$7, port_number=$8, polling_interval=$9 WHERE id=$10;""",
                     payload.name.strip(), payload.target.strip(), payload.ping_enabled,
                     payload.http_enabled, payload.https_enabled, payload.ssl_enabled,
-                    payload.port_enabled, payload.port_number, host_id
+                    payload.port_enabled, payload.port_number, payload.polling_interval, host_id
                 )
                 
                 # 4. Re-sync probers for this host (delete existing ones first, then insert needed ones)
@@ -1717,16 +1808,242 @@ async def get_support_logs():
         logger.error(f"Failed to compile support logs: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to compile support logs: {str(e)}")
 
+class PruneRequest(BaseModel):
+    age: Optional[str] = None # hour, day, week, month, year, all, custom
+    custom_days: Optional[int] = None
+    delete_oldest_count: Optional[int] = None
+    retain_latest_count: Optional[int] = None
+    dry_run: bool = False
+
+    # Advanced Filtering parameters
+    host_id: Optional[int] = None
+    entity_key: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def check_mutually_exclusive(cls, data):
+        if not isinstance(data, dict):
+            return data
+        age = data.get("age")
+        del_cnt = data.get("delete_oldest_count")
+        ret_cnt = data.get("retain_latest_count")
+        
+        # If advanced filters are specified without any strategy, default to age = 'all' or don't error.
+        is_filter_only = data.get("host_id") is not None or data.get("entity_key") is not None or data.get("start_date") is not None or data.get("end_date") is not None
+        
+        provided = sum(1 for x in [age, del_cnt, ret_cnt] if x is not None)
+        if provided == 0:
+            if not is_filter_only:
+                raise ValueError("Either a pruning strategy (age, delete_oldest_count, retain_latest_count) or filtering parameters must be specified.")
+        elif provided > 1:
+            raise ValueError("At most one of 'age', 'delete_oldest_count', or 'retain_latest_count' can be specified.")
+        
+        if age == "custom" and data.get("custom_days") is None:
+            raise ValueError("custom_days must be specified when age is 'custom'.")
+            
+        return data
+
+@app.post("/api/support/prune")
+async def prune_database_logs(payload: PruneRequest):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    
+    dry_run = payload.dry_run
+    deleted_logs_count = 0
+    deleted_audits_count = 0
+    
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                # 1. Build WHERE conditions dynamically
+                conditions = []
+                params = []
+                
+                # Apply Age Preset Filters
+                if payload.age is not None:
+                    age = payload.age
+                    if age == "all":
+                        pass
+                    else:
+                        interval_str = None
+                        if age == "hour":
+                            interval_str = "1 hour"
+                        elif age == "day":
+                            interval_str = "1 day"
+                        elif age == "week":
+                            interval_str = "7 days"
+                        elif age == "month":
+                            interval_str = "30 days"
+                        elif age == "year":
+                            interval_str = "365 days"
+                        elif age == "custom" and payload.custom_days is not None:
+                            interval_str = f"{payload.custom_days} days"
+                            
+                        if interval_str:
+                            conditions.append(f"timestamp < NOW() - INTERVAL '{interval_str}'")
+                
+                # Apply Custom Date Range Filters
+                if payload.start_date:
+                    params.append(payload.start_date)
+                    conditions.append(f"timestamp >= ${len(params)}::timestamp")
+                if payload.end_date:
+                    params.append(payload.end_date)
+                    conditions.append(f"timestamp <= ${len(params)}::timestamp")
+                    
+                # Apply Host filter
+                if payload.host_id is not None:
+                    host_id = int(payload.host_id)
+                    host_row = await conn.fetchrow("SELECT target FROM hosts WHERE id = $1;", host_id)
+                    if host_row:
+                        host_target = host_row["target"]
+                        mon_ids = [r["id"] for r in await conn.fetch("SELECT id FROM system_monitors WHERE host_id = $1;", host_id)]
+                        host_conds = []
+                        # Check if localhost / database / main node
+                        if host_target in ["127.0.0.1", "localhost", "homepulse-db"]:
+                            host_conds.append("node_id = 'core-mon'")
+                        if mon_ids:
+                            keys = []
+                            for mid in mon_ids:
+                                keys.append(f"monitor-{mid}-status")
+                                keys.append(f"monitor-{mid}-latency")
+                            params.append(keys)
+                            host_conds.append(f"(node_id = 'monitors' AND entity_key = ANY(${len(params)}))")
+                            
+                        if host_conds:
+                            conditions.append(f"({' OR '.join(host_conds)})")
+                        else:
+                            conditions.append("FALSE")
+                    else:
+                        conditions.append("FALSE")
+                        
+                # Apply Entity filter
+                if payload.entity_key:
+                    params.append(payload.entity_key)
+                    conditions.append(f"entity_key = ${len(params)}")
+                    
+                # A. Strategy B: Delete oldest X
+                if payload.delete_oldest_count is not None:
+                    count = payload.delete_oldest_count
+                    if count <= 0:
+                        raise HTTPException(status_code=400, detail="delete_oldest_count must be positive.")
+                    
+                    where_clause = " AND ".join(conditions) if conditions else "TRUE"
+                    select_q = f"SELECT id FROM telemetry_logs WHERE {where_clause} ORDER BY timestamp ASC LIMIT ${len(params)+1};"
+                    ids_to_delete = [r["id"] for r in await conn.fetch(select_q, *params, count)]
+                    
+                    audit_ids_to_delete = []
+                    if not payload.host_id and not payload.entity_key:
+                        select_audits_q = f"SELECT id FROM system_audits WHERE {where_clause} ORDER BY timestamp ASC LIMIT ${len(params)+1};"
+                        audit_ids_to_delete = [r["id"] for r in await conn.fetch(select_audits_q, *params, count)]
+                        
+                    if dry_run:
+                        deleted_logs_count = len(ids_to_delete)
+                        deleted_audits_count = len(audit_ids_to_delete)
+                    else:
+                        if ids_to_delete:
+                            await conn.execute("DELETE FROM telemetry_logs WHERE id = ANY($1);", ids_to_delete)
+                            deleted_logs_count = len(ids_to_delete)
+                        if audit_ids_to_delete:
+                            await conn.execute("DELETE FROM system_audits WHERE id = ANY($1);", audit_ids_to_delete)
+                            deleted_audits_count = len(audit_ids_to_delete)
+                            
+                # B. Strategy C: Retain newest X
+                elif payload.retain_latest_count is not None:
+                    count = payload.retain_latest_count
+                    if count < 0:
+                        raise HTTPException(status_code=400, detail="retain_latest_count must be non-negative.")
+                        
+                    where_clause = " AND ".join(conditions) if conditions else "TRUE"
+                    select_q = f"SELECT id FROM telemetry_logs WHERE {where_clause} ORDER BY timestamp DESC, id DESC LIMIT ${len(params)+1};"
+                    ids_to_keep = [r["id"] for r in await conn.fetch(select_q, *params, count)]
+                    
+                    audit_ids_to_keep = []
+                    if not payload.host_id and not payload.entity_key:
+                        # Only apply audit rules if system prune
+                        select_audits_q = f"SELECT id FROM system_audits WHERE {where_clause} ORDER BY timestamp DESC, id DESC LIMIT ${len(params)+1};"
+                        audit_ids_to_keep = [r["id"] for r in await conn.fetch(select_audits_q, *params, count)]
+                    
+                    delete_params = list(params)
+                    delete_params.append(ids_to_keep)
+                    
+                    select_logs_del_q = f"SELECT COUNT(*) FROM telemetry_logs WHERE {where_clause} AND id NOT IN (SELECT unnest(${len(delete_params)}::bigint[]));"
+                    deleted_logs_count = await conn.fetchval(select_logs_del_q, *delete_params) or 0
+                    
+                    deleted_audits_count = 0
+                    if not payload.host_id and not payload.entity_key:
+                        delete_audit_params = list(params)
+                        delete_audit_params.append(audit_ids_to_keep)
+                        select_audits_del_q = f"SELECT COUNT(*) FROM system_audits WHERE {where_clause} AND id NOT IN (SELECT unnest(${len(delete_audit_params)}::integer[]));"
+                        deleted_audits_count = await conn.fetchval(select_audits_del_q, *delete_audit_params) or 0
+                        
+                    if not dry_run:
+                        if ids_to_keep:
+                            await conn.execute(f"DELETE FROM telemetry_logs WHERE {where_clause} AND id NOT IN (SELECT unnest(${len(delete_params)}::bigint[]));", *delete_params)
+                        else:
+                            await conn.execute(f"DELETE FROM telemetry_logs WHERE {where_clause};", *params)
+                        if not payload.host_id and not payload.entity_key:
+                            if audit_ids_to_keep:
+                                await conn.execute(f"DELETE FROM system_audits WHERE {where_clause} AND id NOT IN (SELECT unnest(${len(delete_audit_params)}::integer[]));", *delete_audit_params)
+                            else:
+                                await conn.execute(f"DELETE FROM system_audits WHERE {where_clause};", *params)
+                                
+                # C. Strategy A: Time-based / filters based
+                else:
+                    if payload.age == "all" and not payload.host_id and not payload.entity_key and not payload.start_date and not payload.end_date:
+                        if dry_run:
+                            deleted_logs_count = await conn.fetchval("SELECT COUNT(*) FROM telemetry_logs;") or 0
+                            deleted_audits_count = await conn.fetchval("SELECT COUNT(*) FROM system_audits;") or 0
+                        else:
+                            await conn.execute("TRUNCATE TABLE telemetry_logs;")
+                            await conn.execute("TRUNCATE TABLE system_audits;")
+                            deleted_logs_count = -1
+                            deleted_audits_count = -1
+                    else:
+                        where_clause = " AND ".join(conditions) if conditions else "TRUE"
+                        select_logs = f"SELECT COUNT(*) FROM telemetry_logs WHERE {where_clause};"
+                        delete_logs = f"DELETE FROM telemetry_logs WHERE {where_clause};"
+                        
+                        deleted_logs_count = await conn.fetchval(select_logs, *params) or 0
+                        
+                        deleted_audits_count = 0
+                        if not payload.host_id and not payload.entity_key:
+                            select_audits = f"SELECT COUNT(*) FROM system_audits WHERE {where_clause};"
+                            delete_audits = f"DELETE FROM system_audits WHERE {where_clause};"
+                            deleted_audits_count = await conn.fetchval(select_audits, *params) or 0
+                            
+                        if not dry_run:
+                            await conn.execute(delete_logs, *params)
+                            if not payload.host_id and not payload.entity_key:
+                                await conn.execute(delete_audits, *params)
+            
+        if not dry_run:
+            msg = f"Database prune executed. Deleted logs count: {deleted_logs_count if deleted_logs_count != -1 else 'ALL'}, deleted audits count: {deleted_audits_count if deleted_audits_count != -1 else 'ALL'}."
+            await conn.execute("INSERT INTO system_audits (type, message) VALUES ('success', $1);", msg)
+            
+        return JSONResponse(content={
+            "status": "success",
+            "dry_run": dry_run,
+            "deleted_logs": deleted_logs_count,
+            "deleted_audits": deleted_audits_count
+        })
+    except ValueError as val_err:
+        raise HTTPException(status_code=422, detail=str(val_err))
+    except Exception as e:
+        logger.error(f"Failed to prune logs: {e}")
+
 async def sync_host_probers(conn, host_id: int, payload: HostPayload):
     host_name = payload.name.strip()
     target = payload.target.strip()
+    interval = payload.polling_interval
     
     # 1. PING Check
     if payload.ping_enabled:
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
-               VALUES ($1, 'ping', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
-            f"{host_name} (Ping)", target, host_id
+               VALUES ($1, 'ping', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+            f"{host_name} (Ping)", target, interval, host_id
         )
         register_memory_states(mid, f"{host_name} (Ping)")
         
@@ -1737,8 +2054,8 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
             http_target = f"http://{target}"
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
-               VALUES ($1, 'http', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
-            f"{host_name} (HTTP)", http_target, host_id
+               VALUES ($1, 'http', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+            f"{host_name} (HTTP)", http_target, interval, host_id
         )
         register_memory_states(mid, f"{host_name} (HTTP)")
         
@@ -1749,16 +2066,16 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
             https_target = f"https://{target}"
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
-               VALUES ($1, 'http', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
-            f"{host_name} (HTTPS)", https_target, host_id
+               VALUES ($1, 'http', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+            f"{host_name} (HTTPS)", https_target, interval, host_id
         )
         register_memory_states(mid, f"{host_name} (HTTPS)")
         
-    # 4. SSL Expiry Check
+    # 4. SSL Expiry Check (Always checked every 7200 seconds / 2 hours)
     if payload.ssl_enabled:
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
-               VALUES ($1, 'ssl', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
+               VALUES ($1, 'ssl', $2, 7200, 5, 'unknown', true, $3) RETURNING id;""",
             f"{host_name} (SSL)", target, host_id
         )
         register_memory_states(mid, f"{host_name} (SSL)")
@@ -1767,8 +2084,8 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
     if payload.port_enabled and payload.port_number:
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
-               VALUES ($1, 'port', $2, 30, 5, 'unknown', true, $3) RETURNING id;""",
-            f"{host_name} (Port)", f"{target}:{payload.port_number}", host_id
+               VALUES ($1, 'port', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+            f"{host_name} (Port)", f"{target}:{payload.port_number}", interval, host_id
         )
         register_memory_states(mid, f"{host_name} (Port)")
 
