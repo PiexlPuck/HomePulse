@@ -256,9 +256,9 @@ function initializeSidebar() {
         disableDragAndDrop();
       }
 
-      const yamlToggleBtn = document.getElementById('yaml-toggle-btn');
-      if (yamlToggleBtn) {
-        yamlToggleBtn.style.display = isEditMode ? 'flex' : 'none';
+      const addCardBtn = document.getElementById('add-card-btn');
+      if (addCardBtn) {
+        addCardBtn.style.display = isEditMode ? 'flex' : 'none';
       }
 
       const editBanner = document.getElementById('edit-mode-banner');
@@ -646,6 +646,22 @@ function buildDashboardCards(entitiesMap) {
           <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
         `;
       }
+    }
+    // TYPE A.1: Title / Section Header Card
+    else if (widget.type === 'title') {
+      cardEl.classList.add('card-title-type');
+      cardEl.style.minHeight = '50px';
+
+      const titleColor = widget.options.color || 'var(--accent-orange)';
+
+      cardEl.innerHTML = `
+        <div style="display: flex; align-items: center; width: 100%; height: 100%;">
+          <span style="font-size: 1.05rem; font-weight: 700; color: ${titleColor};">${widget.title || 'Section Title'}</span>
+        </div>
+        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
+        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
+        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+      `;
     }
 
     // TYPE B: Multi-Entity Row List Card
@@ -1552,6 +1568,7 @@ function hideAllViews() {
   const settingsView = document.getElementById('settings-view');
   const probesView = document.getElementById('probes-view');
   const automationsView = document.getElementById('automations-view');
+  const channelsView = document.getElementById('channels-view');
   const devtoolsView = document.getElementById('developer-tools-view');
   const uptimeHistoryView = document.getElementById('uptime-history-view');
   const hostsView = document.getElementById('hosts-view');
@@ -1562,6 +1579,7 @@ function hideAllViews() {
   if (settingsView) settingsView.classList.add('hide');
   if (probesView) probesView.classList.add('hide');
   if (automationsView) automationsView.classList.add('hide');
+  if (channelsView) channelsView.classList.add('hide');
   if (devtoolsView) devtoolsView.classList.add('hide');
   if (uptimeHistoryView) uptimeHistoryView.classList.add('hide');
   if (hostsView) hostsView.classList.add('hide');
@@ -1652,6 +1670,26 @@ function showAutomationsView() {
   if (navAutomations) navAutomations.classList.add('active');
 
   loadAlertRules();
+}
+
+function showChannelsView() {
+  const mainContent = document.getElementById('main-content');
+  if (mainContent && mainContent.classList.contains('edit-mode')) {
+    const editToggleBtn = document.getElementById('edit-toggle-btn');
+    if (editToggleBtn) editToggleBtn.click();
+  }
+
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'none';
+
+  hideAllViews();
+
+  const channelsView = document.getElementById('channels-view');
+  if (channelsView) channelsView.classList.remove('hide');
+
+  const navChannels = document.getElementById('nav-channels');
+  if (navChannels) navChannels.classList.add('active');
+
   loadNotificationChannels();
 }
 
@@ -1699,6 +1737,14 @@ document.addEventListener('DOMContentLoaded', () => {
     navAutomations.addEventListener('click', (e) => {
       e.preventDefault();
       showAutomationsView();
+    });
+  }
+
+  const navChannels = document.getElementById('nav-channels');
+  if (navChannels) {
+    navChannels.addEventListener('click', (e) => {
+      e.preventDefault();
+      showChannelsView();
     });
   }
 
@@ -2135,26 +2181,19 @@ window.cycleTheme = async function () {
 let draggedCard = null;
 
 function enableDragAndDrop() {
-  const cards = document.querySelectorAll('#dashboard-grid > .card:not(.card-placeholder)');
+  const cards = document.querySelectorAll('#dashboard-grid > .card');
   cards.forEach(card => {
-    card.setAttribute('draggable', 'false');
+    card.setAttribute('draggable', 'true');
     card.addEventListener('dragstart', handleDragStart);
     card.addEventListener('dragover', handleDragOver);
     card.addEventListener('dragleave', handleDragLeave);
     card.addEventListener('drop', handleDrop);
     card.addEventListener('dragend', handleDragEnd);
-
-    // Enable dragging only when clicking the edit-handle
-    const handle = card.querySelector('.edit-handle');
-    if (handle) {
-      handle.onmousedown = () => card.setAttribute('draggable', 'true');
-      handle.ontouchstart = () => card.setAttribute('draggable', 'true');
-    }
   });
 }
 
 function disableDragAndDrop() {
-  const cards = document.querySelectorAll('#dashboard-grid > .card:not(.card-placeholder)');
+  const cards = document.querySelectorAll('#dashboard-grid > .card');
   cards.forEach(card => {
     card.removeAttribute('draggable');
     card.removeEventListener('dragstart', handleDragStart);
@@ -2163,12 +2202,6 @@ function disableDragAndDrop() {
     card.removeEventListener('drop', handleDrop);
     card.removeEventListener('dragend', handleDragEnd);
     card.classList.remove('drag-over');
-
-    const handle = card.querySelector('.edit-handle');
-    if (handle) {
-      handle.onmousedown = null;
-      handle.ontouchstart = null;
-    }
   });
 }
 
@@ -2209,7 +2242,6 @@ function handleDrop(e) {
 
 function handleDragEnd(e) {
   this.style.opacity = '1';
-  this.setAttribute('draggable', 'false');
   document.querySelectorAll('#dashboard-grid > .card').forEach(c => c.classList.remove('drag-over'));
 }
 
@@ -2863,6 +2895,7 @@ function addNewCardPlaceholder() {
 }
 
 const catalogTemplates = [
+  { value: 'title', name: 'Layout Section Title', desc: 'Add a custom text section header card to divide your dashboard visual layout.', icon: 'heading' },
   { value: 'sensor', name: 'Standard Telemetry Sensor', desc: 'Display a single real-time sensor value with dynamic charts.', icon: 'activity' },
   { value: 'control', name: 'Interactive Control Widget', desc: 'Add interactive toggle switches, sliders, or action triggers.', icon: 'sliders' },
   { value: 'value', name: 'Value Display Badge', desc: 'A minimal compact badge highlighting numeric or text states.', icon: 'pocket' },
@@ -2920,8 +2953,8 @@ function onCreatorTypeChange(type) {
     scaleGroup.style.display = (type === 'gauge' || type === 'sensor') ? 'flex' : 'none';
   }
 
-  if (type === 'health' || type === 'audit') {
-    group.innerHTML = '<span style="color:var(--text-secondary); font-size:0.75rem;">(This card uses global infrastructure metrics and does not map to a specific entity)</span>';
+  if (type === 'health' || type === 'audit' || type === 'title') {
+    group.innerHTML = '<span style="color:var(--text-secondary); font-size:0.75rem;">(This card acts as a section divider title and does not map to a specific entity)</span>';
     return;
   }
 
@@ -2966,7 +2999,7 @@ function addWidgetToGrid() {
       const [nId, eKey] = chk.value.split('|');
       entities.push({ nodeId: nId, entityKey: eKey });
     });
-  } else if (type !== 'health' && type !== 'audit') {
+  } else if (type !== 'health' && type !== 'audit' && type !== 'title') {
     const select = document.getElementById('creator-select');
     if (select && select.value) {
       const [nId, eKey] = select.value.split('|');
@@ -3257,6 +3290,39 @@ async function loadProbesLevel1() {
   }
 }
 
+window.toggleNavGroup = function (group, event) {
+  if (event) event.preventDefault();
+  const submenu = document.getElementById(`${group}-submenu`);
+  const arrow = document.getElementById(`${group}-arrow`);
+  if (submenu && arrow) {
+    const isHidden = (submenu.style.display === 'none');
+    if (isHidden) {
+      submenu.style.display = 'flex';
+      arrow.setAttribute('data-lucide', 'chevron-down');
+    } else {
+      submenu.style.display = 'none';
+      arrow.setAttribute('data-lucide', 'chevron-right');
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+};
+
+window.toggleCategoryFolder = function (cat) {
+  const content = document.getElementById(`folder-content-${cat}`);
+  const arrow = document.getElementById(`folder-arrow-${cat}`);
+  if (content && arrow) {
+    if (content.style.display === 'none') {
+      content.style.display = 'flex';
+      arrow.setAttribute('data-lucide', 'chevron-down');
+      if (window.lucide) window.lucide.createIcons();
+    } else {
+      content.style.display = 'none';
+      arrow.setAttribute('data-lucide', 'chevron-right');
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+};
+
 async function loadProbesLevel2(type) {
   const { httpUrl } = getApiUrls();
   const listEl = document.getElementById('probes-source-list');
@@ -3358,82 +3424,109 @@ async function loadProbesLevel2(type) {
       });
     }
 
-    let html = '';
+    // Group displayMonitors by category
+    const categories = {};
     displayMonitors.forEach(mon => {
-      let isEnabled = true;
-      let statusLabel = '';
-      let statusColor = '';
-      let latencyStr = '';
-      let m1Enabled = mon.m1.enabled !== false;
+      const cat = mon.m1.category || 'General';
+      if (!categories[cat]) categories[cat] = [];
+      categories[cat].push(mon);
+    });
 
-      if (mon.isGrouped) {
-        let m2Enabled = mon.m2.enabled !== false;
-        isEnabled = m1Enabled || m2Enabled;
-        const isUp1 = m1Enabled && isProbeStatusOnline(mon.m1.last_status, mon.m1.type);
-        const isUp2 = m2Enabled && isProbeStatusOnline(mon.m2.last_status, mon.m2.type);
-
-        if (!isEnabled) {
-          statusLabel = 'DISABLED';
-          statusColor = '#6b7280';
-          latencyStr = '--';
-        } else {
-          let lats = [];
-          if (m1Enabled && mon.m1.last_latency !== null) lats.push(parseFloat(mon.m1.last_latency));
-          if (m2Enabled && mon.m2.last_latency !== null) lats.push(parseFloat(mon.m2.last_latency));
-
-          if (lats.length > 0) {
-            const avgLat = (lats.reduce((a, b) => a + b, 0) / lats.length).toFixed(1);
-            latencyStr = `${avgLat} ms avg`;
-          } else {
-            latencyStr = '--';
-          }
-
-          if (isUp1 && isUp2) {
-            statusLabel = 'BOTH ONLINE';
-            statusColor = 'var(--color-optimal)';
-          } else if (isUp1) {
-            statusLabel = 'HTTP ONLINE';
-            statusColor = 'var(--accent-orange)';
-          } else if (isUp2) {
-            statusLabel = 'HTTPS ONLINE';
-            statusColor = 'var(--accent-orange)';
-          } else {
-            statusLabel = 'BOTH OFFLINE';
-            statusColor = '#f43f5e';
-          }
-        }
-      } else {
-        isEnabled = mon.m1.enabled !== false;
-        const isUp = isEnabled && isProbeStatusOnline(mon.m1.last_status, mon.m1.type);
-        statusColor = !isEnabled ? '#6b7280' : (isUp ? 'var(--color-optimal)' : '#f43f5e');
-        statusLabel = !isEnabled ? 'DISABLED' : (isUp ? (mon.m1.type === 'ssl' ? mon.m1.last_status : 'ONLINE') : (mon.m1.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE'));
-        latencyStr = isEnabled && mon.m1.last_latency !== null ? `${mon.m1.last_latency} ms` : '--';
-      }
+    let html = '';
+    Object.keys(categories).sort().forEach(cat => {
+      const mons = categories[cat];
+      const catEscaped = cat.replace(/[^a-zA-Z0-9]/g, '_');
 
       html += `
-        <div style="background:#1d1b18; border:1px solid var(--border-soft); border-radius:6px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="goLvl3('${mon.id}', event)">
-          <div style="display:flex; flex-direction:column; gap:4px;">
-            <span style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">${mon.name}</span>
-            <span style="font-size:0.72rem; color:var(--text-secondary); font-family:monospace; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${mon.target}</span>
+        <div class="category-folder" style="margin-bottom: 20px;">
+          <div class="category-folder-header" style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1.5px solid rgba(200, 140, 60, 0.2); margin-bottom: 12px; cursor: pointer;" onclick="toggleCategoryFolder('${catEscaped}')">
+            <i data-lucide="folder-open" style="width: 16px; height: 16px; color: var(--accent-orange);"></i>
+            <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); text-transform: capitalize; letter-spacing: 0.03em;">${cat}</span>
+            <span style="font-size: 0.7rem; color: var(--text-secondary); margin-left:8px; background: rgba(200,140,60,0.1); padding: 2px 6px; border-radius:10px;">${mons.length}</span>
+            <i id="folder-arrow-${catEscaped}" data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--text-secondary); margin-left: auto; transition: transform 0.2s;"></i>
           </div>
-          
-          <div style="display:flex; align-items:center; gap:16px;">
-            <div style="text-align:right; display:flex; flex-direction:column; gap:2px;">
-              <span style="font-size:0.75rem; font-weight:700; color:${statusColor};">${statusLabel}</span>
-              <span style="font-size:0.65rem; color:var(--text-secondary); font-family:monospace;">${latencyStr}</span>
+          <div id="folder-content-${catEscaped}" style="display: flex; flex-direction: column; gap: 10px;">`;
+
+      mons.forEach(mon => {
+        let isEnabled = true;
+        let statusLabel = '';
+        let statusColor = '';
+        let latencyStr = '';
+        let m1Enabled = mon.m1.enabled !== false;
+
+        if (mon.isGrouped) {
+          let m2Enabled = mon.m2.enabled !== false;
+          isEnabled = m1Enabled || m2Enabled;
+          const isUp1 = m1Enabled && isProbeStatusOnline(mon.m1.last_status, mon.m1.type);
+          const isUp2 = m2Enabled && isProbeStatusOnline(mon.m2.last_status, mon.m2.type);
+
+          if (!isEnabled) {
+            statusLabel = 'DISABLED';
+            statusColor = '#6b7280';
+            latencyStr = '--';
+          } else {
+            let lats = [];
+            if (m1Enabled && mon.m1.last_latency !== null) lats.push(parseFloat(mon.m1.last_latency));
+            if (m2Enabled && mon.m2.last_latency !== null) lats.push(parseFloat(mon.m2.last_latency));
+
+            if (lats.length > 0) {
+              const avgLat = (lats.reduce((a, b) => a + b, 0) / lats.length).toFixed(1);
+              latencyStr = `${avgLat} ms avg`;
+            } else {
+              latencyStr = '--';
+            }
+
+            if (isUp1 && isUp2) {
+              statusLabel = 'BOTH ONLINE';
+              statusColor = 'var(--color-optimal)';
+            } else if (isUp1) {
+              statusLabel = 'HTTP ONLINE';
+              statusColor = 'var(--accent-orange)';
+            } else if (isUp2) {
+              statusLabel = 'HTTPS ONLINE';
+              statusColor = 'var(--accent-orange)';
+            } else {
+              statusLabel = 'BOTH OFFLINE';
+              statusColor = '#f43f5e';
+            }
+          }
+        } else {
+          isEnabled = mon.m1.enabled !== false;
+          const isUp = isEnabled && isProbeStatusOnline(mon.m1.last_status, mon.m1.type);
+          statusColor = !isEnabled ? '#6b7280' : (isUp ? 'var(--color-optimal)' : '#f43f5e');
+          statusLabel = !isEnabled ? 'DISABLED' : (isUp ? (mon.m1.type === 'ssl' ? mon.m1.last_status : 'ONLINE') : (mon.m1.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE'));
+          latencyStr = isEnabled && mon.m1.last_latency !== null ? `${mon.m1.last_latency} ms` : '--';
+        }
+
+        html += `
+          <div style="background:#1d1b18; border:1px solid var(--border-soft); border-radius:6px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="goLvl3('${mon.id}', event)">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">${mon.name}</span>
+              <span style="font-size:0.72rem; color:var(--text-secondary); font-family:monospace; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${mon.target}</span>
             </div>
             
-            <label class="switch" title="Enable/Disable Monitor" onclick="event.stopPropagation()">
-              <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMonitorEnabled('${mon.id}', this.checked, event)">
-              <span class="slider"></span>
-            </label>
+            <div style="display:flex; align-items:center; gap:16px;">
+              <div style="text-align:right; display:flex; flex-direction:column; gap:2px;">
+                <span style="font-size:0.75rem; font-weight:700; color:${statusColor};">${statusLabel}</span>
+                <span style="font-size:0.65rem; color:var(--text-secondary); font-family:monospace;">${latencyStr}</span>
+              </div>
+              
+              <label class="switch" title="Enable/Disable Monitor" onclick="event.stopPropagation()">
+                <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMonitorEnabled('${mon.id}', this.checked, event)">
+                <span class="slider"></span>
+              </label>
 
-            <button class="btn-icon" onclick="openEditMonitor('${mon.id}', event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Edit Monitor">
-              <i data-lucide="edit-3" style="width:14px; height:14px; color:var(--accent-orange);"></i>
-            </button>
-            <button class="btn-icon" onclick="deleteMonitorSource(${mon.id.includes(',') ? `'${mon.id}'` : mon.id}, event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Delete Monitor">
-              <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
-            </button>
+              <button class="btn-icon" onclick="openEditMonitor('${mon.id}', event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Edit Monitor">
+                <i data-lucide="edit-3" style="width:14px; height:14px; color:var(--accent-orange);"></i>
+              </button>
+              <button class="btn-icon" onclick="deleteMonitorSource(${mon.id.includes(',') ? `'${mon.id}'` : mon.id}, event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Delete Monitor">
+                <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
+              </button>
+            </div>
+          </div>`;
+      });
+
+      html += `
           </div>
         </div>`;
     });
@@ -3724,6 +3817,7 @@ async function submitAddMonitor() {
   const target = document.getElementById('mon-target').value.trim();
   const interval = parseInt(document.getElementById('mon-interval').value) || 30;
   const timeout = parseInt(document.getElementById('mon-timeout').value) || 5;
+  const category = document.getElementById('mon-category').value.trim() || 'General';
 
   if (!name || !target) {
     alert("Required fields Name and Target Address must be filled!");
@@ -3745,7 +3839,8 @@ async function submitAddMonitor() {
             type: type,
             target: `http://${cleanTarget}`,
             check_interval: interval,
-            timeout
+            timeout,
+            category
           })
         });
         if (!resHttp.ok) {
@@ -3761,7 +3856,8 @@ async function submitAddMonitor() {
             type: type,
             target: `https://${cleanTarget}`,
             check_interval: interval,
-            timeout
+            timeout,
+            category
           })
         });
         if (!resHttps.ok) {
@@ -3778,7 +3874,8 @@ async function submitAddMonitor() {
             type: type,
             target: urlPrefix + cleanTarget,
             check_interval: interval,
-            timeout
+            timeout,
+            category
           })
         });
         if (!res.ok) {
@@ -3790,7 +3887,7 @@ async function submitAddMonitor() {
       const res = await fetch(`${httpUrl}/api/monitors`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type: type, target, check_interval: interval, timeout })
+        body: JSON.stringify({ name, type: type, target, check_interval: interval, timeout, category })
       });
       if (!res.ok) {
         const errData = await res.json();
@@ -3886,6 +3983,7 @@ async function openEditMonitor(monId, event) {
       document.getElementById('edit-mon-name').value = baseName;
       document.getElementById('edit-mon-type').value = 'http';
       document.getElementById('edit-mon-proto').value = 'both';
+      document.getElementById('edit-mon-category').value = mon1.category || 'General';
 
       document.getElementById('edit-mon-target').value = mon1.target.replace(/^(https?:\/\/)+/i, '');
       document.getElementById('edit-mon-interval').value = mon1.check_interval;
@@ -3900,6 +3998,7 @@ async function openEditMonitor(monId, event) {
       document.getElementById('edit-mon-id').value = monId;
       document.getElementById('edit-mon-name').value = mon.name;
       document.getElementById('edit-mon-type').value = mon.type;
+      document.getElementById('edit-mon-category').value = mon.category || 'General';
 
       if (mon.type === 'http') {
         const hasHttps = mon.target.startsWith('https://');
@@ -3927,6 +4026,7 @@ async function submitEditMonitor() {
   const target = document.getElementById('edit-mon-target').value.trim();
   const interval = parseInt(document.getElementById('edit-mon-interval').value) || 30;
   const timeout = parseInt(document.getElementById('edit-mon-timeout').value) || 5;
+  const category = document.getElementById('edit-mon-category').value.trim() || 'General';
 
   if (!name || !target) {
     alert("Required fields Name and Target Address must be filled!");
@@ -3952,7 +4052,8 @@ async function submitEditMonitor() {
               type: type,
               target: `http://${cleanTarget}`,
               check_interval: interval,
-              timeout: timeout
+              timeout: timeout,
+              category
             })
           });
           if (!res1.ok) throw new Error(`HTTP Update failed`);
@@ -3965,7 +4066,8 @@ async function submitEditMonitor() {
               type: type,
               target: `https://${cleanTarget}`,
               check_interval: interval,
-              timeout: timeout
+              timeout: timeout,
+              category
             })
           });
           if (!res2.ok) throw new Error(`HTTPS Update failed`);
@@ -3978,7 +4080,8 @@ async function submitEditMonitor() {
               type: type,
               target: `http://${cleanTarget}`,
               check_interval: interval,
-              timeout: timeout
+              timeout: timeout,
+              category
             })
           });
           if (!res1.ok) throw new Error(`HTTP Update failed`);
@@ -3991,7 +4094,8 @@ async function submitEditMonitor() {
               type: type,
               target: `https://${cleanTarget}`,
               check_interval: interval,
-              timeout: timeout
+              timeout: timeout,
+              category
             })
           });
           if (!res2.ok) throw new Error(`HTTPS creation failed`);
@@ -4010,7 +4114,8 @@ async function submitEditMonitor() {
               type: type,
               target: finalTarget,
               check_interval: interval,
-              timeout: timeout
+              timeout: timeout,
+              category
             })
           });
           if (!res1.ok) throw new Error(`Failed to update ungrouped monitor`);
@@ -4024,7 +4129,8 @@ async function submitEditMonitor() {
               type: type,
               target: finalTarget,
               check_interval: interval,
-              timeout: timeout
+              timeout: timeout,
+              category
             })
           });
           if (!res1.ok) throw new Error(`Failed to update monitor`);
@@ -4039,7 +4145,8 @@ async function submitEditMonitor() {
           type: type,
           target: target,
           check_interval: interval,
-          timeout: timeout
+          timeout: timeout,
+          category
         })
       });
       if (!res.ok) throw new Error(`Failed to update monitor`);
@@ -4727,17 +4834,34 @@ async function deleteChannelSource(cid, event) {
   }
 }
 
+function onRuleTargetTypeChange(val) {
+  const label = document.getElementById('rule-monitors-selection-label');
+  if (!label) return;
+  if (val === 'custom') {
+    label.textContent = 'Include Specific Monitors (Selected targets only)';
+  } else {
+    label.textContent = 'Exclude Specific Monitors (Applies to all but checked targets)';
+  }
+}
+
 async function openRuleComposer(rid = null) {
   window.activeAlertRuleId = rid;
   const modal = document.getElementById('rule-modal');
   const titleEl = document.getElementById('rule-modal-title');
   const nameInput = document.getElementById('rule-name');
+  const targetTypeSelect = document.getElementById('rule-target-type');
   const conditionsContainer = document.getElementById('rule-conditions-editor-container');
   const channelsContainer = document.getElementById('rule-channels-list-container');
+  const monitorsListContainer = document.getElementById('rule-monitors-selection-list');
 
   if (!modal) return;
 
   conditionsContainer.innerHTML = '';
+  if (targetTypeSelect) {
+    targetTypeSelect.value = 'all';
+    onRuleTargetTypeChange('all');
+  }
+  if (monitorsListContainer) monitorsListContainer.innerHTML = '';
 
   // Render linked channel checkboxes
   if (window.cachedChannels.length === 0) {
@@ -4751,6 +4875,44 @@ async function openRuleComposer(rid = null) {
     `).join('');
   }
 
+  // Load status of monitors to select
+  let monitors = [];
+  try {
+    const { httpUrl } = getApiUrls();
+    const resMon = await fetch(`${httpUrl}/api/monitors`);
+    if (resMon.ok) {
+      monitors = await resMon.json();
+
+      if (targetTypeSelect) {
+        const categories = Array.from(new Set(monitors.map(m => m.category || 'General')));
+        let optionsHtml = `
+          <option value="all">All Monitors</option>
+          <option value="type_ping">All Ping Probes</option>
+          <option value="type_http">All HTTP Probes</option>
+          <option value="type_ssl">All SSL Probes</option>
+          <option value="type_port">All Port Probes</option>`;
+
+        categories.forEach(cat => {
+          optionsHtml += `<option value="category_${cat}">Category: ${cat}</option>`;
+        });
+
+        optionsHtml += `<option value="custom">Specific Monitors list (Inclusion)</option>`;
+        targetTypeSelect.innerHTML = optionsHtml;
+      }
+
+      if (monitorsListContainer) {
+        monitorsListContainer.innerHTML = monitors.map(m => `
+          <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer;">
+            <input type="checkbox" class="rule-monitor-chk" value="${m.id}" style="accent-color:var(--accent-orange);">
+            <span>${m.name} (${m.type.toUpperCase()}) - ${m.target}</span>
+          </label>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load monitors in rule composer:", err);
+  }
+
   if (rid) {
     titleEl.textContent = 'Edit Alert Rule';
     try {
@@ -4761,6 +4923,10 @@ async function openRuleComposer(rid = null) {
       const rule = list.find(r => r.id === rid);
       if (rule) {
         nameInput.value = rule.name;
+        if (targetTypeSelect) {
+          targetTypeSelect.value = rule.target_type || 'all';
+          onRuleTargetTypeChange(rule.target_type || 'all');
+        }
 
         // Render conditions rows
         rule.rules_json.forEach(cond => {
@@ -4770,6 +4936,14 @@ async function openRuleComposer(rid = null) {
         // Toggle checkboxes
         document.querySelectorAll('.rule-channel-chk').forEach(c => {
           if (rule.channel_ids.includes(parseInt(c.value))) {
+            c.checked = true;
+          }
+        });
+
+        // Toggle monitor checkboxes
+        const selectedMonIds = rule.monitors_list || [];
+        document.querySelectorAll('.rule-monitor-chk').forEach(c => {
+          if (selectedMonIds.includes(parseInt(c.value))) {
             c.checked = true;
           }
         });
@@ -4794,7 +4968,10 @@ function addVisualRuleConditionRow(cond = null) {
   const isFirstRow = rowCount === 0;
 
   // Build entity selector options
-  let entityOptionsHtml = '';
+  let entityOptionsHtml = `
+    <option value="status" ${cond && cond.entity_key === 'status' ? 'selected' : ''}>Generic Status [status]</option>
+    <option value="latency" ${cond && cond.entity_key === 'latency' ? 'selected' : ''}>Generic Latency [latency]</option>
+  `;
   Object.values(cachedEntities).forEach(item => {
     entityOptionsHtml += `<option value="${item.entity_key}" ${cond && cond.entity_key === item.entity_key ? 'selected' : ''}>${item.name || item.entity_key} [${item.entity_key}]</option>`;
   });
@@ -4893,6 +5070,13 @@ async function submitSaveRule() {
     return;
   }
 
+  // Gather target group and monitors list
+  const target_type = document.getElementById('rule-target-type').value;
+  const monitors_list = [];
+  document.querySelectorAll('.rule-monitor-chk:checked').forEach(c => {
+    monitors_list.push(parseInt(c.value));
+  });
+
   const { httpUrl } = getApiUrls();
   const rid = window.activeAlertRuleId;
   const method = rid ? 'PUT' : 'POST';
@@ -4902,7 +5086,7 @@ async function submitSaveRule() {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, rules_json: conditions, channel_ids, enabled: true })
+      body: JSON.stringify({ name, rules_json: conditions, channel_ids, enabled: true, target_type, monitors_list })
     });
     if (!res.ok) {
       const err = await res.json();

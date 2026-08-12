@@ -278,6 +278,8 @@ class RulePayload(BaseModel):
     rules_json: List[RuleCondition]
     channel_ids: List[int]
     enabled: bool = True
+    target_type: Optional[str] = "all"
+    monitors_list: Optional[List[int]] = []
 
 # 1. DB Init Routine
 async def init_db_pool():
@@ -320,12 +322,13 @@ async def init_db_pool():
                         app_settings[key] = val
                 logger.info(f"Loaded config settings registry cache: {app_settings}")
 
-                # Ensure system_monitors has 'enabled' column
+                # Ensure system_monitors has 'enabled' and 'category' columns
                 try:
                     await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT TRUE;")
-                    logger.info("Migrated system_monitors database schema: enabled column verified.")
+                    await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS category VARCHAR(64) DEFAULT 'General';")
+                    logger.info("Migrated system_monitors database schema: enabled and category columns verified.")
                 except Exception as mig_err:
-                    logger.warning(f"Error checking enabled column migration: {mig_err}")
+                    logger.warning(f"Error checking system_monitors columns migration: {mig_err}")
 
                 # Clean up duplicate/misspelled lowercase proxmox definitions from system_monitors
                 try:
@@ -361,8 +364,7 @@ async def init_db_pool():
                 except Exception as nc_err:
                     logger.warning(f"Error establishing notification_channels table: {nc_err}")
 
-                # Create alert_rules table
-                try:
+                    # Create alert_rules table
                     await conn.execute("""
                         CREATE TABLE IF NOT EXISTS alert_rules (
                             id SERIAL PRIMARY KEY,
@@ -372,12 +374,30 @@ async def init_db_pool():
                             enabled BOOLEAN DEFAULT TRUE,
                             status VARCHAR(32) DEFAULT 'normal',
                             last_fired TIMESTAMP,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            target_type VARCHAR(64) DEFAULT 'all',
+                            monitors_list INT[] DEFAULT '{}'::INT[]
                         );
                     """)
                     logger.info("alert_rules table verified.")
                 except Exception as ar_err:
                     logger.warning(f"Error establishing alert_rules table: {ar_err}")
+
+                # Ensure alert_rules target_type columns exist & create active_alerts mapping
+                try:
+                    await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_type VARCHAR(64) DEFAULT 'all';")
+                    await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS monitors_list INT[] DEFAULT '{}'::INT[];")
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS active_alerts (
+                            rule_id INT NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
+                            monitor_id INT NOT NULL REFERENCES system_monitors(id) ON DELETE CASCADE,
+                            fired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            PRIMARY KEY (rule_id, monitor_id)
+                        );
+                    """)
+                    logger.info("active_alerts table and alert_rules column migrations verified.")
+                except Exception as mig_err:
+                    logger.warning(f"Error executing alarm router migrations: {mig_err}")
 
                 # Create hosts table and sync host_id foreign key constraint
                 try:
@@ -552,16 +572,30 @@ def evaluate_condition(entity_key: str, operator: str, target_val: str) -> bool:
         return target_str.lower() in current_str.lower()
     return False
 
-def check_rule_firing(conditions: list) -> bool:
+def check_monitor_rule_firing(m_id: int, conditions: list) -> bool:
     if not conditions:
         return False
         
+    def eval_cond_for_mon(c):
+        ekey = c.get("entity_key")
+        # Map relative entity keys
+        if ekey == "status":
+            mapped_key = f"monitor-{m_id}-status"
+        elif ekey == "latency":
+            mapped_key = f"monitor-{m_id}-latency"
+        else:
+            mapped_key = ekey
+            
+        operator = c.get("operator")
+        value = c.get("value")
+        return evaluate_condition(mapped_key, operator, value)
+        
     c0 = conditions[0]
-    result = evaluate_condition(c0.get("entity_key"), c0.get("operator"), c0.get("value"))
+    result = eval_cond_for_mon(c0)
     
     for c in conditions[1:]:
         join_type = c.get("join_type", "AND").upper()
-        val = evaluate_condition(c.get("entity_key"), c.get("operator"), c.get("value"))
+        val = eval_cond_for_mon(c)
         if join_type == "AND":
             result = result and val
         elif join_type == "OR":
@@ -579,12 +613,14 @@ async def alerts_evaluator_task():
             
         try:
             async with db_pool.acquire() as conn:
-                rules = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status FROM alert_rules WHERE enabled = TRUE;")
+                rules = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, target_type, monitors_list FROM alert_rules WHERE enabled = TRUE;")
                 for r in rules:
                     rid = r["id"]
                     rname = r["name"]
                     channel_ids = r["channel_ids"]
                     old_status = r["status"] or "normal"
+                    target_type = r["target_type"] or "all"
+                    monitors_list = r["monitors_list"] or []
                     
                     try:
                         conditions = json.loads(r["rules_json"]) if isinstance(r["rules_json"], str) else r["rules_json"]
@@ -592,13 +628,103 @@ async def alerts_evaluator_task():
                         logger.error(f"Rule {rid} rules_json parse error: {json_err}")
                         continue
                         
-                    is_firing = check_rule_firing(conditions)
-                    new_status = "firing" if is_firing else "normal"
+                    # Resolve matching monitors
+                    all_monitors = await conn.fetch("SELECT id, name, type, target, enabled, category FROM system_monitors WHERE enabled = TRUE;")
+                    matching_monitors = []
+                    
+                    for m in all_monitors:
+                        mid = m["id"]
+                        mtype = m["type"]
+                        
+                        match = False
+                        if target_type == "all":
+                            match = True
+                        elif target_type.startswith("type_"):
+                            expected_type = target_type[5:] # e.g. "ping", "ssl" etc.
+                            match = (mtype == expected_type)
+                        elif target_type.startswith("category_"):
+                            expected_category = target_type[9:] # e.g. "General", "Database Infrastructure" etc.
+                            match = ((m["category"] or "General") == expected_category)
+                        elif target_type == "custom":
+                            match = (mid in monitors_list)
+                            
+                        # Exclude checks (only if target_type is not "custom" where monitors_list is inclusion list)
+                        if match and target_type != "custom":
+                            if mid in monitors_list:
+                                match = False
+                                
+                        if match:
+                            matching_monitors.append(m)
+                            
+                    # Evaluate firing status for each matching monitor
+                    for m in matching_monitors:
+                        is_firing = check_monitor_rule_firing(m["id"], conditions)
+                        
+                        # Query if already registered as firing
+                        row = await conn.fetchrow("SELECT 1 FROM active_alerts WHERE rule_id = $1 AND monitor_id = $2;", rid, m["id"])
+                        was_firing = (row is not None)
+                        
+                        if not was_firing and is_firing:
+                            # Transition to firing for this monitor!
+                            await conn.execute("INSERT INTO active_alerts (rule_id, monitor_id) VALUES ($1, $2);", rid, m["id"])
+                            
+                            # Dispatches warning alerts with host/monitor name in the message dynamically
+                            title = f"❗ Alert [FIRING]: {rname}"
+                            message = f"Oh, {m['name']} ({m['type'].upper()}) has gone into alarm! Target: {m['target']} is down.\n\n"
+                            message += f"Rule: {rname}\nStatus: FIRING\n\nConditions check:\n"
+                            for cond in conditions:
+                                ekey = cond.get("entity_key")
+                                if ekey == "status":
+                                    mapped_key = f"monitor-{m['id']}-status"
+                                elif ekey == "latency":
+                                    mapped_key = f"monitor-{m['id']}-latency"
+                                else:
+                                    mapped_key = ekey
+                                op = cond.get("operator")
+                                val = cond.get("value")
+                                curr_val = entity_states.get(mapped_key, {}).get("value", "unknown")
+                                message += f"- {ekey} (Current: {curr_val}) {op} {val}\n"
+                                
+                            logger.info(f"Monitor alert firing: rule '{rname}' on monitor '{m['name']}'")
+                            
+                            # Send via channels
+                            for cid in channel_ids:
+                                chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
+                                if chan:
+                                    c_type = chan["type"]
+                                    c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
+                                    try:
+                                        await dispatch_notification(c_type, c_cfg, message, title)
+                                    except Exception as notify_err:
+                                        logger.error(f"Failed to send notification via channel {cid}: {notify_err}")
+                                        
+                        elif was_firing and not is_firing:
+                            # Transition to recovered!
+                            await conn.execute("DELETE FROM active_alerts WHERE rule_id = $1 AND monitor_id = $2;", rid, m["id"])
+                            
+                            title = f"✅ Alert [RESOLVED]: {rname}"
+                            message = f"Oh, {m['name']} ({m['type'].upper()}) has recovered to normal!\n\nTarget: {m['target']}\nRule: {rname}\nStatus: NORMAL\n"
+                            
+                            logger.info(f"Monitor alert recovered: rule '{rname}' on monitor '{m['name']}'")
+                            
+                            # Send via channels
+                            for cid in channel_ids:
+                                chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
+                                if chan:
+                                    c_type = chan["type"]
+                                    c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
+                                    try:
+                                        await dispatch_notification(c_type, c_cfg, message, title)
+                                    except Exception as notify_err:
+                                        logger.error(f"Failed to send notification via channel {cid}: {notify_err}")
+                                        
+                    # Update rule overall status based on whether any matched monitors are active
+                    active_count = await conn.fetchval("SELECT COUNT(*) FROM active_alerts WHERE rule_id = $1;", rid)
+                    new_status = "firing" if active_count > 0 else "normal"
                     
                     if old_status != new_status:
-                        logger.info(f"Alert rule '{rname}' transition: {old_status} -> {new_status}")
-                        
-                        if is_firing:
+                        logger.info(f"Alert rule overall transition '{rname}': {old_status} -> {new_status}")
+                        if new_status == "firing":
                             await conn.execute(
                                 "UPDATE alert_rules SET status = $1, last_fired = CURRENT_TIMESTAMP WHERE id = $2;",
                                 new_status, rid
@@ -608,33 +734,15 @@ async def alerts_evaluator_task():
                                 "UPDATE alert_rules SET status = $1 WHERE id = $2;",
                                 new_status, rid
                             )
-                        
-                        audit_type = "warning" if is_firing else "success"
-                        audit_msg = f"Alert rule '{rname}' is FIRING!" if is_firing else f"Alert rule '{rname}' has recovered to normal."
+                            
+                        # Log system audit log
+                        audit_type = "warning" if new_status == "firing" else "success"
+                        audit_msg = f"Alert rule '{rname}' is FIRING!" if new_status == "firing" else f"Alert rule '{rname}' has recovered to normal."
                         await conn.execute(
                             "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
                             audit_type, audit_msg
                         )
                         
-                        title = f"❗ Alert [FIRING]: {rname}" if is_firing else f"✅ Alert [RESOLVED]: {rname}"
-                        message = f"Rule: {rname}\nStatus: {new_status.upper()}\n\nConditions check:\n"
-                        for cond in conditions:
-                            ekey = cond.get("entity_key")
-                            op = cond.get("operator")
-                            val = cond.get("value")
-                            curr_val = entity_states.get(ekey, {}).get("value", "unknown")
-                            message += f"- {ekey} (Current: {curr_val}) {op} {val}\n"
-                            
-                        for cid in channel_ids:
-                            chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
-                            if chan:
-                                c_type = chan["type"]
-                                c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
-                                try:
-                                    await dispatch_notification(c_type, c_cfg, message, title)
-                                except Exception as notify_err:
-                                    logger.error(f"Failed to send notification via channel {cid}: {notify_err}")
-                                    
         except Exception as eval_err:
             logger.error(f"Error in alerts_evaluator_task iteration: {eval_err}")
 
@@ -1281,6 +1389,7 @@ class MonitorPayload(BaseModel):
     target: str
     check_interval: int = 30
     timeout: int = 5
+    category: Optional[str] = 'General'
 
 class HostPayload(BaseModel):
     name: str
@@ -1383,7 +1492,7 @@ async def get_rules():
         return JSONResponse(content=[])
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, last_fired FROM alert_rules ORDER BY id ASC;")
+            rows = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, last_fired, target_type, monitors_list FROM alert_rules ORDER BY id ASC;")
             res = []
             for r in rows:
                 d = dict(r)
@@ -1404,8 +1513,8 @@ async def add_rule(payload: RulePayload):
         rules_str = json.dumps([r.model_dump() for r in payload.rules_json])
         async with db_pool.acquire() as conn:
             row = await conn.fetchrow(
-                "INSERT INTO alert_rules (name, rules_json, channel_ids, enabled) VALUES ($1, $2, $3, $4) RETURNING id;",
-                payload.name, rules_str, payload.channel_ids, payload.enabled
+                "INSERT INTO alert_rules (name, rules_json, channel_ids, enabled, target_type, monitors_list) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id;",
+                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list
             )
             await conn.execute(
                 "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
@@ -1424,8 +1533,8 @@ async def update_rule(rid: int, payload: RulePayload):
         rules_str = json.dumps([r.model_dump() for r in payload.rules_json])
         async with db_pool.acquire() as conn:
             await conn.execute(
-                "UPDATE alert_rules SET name = $1, rules_json = $2, channel_ids = $3, enabled = $4 WHERE id = $5;",
-                payload.name, rules_str, payload.channel_ids, payload.enabled, rid
+                "UPDATE alert_rules SET name = $1, rules_json = $2, channel_ids = $3, enabled = $4, target_type = $5, monitors_list = $6 WHERE id = $7;",
+                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list, rid
             )
             await conn.execute(
                 "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
@@ -1458,7 +1567,7 @@ async def get_monitors():
         return JSONResponse(content=[])
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name, type, target, check_interval, timeout, last_status, last_latency, last_checked, enabled, host_id FROM system_monitors ORDER BY id ASC;")
+            rows = await conn.fetch("SELECT id, name, type, target, check_interval, timeout, last_status, last_latency, last_checked, enabled, host_id, category FROM system_monitors ORDER BY id ASC;")
             res = []
             for r in rows:
                 d = dict(r)
@@ -1483,9 +1592,9 @@ async def add_monitor(payload: MonitorPayload):
     try:
         async with db_pool.acquire() as conn:
             monitor_id = await conn.fetchval(
-                """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled) 
-                   VALUES ($1, $2, $3, $4, $5, 'unknown', true) RETURNING id;""",
-                payload.name.strip(), payload.type, payload.target.strip(), payload.check_interval, payload.timeout
+                """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, category) 
+                   VALUES ($1, $2, $3, $4, $5, 'unknown', true, $6) RETURNING id;""",
+                payload.name.strip(), payload.type, payload.target.strip(), payload.check_interval, payload.timeout, payload.category or 'General'
             )
             
             entity_states[f"monitor-{monitor_id}-status"] = {
@@ -1596,11 +1705,14 @@ async def update_monitor(monitor_id: int, payload: MonitorPayload):
             if old_row["timeout"] != payload.timeout:
                 changes.append(f"timeout({old_row['timeout']} -> {payload.timeout})")
                 
+            if old_row.get("category") != payload.category:
+                changes.append(f"category('{old_row.get('category')}' -> '{payload.category}')")
+                
             await conn.execute(
                 """UPDATE system_monitors 
-                   SET name = $1, type = $2, target = $3, check_interval = $4, timeout = $5
-                   WHERE id = $6;""",
-                payload.name.strip(), payload.type, payload.target.strip(), payload.check_interval, payload.timeout, monitor_id
+                   SET name = $1, type = $2, target = $3, check_interval = $4, timeout = $5, category = $6
+                   WHERE id = $7;""",
+                payload.name.strip(), payload.type, payload.target.strip(), payload.check_interval, payload.timeout, payload.category or 'General', monitor_id
             )
             
             status_key = f"monitor-{monitor_id}-status"

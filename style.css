@@ -1456,6 +1456,15 @@ body.layout-compact .card-value {
   box-sizing: border-box;
 }
 
+.modal-content.wide {
+  max-width: 680px;
+}
+
+.card.card-title-type {
+  min-height: 50px !important;
+  justify-content: center;
+}
+
 .modal-overlay.active .modal-content {
   transform: scale(1);
 }
@@ -1994,4 +2003,13 @@ input:checked+.slider:before {
 .catalog-tile-btn:active {
   transform: translateY(0) !important;
   background: rgba(200, 140, 60, 0.08) !important;
+}
+
+/* Sidebar Accordion Submenu Refinements */
+aside.collapsed .nav-group-items {
+  padding-left: 0 !important;
+}
+
+aside.collapsed .nav-group-toggle .group-arrow {
+  display: none !important;
 }

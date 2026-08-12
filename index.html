@@ -51,12 +51,32 @@
           <span>Uptime History</span>
         </div>
       </a>
-      <a href="#" class="nav-item" id="nav-automations">
-        <div class="nav-item-left">
-          <i data-lucide="bell-ring"></i>
-          <span>Alert Router</span>
+      <!-- Alert Router Group -->
+      <div class="nav-group" id="nav-group-alerts" style="display: flex; flex-direction: column;">
+        <a href="#" class="nav-item nav-group-toggle" id="nav-alert-router" onclick="toggleNavGroup('alerts', event)">
+          <div class="nav-item-left">
+            <i data-lucide="bell-ring"></i>
+            <span>Alert Router</span>
+          </div>
+          <i data-lucide="chevron-down" class="group-arrow" id="alerts-arrow"
+            style="width: 14px; height: 14px; color: var(--text-secondary); transition: transform 0.2s;"></i>
+        </a>
+        <div class="nav-group-items" id="alerts-submenu"
+          style="padding-left: 12px; display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+          <a href="#" class="nav-item" id="nav-automations" style="font-size: 0.8rem; padding: 8px 12px;">
+            <div class="nav-item-left">
+              <i data-lucide="bell" style="width: 14px; height: 14px;"></i>
+              <span>Alert Rules</span>
+            </div>
+          </a>
+          <a href="#" class="nav-item" id="nav-channels" style="font-size: 0.8rem; padding: 8px 12px;">
+            <div class="nav-item-left">
+              <i data-lucide="send" style="width: 14px; height: 14px;"></i>
+              <span>Notification Channels</span>
+            </div>
+          </a>
         </div>
-      </a>
+      </div>
       <a href="#" class="nav-item" id="nav-discovery">
         <div class="nav-item-left">
           <i data-lucide="radio"></i>
@@ -115,12 +135,11 @@
 
 
 
-        <!-- Raw Config Button -->
-        <button id="yaml-toggle-btn"
-          style="display: none; align-items: center; gap: 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: var(--text-primary); padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 0.85rem;"
-          onclick="openYAMLConfigEditor()">
-          <i data-lucide="code" style="width:14px; height:14px;"></i>
-          <span>Raw Config (Advanced)</span>
+        <!-- Add Card Button (Visible in Edit Mode only) -->
+        <button id="add-card-btn" class="btn btn-secondary" onclick="addNewCardPlaceholder()"
+          style="display: none; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 0.85rem; height: 38px;">
+          <i data-lucide="plus-circle" style="width:14px; height:14px;"></i>
+          <span>Add Lovelace Card</span>
         </button>
         <!-- Edit Dashboard Button -->
         <button class="edit-toggle-btn" id="edit-toggle-btn">
@@ -151,11 +170,7 @@
     <div class="dashboard-content">
       <div class="dashboard-grid" id="dashboard-grid">
 
-        <!-- Add Card Placeholder (Visible in Edit Mode) -->
-        <div class="card-placeholder" onclick="addNewCardPlaceholder()">
-          <i data-lucide="plus-circle" style="width: 24px; height: 24px;"></i>
-          <span>Add Lovelace Card</span>
-        </div>
+
 
       </div>
 
@@ -272,6 +287,18 @@
             </div>
           </div>
 
+          <!-- Danger Zone Launch Button -->
+          <div class="settings-group"
+            style="margin-top: 20px; border-top: 1px solid var(--border-soft); padding-top: 20px;">
+            <label style="color: #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Database
+              Maintenance &amp; Cleanup</label>
+            <button class="btn" type="button" onclick="window.openModal('database-prune-modal')"
+              style="margin-top: 8px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); color: #fecaca; font-weight: 600; cursor: pointer; padding: 10px; border-radius: 6px; transition: all 0.2s;">
+              <span>🧹</span> Open Database Danger Zone
+            </button>
+            <small style="color: var(--text-secondary); display: block; margin-top: 6px;">Manage database pruning,
+              custom filtering, and database size optimizations.</small>
+          </div>
 
           <div class="settings-actions">
             <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
@@ -283,96 +310,7 @@
           </div>
         </div>
 
-        <!-- Danger Zone: Database Pruning & Maintenance -->
-        <div class="settings-card"
-          style="margin-top: 24px; background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 12px; padding: 24px; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.05);">
 
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-            <span style="font-size: 1.25rem;">⚠️</span>
-            <h3
-              style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px;">
-              Danger Zone: Database Maintenance</h3>
-          </div>
-          <p style="margin: 0 0 16px 0; color: var(--text-secondary); font-size: 0.82rem; line-height: 1.4;">
-            Critical database purging operations. Pruning deletes telemetry histories immediately and irreversibly. Use
-            dry-run confirmation mode.
-          </p>
-
-          <!-- Advanced Pruning Filters Form -->
-          <div
-            style="display: flex; flex-direction: column; gap: 16px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-              <div>
-                <label for="prune-host-select"
-                  style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Filter
-                  by
-                  Host:</label>
-                <select id="prune-host-select" class="settings-input"
-                  style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary);">
-                  <option value="">-- All Hosts --</option>
-                </select>
-              </div>
-              <div>
-                <label for="prune-entity-select"
-                  style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Filter
-                  by
-                  Entity Metric:</label>
-                <select id="prune-entity-select" class="settings-input"
-                  style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary);">
-                  <option value="">-- All Entities --</option>
-                </select>
-              </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-              <div>
-                <label for="prune-start-date"
-                  style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Start
-                  Date
-                  Range:</label>
-                <input type="date" id="prune-start-date" class="settings-input"
-                  style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary); color-scheme: dark;">
-              </div>
-              <div>
-                <label for="prune-end-date"
-                  style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">End Date
-                  Range:</label>
-                <input type="date" id="prune-end-date" class="settings-input"
-                  style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary); color-scheme: dark;">
-              </div>
-            </div>
-
-            <div style="display: flex; gap: 10px; margin-top: 4px;">
-              <button type="button" class="btn btn-primary" id="btn-execute-prune" onclick="executeAdvancedPrune()"
-                style="font-size: 0.75rem; font-weight: bold; background: #ef4444; border-color: rgba(239, 68, 68, 0.4); color: white; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                <span>🧹</span> Execute Custom Prune
-              </button>
-              <button type="button" class="btn btn-secondary" onclick="clearPruneFilters()"
-                style="font-size: 0.75rem; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                Reset Filters
-              </button>
-            </div>
-          </div>
-
-          <!-- Quick presets section -->
-          <div
-            style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
-            Quick Purge Presets</div>
-          <div id="maintenance-prune-container" style="display: flex; flex-direction: column; gap: 10px;">
-            <button type="button" class="btn-danger" onclick="triggerManualPrune({age: 'year'})"
-              style="font-size: 0.75rem; padding: 10px 16px; text-align: left; justify-content: flex-start; width: 100%; display: flex; gap: 10px; align-items: center; border-radius: 6px; cursor: pointer; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.05); color: #fda4af; font-weight: 600; transition: all 0.2s;">
-              <span>🧹</span> <span>Delete Last Year of Oldest Data (Older Than 365 Days)</span>
-            </button>
-            <button type="button" class="btn-danger" onclick="triggerManualPrune({age: 'custom', custom_days: 90})"
-              style="font-size: 0.75rem; padding: 10px 16px; text-align: left; justify-content: flex-start; width: 100%; display: flex; gap: 10px; align-items: center; border-radius: 6px; cursor: pointer; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.05); color: #fda4af; font-weight: 600; transition: all 0.2s;">
-              <span>🧹</span> <span>Delete Oldest Data (Older Than 90 Days)</span>
-            </button>
-            <button type="button" class="btn-danger" onclick="triggerManualPrune({age: 'all'})"
-              style="font-size: 0.75rem; padding: 10px 16px; text-align: left; justify-content: flex-start; width: 100%; display: flex; gap: 10px; align-items: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 6px; cursor: pointer; color: #fecaca; font-weight: 700; transition: all 0.2s;">
-              <span>🚨</span> <span>EXPRESS TRUNCATE: Purge Entire Database Logs (Destructive)</span>
-            </button>
-          </div>
-        </div>
       </div>
 
     </div>
@@ -619,82 +557,53 @@
 
     </div>
 
-    <!-- Alert Router View Panel -->
+    <!-- Alert Rules View Panel -->
     <div class="settings-view hide" id="automations-view">
       <div class="settings-card"
-        style="max-width: 1000px; display: flex; flex-direction: row; gap: 0; padding: 0; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden;">
-
-        <!-- Sub-sidebar for Alert Router -->
+        style="max-width: 1000px; padding: 24px; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; box-sizing: border-box;">
         <div
-          style="width: 220px; border-right: 1px solid var(--border-soft); background: rgba(15, 13, 11, 0.4); display: flex; flex-direction: column; justify-content: space-between;">
+          style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-soft); padding-bottom: 16px; margin-bottom: 20px;">
           <div>
-            <div
-              style="padding: 18px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px;">
-              <i data-lucide="bell" style="width: 18px; height: 18px; color: var(--accent-orange);"></i>
-              <span
-                style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.05em; color: var(--text-primary); text-transform: uppercase;">Alert
-                Router</span>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px;" id="alert-sub-navigation">
-              <button class="sub-nav-btn active" id="alert-subnav-rules" onclick="switchAlertSubView('rules')"
-                style="background: var(--bg-secondary); border: none; text-align: left; width: 100%; padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--text-primary); cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
-                <i data-lucide="shield-alert" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
-                Alert Rules
-              </button>
-              <button class="sub-nav-btn" id="alert-subnav-channels" onclick="switchAlertSubView('channels')"
-                style="background: none; border: none; text-align: left; width: 100%; padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
-                <i data-lucide="send" style="width: 14px; height: 14px;"></i>
-                Notification Channels
-              </button>
-            </div>
+            <h3 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">Alert Rules</h3>
+            <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-secondary);">Rule conditions evaluated
+              dynamically to trigger notifications.</p>
           </div>
+          <button class="btn btn-primary" onclick="openRuleComposer()"
+            style="font-size: 0.75rem; padding: 8px 16px; cursor: pointer;">
+            + Create Alert Rule
+          </button>
         </div>
 
-        <!-- Main Content Area -->
-        <div style="flex: 1; display: flex; flex-direction: column; background: transparent;">
+        <!-- Rules Container List -->
+        <div id="alert-rules-list" style="display: flex; flex-direction: column; gap: 12px;">
+          <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No warning rules
+            configured yet.</p>
+        </div>
+      </div>
+    </div>
 
-          <!-- SUB-VIEW 1: Rules List -->
-          <div id="alert-sub-view-rules" class="alert-content-pane"
-            style="padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; max-height: 520px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div>
-                <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Alert Rules
-                </h3>
-                <p style="margin: 2px 0 0 0; font-size: 0.72rem; color: var(--text-secondary);">Rule conditions
-                  evaluated dynamically to trigger notifications.</p>
-              </div>
-              <button class="btn btn-primary" onclick="openRuleComposer()"
-                style="font-size: 0.72rem; padding: 6px 14px; cursor: pointer;">+ Create Alert Rule</button>
-            </div>
-
-            <!-- Rules Container List -->
-            <div id="alert-rules-list" style="display: flex; flex-direction: column; gap: 12px;">
-              <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No warning
-                rules configured yet.</p>
-            </div>
+    <!-- Notification Channels View Panel -->
+    <div class="settings-view hide" id="channels-view">
+      <div class="settings-card"
+        style="max-width: 1000px; padding: 24px; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; box-sizing: border-box;">
+        <div
+          style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-soft); padding-bottom: 16px; margin-bottom: 20px;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">Notification
+              Channels</h3>
+            <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-secondary);">Manage destination profiles
+              for SMTP email, Telegram, and Pushover alerts.</p>
           </div>
+          <button class="btn btn-primary" onclick="openChannelComposer()"
+            style="font-size: 0.75rem; padding: 8px 16px; cursor: pointer;">
+            + Add Channel Profile
+          </button>
+        </div>
 
-          <!-- SUB-VIEW 2: Channels List -->
-          <div id="alert-sub-view-channels" class="alert-content-pane hide"
-            style="padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; max-height: 520px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div>
-                <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Notification
-                  Channels</h3>
-                <p style="margin: 2px 0 0 0; font-size: 0.72rem; color: var(--text-secondary);">Manage destination
-                  profiles for SMTP email, Telegram, and Pushover alerts.</p>
-              </div>
-              <button class="btn btn-primary" onclick="openChannelComposer()"
-                style="font-size: 0.72rem; padding: 6px 14px; cursor: pointer;">+ Add Channel Profile</button>
-            </div>
-
-            <!-- Channels Container List -->
-            <div id="alert-channels-list" style="display: flex; flex-direction: column; gap: 12px;">
-              <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No
-                notification channels configured yet.</p>
-            </div>
-          </div>
-
+        <!-- Channels Container List -->
+        <div id="alert-channels-list" style="display: flex; flex-direction: column; gap: 12px;">
+          <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No notification
+            channels configured yet.</p>
         </div>
       </div>
     </div>
@@ -1031,7 +940,7 @@
 
   <!-- Widget Editor Modal Overlay -->
   <div class="modal-overlay" id="widget-editor-modal" style="display: none;">
-    <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+    <div class="modal-content wide" style="max-height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-header">
         <h3>Widget Editor</h3>
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -1219,7 +1128,7 @@
 
   <!-- Widget Creator/Catalog Modal Overlay -->
   <div class="modal-overlay" id="widget-catalog-modal" style="display: none;">
-    <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
+    <div class="modal-content wide" style="max-height: 90vh; overflow-y: auto;">
       <div class="modal-header">
         <h3>Create Lovelace Card</h3>
         <button class="modal-close-btn" onclick="closeModal('widget-catalog-modal')">&times;</button>
@@ -1494,6 +1403,11 @@
             <input type="text" class="modal-input" id="mon-name" placeholder="e.g. Google Public DNS">
           </div>
           <div class="modal-group">
+            <label for="mon-category">Category / Folder</label>
+            <input type="text" class="modal-input" id="mon-category" placeholder="e.g. Databases, Internal, Gateways"
+              value="General">
+          </div>
+          <div class="modal-group">
             <label for="mon-type">Monitor Type</label>
             <select id="mon-type" class="modal-input" onchange="onMonitorTypeChange(this.value)"
               style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
@@ -1552,6 +1466,11 @@
           <div class="modal-group">
             <label for="edit-mon-name">Monitor Name</label>
             <input type="text" class="modal-input" id="edit-mon-name" placeholder="e.g. Google Public DNS">
+          </div>
+          <div class="modal-group">
+            <label for="edit-mon-category">Category / Folder</label>
+            <input type="text" class="modal-input" id="edit-mon-category"
+              placeholder="e.g. Databases, Internal, Gateways">
           </div>
           <div class="modal-group">
             <label for="edit-mon-type">Monitor Type</label>
@@ -1762,6 +1681,30 @@
                   placeholder="e.g. Cabinet CPU Thermal Threshold Alert">
               </div>
 
+              <!-- Target selection group -->
+              <div class="modal-group">
+                <label for="rule-target-type">Target Monitors Group</label>
+                <select id="rule-target-type" class="modal-input" onchange="onRuleTargetTypeChange(this.value)"
+                  style="background:#221d16; color:#f0e6d3; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; width:100%;">
+                  <option value="all">All Monitors</option>
+                  <option value="type_ping">All Ping Probes</option>
+                  <option value="type_http">All HTTP Probes</option>
+                  <option value="type_ssl">All SSL Probes</option>
+                  <option value="type_port">All Port Probes</option>
+                  <option value="custom">Specific Monitors list (Inclusion)</option>
+                </select>
+              </div>
+
+              <!-- List of monitors for inclusion/exclusion -->
+              <div class="modal-group" id="rule-monitors-selection-wrapper"
+                style="display: flex; flex-direction: column; gap: 6px;">
+                <label id="rule-monitors-selection-label">Exclude Specific Monitors</label>
+                <div id="rule-monitors-selection-list"
+                  style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; background: #221d16; display: flex; flex-direction: column; gap: 6px;">
+                  <!-- Filled dynamically by JS -->
+                </div>
+              </div>
+
               <!-- Rule Conditions Visual Editor Builder -->
               <div class="modal-group" style="display: flex; flex-direction: column; gap: 6px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1879,6 +1822,110 @@
               style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 8px;">
               <button class="btn btn-secondary" onclick="closeModal('host-modal')">Cancel</button>
               <button class="btn btn-primary" id="btn-save-host" onclick="submitSaveHost()">Save Host</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Database Maintenance / Danger Zone Modal Overlay -->
+        <div class="modal-overlay" id="database-prune-modal" style="display: none;">
+          <div class="modal-content"
+            style="max-width: 640px; width: 95%; display: flex; flex-direction: column; max-height: 90vh;">
+            <div class="modal-header"
+              style="background: rgba(239, 68, 68, 0.05); border-bottom: 1px solid rgba(239, 68, 68, 0.15);">
+              <h3
+                style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #ef4444; display: flex; align-items: center; gap: 8px;">
+                <span>⚠️</span> Danger Zone: Database Maintenance
+              </h3>
+              <button class="modal-close-btn" onclick="closeModal('database-prune-modal')">&times;</button>
+            </div>
+            <div class="modal-body"
+              style="display: flex; flex-direction: column; gap: 16px; padding: 20px; overflow-y: auto; flex: 1;">
+
+              <p style="margin: 0; color: var(--text-secondary); font-size: 0.82rem; line-height: 1.4;">
+                Critical database purging operations. Pruning deletes telemetry histories immediately and irreversibly.
+                Use
+                dry-run confirmation mode.
+              </p>
+
+              <!-- Advanced Pruning Filters Form -->
+              <div
+                style="display: flex; flex-direction: column; gap: 16px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                  <div>
+                    <label for="prune-host-select"
+                      style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Filter
+                      by
+                      Host:</label>
+                    <select id="prune-host-select" class="settings-input"
+                      style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary);">
+                      <option value="">-- All Hosts --</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="prune-entity-select"
+                      style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Filter
+                      by
+                      Entity Metric:</label>
+                    <select id="prune-entity-select" class="settings-input"
+                      style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary);">
+                      <option value="">-- All Entities --</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                  <div>
+                    <label for="prune-start-date"
+                      style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">Start
+                      Date
+                      Range:</label>
+                    <input type="date" id="prune-start-date" class="settings-input"
+                      style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary); color-scheme: dark;">
+                  </div>
+                  <div>
+                    <label for="prune-end-date"
+                      style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 6px;">End
+                      Date
+                      Range:</label>
+                    <input type="date" id="prune-end-date" class="settings-input"
+                      style="width: 100%; font-size: 0.75rem; padding: 8px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border-soft); color: var(--text-primary); color-scheme: dark;">
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 4px;">
+                  <button type="button" class="btn btn-primary" id="btn-execute-prune" onclick="executeAdvancedPrune()"
+                    style="font-size: 0.75rem; font-weight: bold; background: #ef4444; border-color: rgba(239, 68, 68, 0.4); color: white; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <span>🧹</span> Execute Custom Prune
+                  </button>
+                  <button type="button" class="btn btn-secondary" onclick="clearPruneFilters()"
+                    style="font-size: 0.75rem; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                    Reset Filters
+                  </button>
+                </div>
+              </div>
+
+              <!-- Quick presets section -->
+              <div
+                style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 2px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
+                Quick Purge Presets</div>
+              <div id="maintenance-prune-container" style="display: flex; flex-direction: column; gap: 10px;">
+                <button type="button" class="btn-danger" onclick="triggerManualPrune({age: 'year'})"
+                  style="font-size: 0.75rem; padding: 10px 16px; text-align: left; justify-content: flex-start; width: 100%; display: flex; gap: 10px; align-items: center; border-radius: 6px; cursor: pointer; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.05); color: #fda4af; font-weight: 600; transition: all 0.2s;">
+                  <span>🧹</span> <span>Delete Last Year of Oldest Data (Older Than 365 Days)</span>
+                </button>
+                <button type="button" class="btn-danger" onclick="triggerManualPrune({age: 'custom', custom_days: 90})"
+                  style="font-size: 0.75rem; padding: 10px 16px; text-align: left; justify-content: flex-start; width: 100%; display: flex; gap: 10px; align-items: center; border-radius: 6px; cursor: pointer; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.05); color: #fda4af; font-weight: 600; transition: all 0.2s;">
+                  <span>🧹</span> <span>Delete Oldest Data (Older Than 90 Days)</span>
+                </button>
+                <button type="button" class="btn-danger" onclick="triggerManualPrune({age: 'all'})"
+                  style="font-size: 0.75rem; padding: 10px 16px; text-align: left; justify-content: flex-start; width: 100%; display: flex; gap: 10px; align-items: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 6px; cursor: pointer; color: #fecaca; font-weight: 700; transition: all 0.2s;">
+                  <span>🚨</span> <span>EXPRESS TRUNCATE: Purge Entire Database Logs (Destructive)</span>
+                </button>
+              </div>
+            </div>
+            <div class="modal-footer"
+              style="padding: 12px 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end;">
+              <button class="btn btn-secondary" onclick="closeModal('database-prune-modal')">Close</button>
             </div>
           </div>
         </div>
