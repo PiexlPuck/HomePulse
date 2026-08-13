@@ -6006,19 +6006,28 @@ async function loadHosts() {
   const container = document.getElementById('hosts-list-container');
   if (!container) return;
 
-  container.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:32px; color:var(--text-secondary);">Loading hosts...</p>`;
+  container.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:32px; color:var(--text-secondary);">Loading hosts and plugins...</p>`;
 
   try {
-    const response = await fetch(`${httpUrl}/api/hosts`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const hosts = await response.json();
+    const [hostsRes, pluginsRes] = await Promise.all([
+      fetch(`${httpUrl}/api/hosts`),
+      fetch(`${httpUrl}/api/plugins/installed`).catch(e => { console.error(e); return { ok: false }; })
+    ]);
 
+    if (!hostsRes.ok) throw new Error(`HTTP ${hostsRes.status}`);
+    const hosts = await hostsRes.json();
     window.currentHosts = hosts;
 
-    if (hosts.length === 0) {
+    let plugins = [];
+    if (pluginsRes && pluginsRes.ok) {
+      plugins = await pluginsRes.json();
+    }
+    const activePlugins = plugins.filter(p => p.enabled);
+
+    if (hosts.length === 0 && activePlugins.length === 0) {
       container.innerHTML = `
         <div style="grid-column: 1/-1; text-align:center; padding:48px 24px; border: 1px dashed var(--border-soft); border-radius: 8px;">
-          <p style="color:var(--text-secondary); margin-bottom: 16px;">No hosts configured yet.</p>
+          <p style="color:var(--text-secondary); margin-bottom: 16px;">No hosts or plugins running yet.</p>
           <button class="btn btn-primary" onclick="openAddHostModal()" style="font-size:0.75rem; padding: 8px 16px;">+ Add Your First Host</button>
         </div>`;
       return;
@@ -6026,20 +6035,20 @@ async function loadHosts() {
 
     const layout = window.hostsViewLayout || 'grid';
 
-    if (layout === 'grid') {
-      container.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;";
-      container.innerHTML = hosts.map(host => {
-        const activeCheckers = [];
-        if (host.ping_enabled) activeCheckers.push('Ping');
-        if (host.http_enabled) activeCheckers.push('HTTP');
-        if (host.https_enabled) activeCheckers.push('HTTPS');
-        if (host.ssl_enabled) activeCheckers.push('SSL');
-        if (host.port_enabled) activeCheckers.push(`Port ${host.port_number || ''}`);
+    // Render hosts HTML
+    const hostsHtmlList = hosts.map(host => {
+      const activeCheckers = [];
+      if (host.ping_enabled) activeCheckers.push('Ping');
+      if (host.http_enabled) activeCheckers.push('HTTP');
+      if (host.https_enabled) activeCheckers.push('HTTPS');
+      if (host.ssl_enabled) activeCheckers.push('SSL');
+      if (host.port_enabled) activeCheckers.push(`Port ${host.port_number || ''}`);
 
-        const checkersHtml = activeCheckers.length > 0
-          ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
-          : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
+      const checkersHtml = activeCheckers.length > 0
+        ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
+        : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
 
+      if (layout === 'grid') {
         return `
           <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft); cursor:pointer;" onclick="openHostDetail(${host.id})">
             <div>
@@ -6060,21 +6069,7 @@ async function loadHosts() {
               ${checkersHtml}
             </div>
           </div>`;
-      }).join('');
-    } else {
-      container.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
-      container.innerHTML = hosts.map(host => {
-        const activeCheckers = [];
-        if (host.ping_enabled) activeCheckers.push('Ping');
-        if (host.http_enabled) activeCheckers.push('HTTP');
-        if (host.https_enabled) activeCheckers.push('HTTPS');
-        if (host.ssl_enabled) activeCheckers.push('SSL');
-        if (host.port_enabled) activeCheckers.push(`Port ${host.port_number || ''}`);
-
-        const checkersHtml = activeCheckers.length > 0
-          ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
-          : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
-
+      } else {
         return `
           <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; border-radius:8px; border:1px solid var(--border-soft); gap:12px; min-height:unset; cursor:pointer;" onclick="openHostDetail(${host.id})">
             <div style="display:flex; justify-content:space-between; align-items:center; width: 100%;">
@@ -6097,8 +6092,65 @@ async function loadHosts() {
               ${checkersHtml}
             </div>
           </div>`;
-      }).join('');
+      }
+    });
+
+    // Render running plugins HTML
+    const pluginsHtmlList = activePlugins.map(p => {
+      // Find all entity values published by this plugin
+      const entities = Object.values(cachedEntities || {}).filter(item =>
+        item.node_id === p.id ||
+        item.node_id === `plugin-${p.id}` ||
+        (item.node_id === 'plugins' && item.entity_key.includes(p.id))
+      );
+
+      const activeCheckers = entities.map(e => e.name || e.entity_key);
+      const checkersHtml = activeCheckers.length > 0
+        ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(239, 108, 0, 0.15); color:var(--accent-orange); border:1px solid rgba(239, 108, 0, 0.3); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
+        : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active entries reported</span>`;
+
+      const pluginHostId = `'plugin-${p.id}'`;
+
+      if (layout === 'grid') {
+        return `
+          <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); cursor:pointer;" onclick="openHostDetail(${pluginHostId})">
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">Plugin: ${p.name}</h4>
+                <span class="status-pill stable" style="font-size:0.6rem; padding: 2px 6px;">RUNNING</span>
+              </div>
+              <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">Local Daemon (v${p.version})</p>
+            </div>
+            <div style="border-top:1px dashed rgba(239, 108, 0, 0.25); padding-top:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+              ${checkersHtml}
+            </div>
+          </div>`;
+      } else {
+        return `
+          <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); gap:12px; min-height:unset; cursor:pointer;" onclick="openHostDetail(${pluginHostId})">
+            <div style="display:flex; justify-content:space-between; align-items:center; width: 100%;">
+              <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
+                <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">Plugin: ${p.name}</h4>
+                <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">Local Daemon (v${p.version})</p>
+              </div>
+              <div style="display:flex; align-items:center; gap:20px;">
+                <span class="status-pill stable" style="font-size:0.6rem; padding: 2px 6px;">RUNNING</span>
+              </div>
+            </div>
+            <div style="border-top:1px dashed rgba(239, 108, 0, 0.25); padding-top:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; width: 100%;">
+              ${checkersHtml}
+            </div>
+          </div>`;
+      }
+    });
+
+    if (layout === 'grid') {
+      container.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;";
+    } else {
+      container.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
     }
+
+    container.innerHTML = [...hostsHtmlList, ...pluginsHtmlList].join('');
 
     if (window.lucide) window.lucide.createIcons();
 
@@ -6334,6 +6386,95 @@ window.resolveSensorIdToEntityRef = function (sensorId) {
 };
 
 window.openHostDetail = async function (hostId) {
+  if (typeof hostId === 'string' && hostId.startsWith('plugin-')) {
+    const pluginId = hostId.substring(7);
+
+    // Fetch installed list to get details
+    let plugin = null;
+    try {
+      const { httpUrl } = getApiUrls();
+      const res = await fetch(`${httpUrl}/api/plugins/installed`);
+      if (res.ok) {
+        const plugins = await res.json();
+        plugin = plugins.find(p => p.id === pluginId);
+      }
+    } catch (e) {
+      console.error("Failed to load plugin details inside host manager:", e);
+    }
+
+    if (!plugin) {
+      plugin = { id: pluginId, name: pluginId, version: '1.0.0' };
+    }
+
+    document.getElementById('host-detail-title-full').textContent = `Plugin: ${plugin.name}`;
+    document.getElementById('host-detail-target-full').textContent = `Local Daemon (v${plugin.version})`;
+
+    // Hide system telemetry stats panel
+    const statsSection = document.getElementById('host-detail-stats-section-full');
+    if (statsSection) statsSection.style.display = 'none';
+
+    // Fetch and populate probers/entries list for this plugin
+    const probersList = document.getElementById('host-detail-probers-list-full');
+    if (probersList) {
+      // Find all custom entities reported by this plugin
+      const entities = Object.values(cachedEntities || {}).filter(item =>
+        item.node_id === pluginId ||
+        item.node_id === `plugin-${pluginId}` ||
+        (item.node_id === 'plugins' && item.entity_key.includes(pluginId))
+      );
+
+      if (entities.length === 0) {
+        probersList.innerHTML = `<span style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">No entity telemetry reported by this plugin yet.</span>`;
+      } else {
+        probersList.innerHTML = entities.map(m => {
+          const statusVal = m.value !== undefined ? m.value : 'unknown';
+          const isOnline = statusVal === 'healthy' || statusVal === 'stable' || statusVal === 'online' || statusVal === 'up' || statusVal === 'ON' || statusVal === 'ACTIVE';
+          const statusClass = isOnline ? 'online' : 'offline';
+          const statusLabel = typeof statusVal === 'string' ? statusVal.toUpperCase() : statusVal;
+
+          const sensorIdStatus = window.getSensorIdForEntity(m.node_id, m.entity_key, m.name, m.type);
+
+          // Get extra details from attributes if present
+          let detailsHtml = '';
+          if (m.attributes && Object.keys(m.attributes).length > 0) {
+            detailsHtml = Object.keys(m.attributes)
+              .filter(attr => attr !== 'status' && attr !== 'version')
+              .map(attr => `<div>${attr}: <span style="color:#fff;">${JSON.stringify(m.attributes[attr])}</span></div>`)
+              .join('');
+          }
+
+          return `
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:0.8rem; font-weight:700; color:#fff;">${m.name}</span>
+                <span class="status-pill ${statusClass === 'online' ? 'stable' : 'critical'}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
+              </div>
+              <div style="font-size:0.7rem; color:var(--text-secondary); display:flex; flex-direction:column; gap:2px;">
+                <div>Type: <span style="color:#fff;">${m.type}</span></div>
+                ${detailsHtml}
+              </div>
+              <div style="border-top: 1px dashed var(--border-soft); padding-top:4px; margin-top:2px; font-size:0.65rem; color:var(--text-secondary);">
+                <div>Sensor ID: <code style="color:var(--accent-orange);">${sensorIdStatus}</code></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    // Hide edit button for plugins since configuring is done under Plugins view
+    const editBtn = document.getElementById('btn-edit-host-from-detail-full');
+    if (editBtn) editBtn.style.display = 'none';
+
+    // Show host detail view full page
+    hideAllViews();
+    const hostDetailView = document.getElementById('host-detail-view');
+    if (hostDetailView) {
+      hostDetailView.classList.remove('hide');
+    }
+    return;
+  }
+
   if (!window.currentHosts) return;
   const host = window.currentHosts.find(h => h.id === hostId);
   if (!host) return;
@@ -6417,6 +6558,7 @@ window.openHostDetail = async function (hostId) {
   // Connect Edit Configuration Button inside overview
   const editBtn = document.getElementById('btn-edit-host-from-detail-full');
   if (editBtn) {
+    editBtn.style.display = ''; // restore visibility
     editBtn.onclick = function () {
       openEditHostModal(hostId);
     };
