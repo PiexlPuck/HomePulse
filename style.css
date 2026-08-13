@@ -2013,3 +2013,23 @@ aside.collapsed .nav-group-items {
 aside.collapsed .nav-group-toggle .group-arrow {
   display: none !important;
 }
+
+/* Spinner and Keyframes for Analytics Chart Loader */
+@keyframes spin-loader {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.chart-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3.5px solid rgba(255, 255, 255, 0.08);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin-loader 0.85s linear infinite;
+}

@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header as EmailHeader
+from plugins_manager import plugins_router, init_plugins_manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("homepulse-backend")
@@ -281,6 +282,7 @@ class RulePayload(BaseModel):
     target_type: Optional[str] = "all"
     monitors_list: Optional[List[int]] = []
     target_groups: Optional[List[int]] = []
+    target_groups_operator: Optional[str] = "any"
 
 # 1. DB Init Routine
 async def init_db_pool():
@@ -388,6 +390,7 @@ async def init_db_pool():
                     await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_type VARCHAR(64) DEFAULT 'all';")
                     await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS monitors_list INT[] DEFAULT '{}'::INT[];")
                     await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_groups INT[] DEFAULT '{}'::INT[];")
+                    await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_groups_operator VARCHAR(10) DEFAULT 'any';")
                     await conn.execute("""
                         CREATE TABLE IF NOT EXISTS monitor_groups (
                             id SERIAL PRIMARY KEY,
@@ -627,7 +630,7 @@ async def alerts_evaluator_task():
             
         try:
             async with db_pool.acquire() as conn:
-                rules = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, target_type, monitors_list, target_groups FROM alert_rules WHERE enabled = TRUE;")
+                rules = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, target_type, monitors_list, target_groups, target_groups_operator FROM alert_rules WHERE enabled = TRUE;")
                 for r in rules:
                     rid = r["id"]
                     rname = r["name"]
@@ -636,6 +639,7 @@ async def alerts_evaluator_task():
                     target_type = r["target_type"] or "all"
                     monitors_list = r["monitors_list"] or []
                     target_groups = r["target_groups"] or []
+                    target_groups_operator = r["target_groups_operator"] or "any"
                     
                     try:
                         conditions = json.loads(r["rules_json"]) if isinstance(r["rules_json"], str) else r["rules_json"]
@@ -670,7 +674,10 @@ async def alerts_evaluator_task():
                         elif target_type == "custom":
                             match = (mid in monitors_list)
                         elif target_type == "custom_groups":
-                            match = any(gid in target_groups for gid in (m["group_ids"] or []))
+                            if target_groups_operator == "all":
+                                match = all(gid in (m["group_ids"] or []) for gid in target_groups) if target_groups else False
+                            else:
+                                match = any(gid in target_groups for gid in (m["group_ids"] or []))
                             
                         # Exclude checks (only if target_type is not "custom" where monitors_list is inclusion list)
                         if match and target_type != "custom":
@@ -773,6 +780,7 @@ async def alerts_evaluator_task():
 @app.on_event("startup")
 async def startup_event():
     await init_db_pool()
+    init_plugins_manager(db_pool, manager, entity_states)
     asyncio.create_task(collect_system_statistics_task())
     asyncio.create_task(monitor_probers_task())
     asyncio.create_task(alerts_evaluator_task())
@@ -1190,6 +1198,8 @@ async def monitor_probers_task():
         await asyncio.sleep(1)
 
 
+app.include_router(plugins_router)
+
 # 4. Static serving routing
 @app.get("/")
 async def get_index():
@@ -1517,7 +1527,7 @@ async def get_rules():
         return JSONResponse(content=[])
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, last_fired, target_type, monitors_list, target_groups FROM alert_rules ORDER BY id ASC;")
+            rows = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, last_fired, target_type, monitors_list, target_groups, target_groups_operator FROM alert_rules ORDER BY id ASC;")
             res = []
             for r in rows:
                 d = dict(r)
@@ -1538,8 +1548,8 @@ async def add_rule(payload: RulePayload):
         rules_str = json.dumps([r.model_dump() for r in payload.rules_json])
         async with db_pool.acquire() as conn:
             row = await conn.fetchrow(
-                "INSERT INTO alert_rules (name, rules_json, channel_ids, enabled, target_type, monitors_list, target_groups) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id;",
-                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list, payload.target_groups
+                "INSERT INTO alert_rules (name, rules_json, channel_ids, enabled, target_type, monitors_list, target_groups, target_groups_operator) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id;",
+                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list, payload.target_groups, payload.target_groups_operator
             )
             await conn.execute(
                 "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
@@ -1558,8 +1568,8 @@ async def update_rule(rid: int, payload: RulePayload):
         rules_str = json.dumps([r.model_dump() for r in payload.rules_json])
         async with db_pool.acquire() as conn:
             await conn.execute(
-                "UPDATE alert_rules SET name = $1, rules_json = $2, channel_ids = $3, enabled = $4, target_type = $5, monitors_list = $6, target_groups = $7 WHERE id = $8;",
-                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list, payload.target_groups, rid
+                "UPDATE alert_rules SET name = $1, rules_json = $2, channel_ids = $3, enabled = $4, target_type = $5, monitors_list = $6, target_groups = $7, target_groups_operator = $8 WHERE id = $9;",
+                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list, payload.target_groups, payload.target_groups_operator, rid
             )
             await conn.execute(
                 "INSERT INTO system_audits (type, message) VALUES ($1, $2);",

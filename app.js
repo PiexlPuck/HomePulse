@@ -1609,6 +1609,7 @@ function hideAllViews() {
   const uptimeHistoryView = document.getElementById('uptime-history-view');
   const hostsView = document.getElementById('hosts-view');
   const hostDetailView = document.getElementById('host-detail-view');
+  const pluginsView = document.getElementById('plugins-view');
 
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
@@ -1620,6 +1621,7 @@ function hideAllViews() {
   if (uptimeHistoryView) uptimeHistoryView.classList.add('hide');
   if (hostsView) hostsView.classList.add('hide');
   if (hostDetailView) hostDetailView.classList.add('hide');
+  if (pluginsView) pluginsView.classList.add('hide');
 
   const tabBar = document.getElementById('tab-bar');
   if (tabBar) tabBar.style.display = 'none';
@@ -1810,6 +1812,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const navPlugins = document.getElementById('nav-plugins');
+  if (navPlugins) {
+    navPlugins.addEventListener('click', (e) => {
+      e.preventDefault();
+      showPluginsView();
+    });
+  }
+
   // Bind catalog search box input listener
   const catalogSearch = document.getElementById('catalog-search');
   if (catalogSearch) {
@@ -1827,7 +1837,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const btnInstallMonitors = document.getElementById('btn-install-custom-monitors');
+  const btnInstallMonitors = document.getElementById('btn-install-custom-monitors-hosts');
   if (btnInstallMonitors) {
     btnInstallMonitors.addEventListener('click', (e) => {
       e.preventDefault();
@@ -4758,7 +4768,8 @@ async function loadAlertRules() {
           const match = window.cachedGroups.find(g => g.id === gid);
           return match ? match.name : `Group #${gid}`;
         }).join(', ') || 'No groups selected';
-        targetDesc = `Groups: ${grpNames}`;
+        const opLabel = (rule.target_groups_operator === 'all') ? 'ALL' : 'ANY';
+        targetDesc = `Groups (${opLabel}): ${grpNames}`;
       }
 
       // Build conditions presentation text
@@ -5160,6 +5171,11 @@ async function openRuleComposer(rid = null) {
     console.error("Failed to load target groups in rule composer:", err);
   }
 
+  const operatorSelect = document.getElementById('rule-groups-operator');
+  if (operatorSelect) {
+    operatorSelect.value = 'any';
+  }
+
   if (rid) {
     titleEl.textContent = 'Edit Alert Rule';
     try {
@@ -5202,6 +5218,11 @@ async function openRuleComposer(rid = null) {
             c.checked = true;
           }
         });
+
+        // Toggle target group operator
+        if (operatorSelect) {
+          operatorSelect.value = rule.target_groups_operator || 'any';
+        }
       }
     } catch (err) {
       alert(`Failed to load rule detail: ${err.message}`);
@@ -5337,6 +5358,10 @@ async function submitSaveRule() {
     target_groups.push(parseInt(c.value));
   });
 
+  const target_groups_operator = document.getElementById('rule-groups-operator')
+    ? document.getElementById('rule-groups-operator').value
+    : 'any';
+
   const { httpUrl } = getApiUrls();
   const rid = window.activeAlertRuleId;
   const method = rid ? 'PUT' : 'POST';
@@ -5346,7 +5371,7 @@ async function submitSaveRule() {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, rules_json: conditions, channel_ids, enabled: true, target_type, monitors_list, target_groups })
+      body: JSON.stringify({ name, rules_json: conditions, channel_ids, enabled: true, target_type, monitors_list, target_groups, target_groups_operator })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -5555,6 +5580,12 @@ async function loadHistoryAnalytics() {
 
   tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Loading analytics...</td></tr>`;
 
+  const loaderEl = document.getElementById('analytics-chart-loader');
+  if (loaderEl) loaderEl.style.display = 'flex';
+
+  // Brief yield to paint the loader DOM
+  await new Promise(resolve => setTimeout(resolve, 30));
+
   const { httpUrl } = getApiUrls();
   try {
     const statusKey = `monitor-${monId}-status`;
@@ -5570,10 +5601,13 @@ async function loadHistoryAnalytics() {
       tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No logs items found for this prober range.</td></tr>`;
       updateHistoryStats(0, 0, 0, 100);
       drawHistoryChart([], [], [], 0, []);
+      if (loaderEl) loaderEl.style.display = 'none';
       return;
     }
 
-    // Zip and calculate stats by matching closest timestamp within 5 seconds
+    // Zip and calculate stats in a non-blocking asynchronous block
+    await new Promise(resolve => setTimeout(resolve, 5));
+
     let totalLatency = 0;
     let maxLatency = 0;
     let healthyCount = 0;
@@ -5587,22 +5621,31 @@ async function loadHistoryAnalytics() {
 
     const chronologicalDetails = [];
 
+    // Pre-calculate latency time numbers to speed up zipping matching in O(N+M)
+    const latencyTimes = sortedLatency.map(log => ({
+      time: new Date(log.timestamp).getTime(),
+      value: log.value
+    }));
+
+    let latIdx = 0;
     sortedStatus.forEach(statusLog => {
       const statusTime = new Date(statusLog.timestamp).getTime();
-      let closestLatency = null;
-      let minDiff = Infinity;
 
-      sortedLatency.forEach(latLog => {
-        const latTime = new Date(latLog.timestamp).getTime();
-        const diff = Math.abs(statusTime - latTime);
-        if (diff < minDiff) {
-          minDiff = diff;
-          closestLatency = latLog;
+      // Advance latIdx using O(N + M) two-pointer matching on sorted arrays
+      while (latIdx < latencyTimes.length - 1) {
+        const thisDiff = Math.abs(latencyTimes[latIdx].time - statusTime);
+        const nextDiff = Math.abs(latencyTimes[latIdx + 1].time - statusTime);
+        if (nextDiff < thisDiff) {
+          latIdx++;
+        } else {
+          break;
         }
-      });
+      }
 
-      // Align only if they are within a 5-second interval of each other
-      const latVal = (closestLatency && minDiff < 5000) ? parseFloat(closestLatency.value) : 0.0;
+      const closestLat = latencyTimes[latIdx];
+      const minDiff = closestLat ? Math.abs(closestLat.time - statusTime) : Infinity;
+
+      const latVal = (closestLat && minDiff < 5000) ? parseFloat(closestLat.value) : 0.0;
       const isUpVal = isProbeStatusOnline(statusLog.value, type);
 
       chronologicalDetails.push({
@@ -5629,6 +5672,9 @@ async function loadHistoryAnalytics() {
 
     const avgLatency = chronologicalDetails.length > 0 ? (totalLatency / chronologicalDetails.length) : 0;
     const uptimePct = chronologicalDetails.length > 0 ? (healthyCount / chronologicalDetails.length) * 100 : 100.0;
+
+    // Yield before table row building and stat renders to keep UI responsive
+    await new Promise(resolve => setTimeout(resolve, 5));
 
     // Render stats
     updateHistoryStats(avgLatency, maxLatency, outages, uptimePct);
@@ -5674,9 +5720,14 @@ async function loadHistoryAnalytics() {
     const latencies = chronologicalDetails.map(log => log.latency);
     const healthBooleans = chronologicalDetails.map(log => log.isUp);
 
+    // Yield final draw call to event loop to draw chart asynchronously
+    await new Promise(resolve => setTimeout(resolve, 10));
     drawHistoryChart(labels, latencies, healthBooleans, avgLatency, chronologicalDetails);
+
+    if (loaderEl) loaderEl.style.display = 'none';
   } catch (err) {
     tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:#f43f5e;">Error loading analytics: ${err.message}</td></tr>`;
+    if (loaderEl) loaderEl.style.display = 'none';
   }
 }
 
@@ -6376,6 +6427,315 @@ window.openHostDetail = async function (hostId) {
   const hostDetailView = document.getElementById('host-detail-view');
   if (hostDetailView) {
     hostDetailView.classList.remove('hide');
+  }
+};
+
+// ─────────────────────────────────────────
+// PLUGINS MANAGEMENT INTEGRATION LOGIC
+// ─────────────────────────────────────────
+
+function showPluginsView() {
+  const mainContent = document.getElementById('main-content');
+  if (mainContent && mainContent.classList.contains('edit-mode')) {
+    const editToggleBtn = document.getElementById('edit-toggle-btn');
+    if (editToggleBtn) editToggleBtn.click();
+  }
+
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'none';
+
+  hideAllViews();
+
+  const pluginsView = document.getElementById('plugins-view');
+  if (pluginsView) pluginsView.classList.remove('hide');
+
+  const navPlugins = document.getElementById('nav-plugins');
+  if (navPlugins) navPlugins.classList.add('active');
+
+  switchPluginTab('installed');
+}
+
+window.switchPluginTab = function (tab) {
+  const tabs = {
+    installed: document.getElementById('plugin-tab-installed'),
+    marketplace: document.getElementById('plugin-tab-marketplace')
+  };
+  const sections = {
+    installed: document.getElementById('plugin-sec-installed'),
+    marketplace: document.getElementById('plugin-sec-marketplace')
+  };
+
+  Object.keys(sections).forEach(key => {
+    if (sections[key]) {
+      sections[key].style.display = (key === tab) ? 'block' : 'none';
+    }
+  });
+
+  Object.keys(tabs).forEach(key => {
+    const btn = tabs[key];
+    if (btn) {
+      if (key === tab) {
+        btn.classList.add('active');
+        btn.style.borderBottom = '2px solid var(--accent-orange)';
+        btn.style.color = 'var(--text-primary)';
+        btn.style.fontWeight = '700';
+      } else {
+        btn.classList.remove('active');
+        btn.style.borderBottom = 'none';
+        btn.style.color = 'var(--text-secondary)';
+        btn.style.fontWeight = '500';
+      }
+    }
+  });
+
+  if (tab === 'installed') {
+    loadInstalledPlugins();
+  } else if (tab === 'marketplace') {
+    loadMarketplacePlugins();
+  }
+};
+
+async function loadInstalledPlugins() {
+  const listContainer = document.getElementById('installed-plugins-list');
+  if (!listContainer) return;
+
+  listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">Loading installed plugins...</p>`;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/plugins/installed`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const plugins = await res.json();
+
+    if (plugins.length === 0) {
+      listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0;">No plugins installed. Visit "Store Marketplace" to add custom monitors.</p>`;
+      return;
+    }
+
+    listContainer.innerHTML = plugins.map(p => {
+      // Collect status attributes from entity states if the plugin publishes metrics
+      const entityKeyStatus = `plugin-${p.id}-status`;
+      const entityVal = (cachedEntities && cachedEntities[entityKeyStatus]) ? cachedEntities[entityKeyStatus] : null;
+      const runningStatus = entityVal ? (entityVal.attributes?.status || 'stopped') : (p.enabled ? 'running' : 'stopped');
+
+      let badgeColor = '#ef4444'; // Red for stopped/crashed
+      if (runningStatus === 'running') badgeColor = '#10b981'; // Green
+      if (runningStatus === 'crashed') badgeColor = '#f59e0b'; // Amber
+
+      // Dynamic config forms compiler mapping manifest settings_schema
+      const schema = p.settings_schema || {};
+      const config = p.config || {};
+      let configFieldsHTML = '';
+
+      if (Object.keys(schema).length > 0) {
+        configFieldsHTML = Object.keys(schema).map(key => {
+          const field = schema[key];
+          const val = config[key] !== undefined ? config[key] : (field.default !== undefined ? field.default : '');
+          const label = field.label || key.replace('_', ' ').replace('-', ' ').title();
+          const inputType = field.secret ? 'password' : (field.type === 'integer' ? 'number' : 'text');
+
+          return `
+            <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px; width: 100%;">
+              <label style="font-size:0.75rem; color:#fff; font-weight:600;">${label}</label>
+              <input type="${inputType}" class="settings-input plugin-config-input" data-plugin-id="${p.id}" data-key="${key}" value="${val}" style="padding: 8px 12px; font-size:0.8rem;">
+            </div>
+          `;
+        }).join('');
+      } else {
+        configFieldsHTML = `<p style="color:var(--text-secondary); font-size:0.7rem; font-style:italic;">No setup parameters required for this module.</p>`;
+      }
+
+      return `
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${p.name} <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">(v${p.version})</span></h4>
+              <p style="margin:4px 0 0 0; font-size:0.75rem; color:var(--text-secondary);">${p.description}</p>
+            </div>
+            
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span class="status-pill" style="background:${badgeColor}; color:#fff; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px;">${runningStatus}</span>
+              
+              <label class="switch">
+                <input type="checkbox" ${p.enabled ? 'checked' : ''} onclick="toggleInstalledPlugin('${p.id}')">
+                <span class="slider-checkbox round"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Configuration parameters inline dropdown -->
+          <details style="border-top:1px dashed var(--border-soft); padding-top:12px; margin-top:8px;">
+            <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600;">Configuration setup & credentials</summary>
+            <div style="padding-top:12px; display:flex; flex-direction:column; gap:4px; max-width: 500px;">
+              ${configFieldsHTML}
+              <div style="display:flex; gap:10px; margin-top:8px;">
+                <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
+                <button class="btn btn-danger" onclick="uninstallPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fecaca;">Uninstall</button>
+              </div>
+            </div>
+          </details>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    listContainer.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem; text-align:center; padding:24px 0;">Failed to load installed plugins list: ${err.message}</p>`;
+  }
+}
+
+async function loadMarketplacePlugins() {
+  const storeContainer = document.getElementById('marketplace-plugins-list');
+  if (!storeContainer) return;
+
+  storeContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0; grid-column:1/-1;">Loading plugins catalog from Github index repository...</p>`;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/plugins/marketplace`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const catalog = await res.json();
+
+    if (catalog.length === 0) {
+      storeContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0; grid-column:1/-1;">Store registry currently unavailable or offline.</p>`;
+      return;
+    }
+
+    // Also load installed list to distinguish installment buttons status
+    const instRes = await fetch(`${httpUrl}/api/plugins/installed`);
+    const installed = instRes.ok ? await instRes.json() : [];
+    const installedIds = installed.map(i => i.id);
+
+    storeContainer.innerHTML = catalog.map(p => {
+      const isInstalled = installedIds.includes(p.id);
+      const isOutdated = isInstalled && (installed.find(i => i.id === p.id)?.version !== p.version);
+
+      let actionBtnHTML = `
+        <button class="btn btn-primary" onclick="installSelectedPlugin('${p.id}')" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px;">
+          Install Plugin
+        </button>
+      `;
+      if (isInstalled) {
+        if (isOutdated) {
+          actionBtnHTML = `
+            <button class="btn btn-secondary" onclick="installSelectedPlugin('${p.id}')" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px; border-color:var(--accent-orange); color:var(--accent-orange);">
+              Update (v${p.version})
+            </button>
+          `;
+        } else {
+          actionBtnHTML = `
+            <button class="btn btn-secondary" disabled style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px; opacity:0.5; cursor:not-allowed;">
+              Already Installed
+            </button>
+          `;
+        }
+      }
+
+      return `
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 18px; display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h4 style="margin:0; font-size:0.9rem; font-weight:700; color:#fff;">${p.name}</h4>
+              <span style="font-size:0.65rem; background:rgba(255,255,255,0.08); color:var(--text-secondary); padding:2px 6px; border-radius:3px;">v${p.version}</span>
+            </div>
+            <p style="margin:8px 0 0 0; font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">${p.description}</p>
+          </div>
+          ${actionBtnHTML}
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    storeContainer.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem; text-align:center; padding:24px 0; grid-column:1/-1;">Could not fetch remote marketplace elements: ${err.message}</p>`;
+  }
+}
+
+window.installSelectedPlugin = async function (pluginId) {
+  showToast(`Initiating download loop for "${pluginId}"...`, 'info');
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/plugins/install/${pluginId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      showToast(`Successfully extracted "${pluginId}" files. Spawning env build...`, 'success');
+      switchPluginTab('installed');
+    } else {
+      const data = await res.json();
+      alert(`Installation failure: ${data.detail || 'unknown error'}`);
+    }
+  } catch (err) {
+    showToast(`Install request failed: ${err.message}`, 'error');
+  }
+};
+
+window.toggleInstalledPlugin = async function (pluginId) {
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/plugins/toggle/${pluginId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      showToast(`Plugin toggled successfully. Active: ${data.enabled}`, 'success');
+      loadInstalledPlugins();
+    } else {
+      alert("Failed to toggle plugin process.");
+      loadInstalledPlugins();
+    }
+  } catch (err) {
+    showToast(`Toggle operation failed: ${err.message}`, 'error');
+    loadInstalledPlugins();
+  }
+};
+
+window.savePluginConfig = async function (pluginId) {
+  const inputs = document.querySelectorAll(`.plugin-config-input[data-plugin-id="${pluginId}"]`);
+  const config = {};
+  inputs.forEach(inp => {
+    const key = inp.getAttribute('data-key');
+    config[key] = inp.value;
+  });
+
+  showToast(`Saving parameter changes for "${pluginId}"...`, 'info');
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/plugins/config/${pluginId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ config })
+    });
+    if (res.ok) {
+      showToast("Configuration parameters updated.", 'success');
+      loadInstalledPlugins();
+    } else {
+      alert("Failed to compile configurations parameters update.");
+    }
+  } catch (err) {
+    showToast(`Config save failed: ${err.message}`, 'error');
+  }
+};
+
+window.uninstallPlugin = async function (pluginId) {
+  if (!confirm(`Are you sure you want to stop process and delete all files for "${pluginId}"?`)) return;
+
+  showToast(`Pruning entries and directory files for "${pluginId}"...`, 'info');
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/plugins/uninstall/${pluginId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      showToast("Plugin uninstalled successfully.", 'success');
+      loadInstalledPlugins();
+    } else {
+      alert("Failed to uninstall plugin.");
+    }
+  } catch (err) {
+    showToast(`Uninstall operations failed: ${err.message}`, 'error');
   }
 };
 

@@ -64,6 +64,13 @@
         </div>
       </a>
 
+      <a href="#" class="nav-item" id="nav-plugins">
+        <div class="nav-item-left">
+          <i data-lucide="puzzle"></i>
+          <span>Plugins</span>
+        </div>
+      </a>
+
       <a href="#" class="nav-item" id="nav-settings">
         <div class="nav-item-left">
           <i data-lucide="settings"></i>
@@ -293,17 +300,11 @@
     <!-- Monitors/Probes Panel -->
     <div class="settings-view hide" id="probes-view">
 
-      <!-- Standalone Launchers Row (Top Left Corner) -->
       <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px; padding: 4px 0 0 4px;">
         <button id="btn-configure-new-probe" class="btn btn-primary" onclick="openAddMonitorModal()"
           style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
           <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
           Configure New Probe
-        </button>
-        <button id="btn-install-custom-monitors" class="btn btn-secondary" onclick="openMarketplaceModal()"
-          style="font-size: 0.78rem; padding: 6px 14px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-          <i data-lucide="shopping-bag" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
-          Install Custom Monitors
         </button>
       </div>
 
@@ -730,6 +731,14 @@
             <small
               style="position: absolute; top: 12px; right: 16px; font-size: 0.65rem; color: var(--text-secondary); font-family: monospace;">LATENCY
               (MS) OVER TIME</small>
+            <div id="analytics-chart-loader"
+              style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(24, 24, 27, 0.7); display: none; align-items: center; justify-content: center; z-index: 10; border-radius: 8px; backdrop-filter: blur(2px);">
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                <div class="chart-spinner"></div>
+                <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Generating analytics
+                  chart...</span>
+              </div>
+            </div>
             <div style="height: 320px; width: 100%;">
               <canvas id="analytics-chart-canvas"></canvas>
             </div>
@@ -789,6 +798,11 @@
                 <i data-lucide="list" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
               </button>
             </div>
+            <button id="btn-install-custom-monitors-hosts" class="btn btn-secondary" onclick="openMarketplaceModal()"
+              style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <i data-lucide="shopping-bag" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
+              Install Custom Monitors
+            </button>
             <button class="btn btn-primary" onclick="openAddHostModal()"
               style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
               <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Host
@@ -899,6 +913,52 @@
             <!-- Dynamically populated probers rows -->
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Plugins Integration View Panel -->
+    <div class="settings-view hide" id="plugins-view">
+      <div class="settings-card"
+        style="max-width: 1000px; padding: 24px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; box-sizing: border-box;">
+        <div class="settings-header"
+          style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-soft); padding-bottom: 16px; margin-bottom: 20px;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">HomePulse Plugins
+            </h3>
+            <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-secondary);">Manage modular community
+              monitors, configure credentials API keys, and track daemon processes logs.</p>
+          </div>
+          <!-- Tab switcher -->
+          <div style="display: flex; gap: 8px;">
+            <button id="plugin-tab-installed" class="tab-btn active" onclick="switchPluginTab('installed')"
+              style="background:none; border:none; padding:8px 16px; color:var(--text-primary); cursor:pointer; font-weight:700; border-bottom: 2px solid var(--accent-orange); font-size:0.8rem; outline:none; transition: all 0.2s;">
+              Installed
+            </button>
+            <button id="plugin-tab-marketplace" class="tab-btn" onclick="switchPluginTab('marketplace')"
+              style="background:none; border:none; padding:8px 16px; color:var(--text-secondary); cursor:pointer; font-weight:500; font-size:0.8rem; outline:none; transition: all 0.2s;">
+              Store Marketplace
+            </button>
+          </div>
+        </div>
+
+        <!-- Tab 1: Installed Plugins List -->
+        <div id="plugin-sec-installed">
+          <div id="installed-plugins-list" style="display: flex; flex-direction: column; gap: 16px;">
+            <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0;">No plugins
+              installed yet. Explore the Marketplace to install custom services.</p>
+          </div>
+        </div>
+
+        <!-- Tab 2: Marketplace Plugins Store -->
+        <div id="plugin-sec-marketplace" style="display: none;">
+          <div id="marketplace-plugins-list"
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+            <p
+              style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0; grid-column: 1/-1;">
+              Loading available plugins catalog from Github...</p>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1686,7 +1746,14 @@
               <!-- List of groups for target group matching -->
               <div class="modal-group" id="rule-groups-selection-wrapper"
                 style="display: flex; flex-direction: column; gap: 6px; display: none;">
-                <label>Select Target Groups</label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                  <label style="margin: 0;">Select Target Groups</label>
+                  <select id="rule-groups-operator"
+                    style="background: #25221d; color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 6px; font-size: 0.72rem; outline: none; cursor: pointer;">
+                    <option value="any">Match ANY selected (OR)</option>
+                    <option value="all">Match ALL selected (AND)</option>
+                  </select>
+                </div>
                 <div id="rule-groups-selection-list"
                   style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; background: #221d16; display: flex; flex-direction: column; gap: 6px;">
                   <!-- Filled dynamically by JS -->
