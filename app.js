@@ -4639,7 +4639,7 @@ async function createMonitorGroup() {
 }
 
 async function deleteMonitorGroup(gid) {
-  if (!confirm("Are you sure you want to delete this target group? This will unmap any monitors assigned to it.")) {
+  if (!await showConfirm("Are you sure you want to delete this target group? This will unmap any monitors assigned to it.", "Delete Target Group")) {
     return;
   }
   const { httpUrl } = getApiUrls();
@@ -5998,45 +5998,70 @@ function showHostsView() {
     }
   }
 
+  window.currentHostsData = null;
+  window.currentActivePluginsData = null;
   loadHosts();
 }
 
-async function loadHosts() {
+window.currentHostsData = null;
+window.currentActivePluginsData = null;
+
+window.filterHostsList = function () {
+  loadHosts(false);
+};
+
+async function loadHosts(forceFetch = false) {
   const { httpUrl } = getApiUrls();
   const container = document.getElementById('hosts-list-container');
   if (!container) return;
 
-  container.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:32px; color:var(--text-secondary);">Loading hosts and plugins...</p>`;
-
   try {
-    const [hostsRes, pluginsRes] = await Promise.all([
-      fetch(`${httpUrl}/api/hosts`),
-      fetch(`${httpUrl}/api/plugins/installed`).catch(e => { console.error(e); return { ok: false }; })
-    ]);
+    if (forceFetch || !window.currentHostsData || !window.currentActivePluginsData) {
+      container.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:32px; color:var(--text-secondary);">Loading hosts and plugins...</p>`;
+      const [hostsRes, pluginsRes] = await Promise.all([
+        fetch(`${httpUrl}/api/hosts`),
+        fetch(`${httpUrl}/api/plugins/installed`).catch(e => { console.error(e); return { ok: false }; })
+      ]);
 
-    if (!hostsRes.ok) throw new Error(`HTTP ${hostsRes.status}`);
-    const hosts = await hostsRes.json();
-    window.currentHosts = hosts;
+      if (!hostsRes.ok) throw new Error(`HTTP ${hostsRes.status}`);
+      window.currentHostsData = await hostsRes.json();
+      window.currentHosts = window.currentHostsData; // Keep reference for edit forms
 
-    let plugins = [];
-    if (pluginsRes && pluginsRes.ok) {
-      plugins = await pluginsRes.json();
+      let plugins = [];
+      if (pluginsRes && pluginsRes.ok) {
+        plugins = await pluginsRes.json();
+      }
+      window.currentActivePluginsData = plugins.filter(p => p.enabled);
     }
-    const activePlugins = plugins.filter(p => p.enabled);
 
-    if (hosts.length === 0 && activePlugins.length === 0) {
+    // Read search term
+    const searchInput = document.getElementById('host-search');
+    const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+    const filteredHosts = window.currentHostsData.filter(host => {
+      return host.name.toLowerCase().includes(searchVal) ||
+        host.target.toLowerCase().includes(searchVal);
+    });
+
+    const filteredActivePlugins = window.currentActivePluginsData.filter(p => {
+      return p.name.toLowerCase().includes(searchVal) ||
+        p.id.toLowerCase().includes(searchVal) ||
+        (p.description && p.description.toLowerCase().includes(searchVal));
+    });
+
+    if (filteredHosts.length === 0 && filteredActivePlugins.length === 0) {
       container.innerHTML = `
-        <div style="grid-column: 1/-1; text-align:center; padding:48px 24px; border: 1px dashed var(--border-soft); border-radius: 8px;">
-          <p style="color:var(--text-secondary); margin-bottom: 16px;">No hosts or plugins running yet.</p>
-          <button class="btn btn-primary" onclick="openAddHostModal()" style="font-size:0.75rem; padding: 8px 16px;">+ Add Your First Host</button>
-        </div>`;
+      <div style="grid-column: 1/-1; text-align:center; padding:48px 24px; border: 1px dashed var(--border-soft); border-radius: 8px;">
+        <p style="color:var(--text-secondary); margin-bottom: 16px;">No matching hosts or plugins found.</p>
+        <button class="btn btn-primary" onclick="openAddHostModal()" style="font-size:0.75rem; padding: 8px 16px;">+ Add New Host</button>
+      </div>`;
       return;
     }
 
     const layout = window.hostsViewLayout || 'grid';
 
     // Render hosts HTML
-    const hostsHtmlList = hosts.map(host => {
+    const hostsHtmlList = filteredHosts.map(host => {
       const activeCheckers = [];
       if (host.ping_enabled) activeCheckers.push('Ping');
       if (host.http_enabled) activeCheckers.push('HTTP');
@@ -6050,53 +6075,53 @@ async function loadHosts() {
 
       if (layout === 'grid') {
         return `
-          <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft); cursor:pointer;" onclick="openHostDetail(${host.id})">
-            <div>
-              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-                <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
-                <div style="display:flex; gap:6px;">
-                  <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
-                    <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
-                  </button>
-                  <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
-                    <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
-                  </button>
-                </div>
+        <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft); cursor:pointer;" onclick="openHostDetail(${host.id})">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
+              <div style="display:flex; gap:6px;">
+                <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
+                  <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
+                </button>
+                <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
+                  <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
+                </button>
               </div>
-              <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">${host.target}</p>
             </div>
-            <div style="border-top:1px solid var(--border-soft); padding-top:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-              ${checkersHtml}
-            </div>
-          </div>`;
+            <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">${host.target}</p>
+          </div>
+          <div style="border-top:1px solid var(--border-soft); padding-top:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+            ${checkersHtml}
+          </div>
+        </div>`;
       } else {
         return `
-          <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; border-radius:8px; border:1px solid var(--border-soft); gap:12px; min-height:unset; cursor:pointer;" onclick="openHostDetail(${host.id})">
-            <div style="display:flex; justify-content:space-between; align-items:center; width: 100%;">
-              <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
-                <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
-                <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">${host.target}</p>
-              </div>
-              <div style="display:flex; align-items:center; gap:20px;">
-                <div style="display:flex; gap:6px; border-left:1px solid var(--border-soft); padding-left:16px;">
-                  <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
-                    <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
-                  </button>
-                  <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
-                    <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
-                  </button>
-                </div>
+        <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; border-radius:8px; border:1px solid var(--border-soft); gap:12px; min-height:unset; cursor:pointer;" onclick="openHostDetail(${host.id})">
+          <div style="display:flex; justify-content:space-between; align-items:center; width: 100%;">
+            <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
+              <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
+              <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">${host.target}</p>
+            </div>
+            <div style="display:flex; align-items:center; gap:20px;">
+              <div style="display:flex; gap:6px; border-left:1px solid var(--border-soft); padding-left:16px;">
+                <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
+                  <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
+                </button>
+                <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
+                  <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
+                </button>
               </div>
             </div>
-            <div style="border-top:1px solid var(--border-soft); padding-top:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; width: 100%;">
-              ${checkersHtml}
-            </div>
-          </div>`;
+          </div>
+          <div style="border-top:1px solid var(--border-soft); padding-top:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; width: 100%;">
+            ${checkersHtml}
+          </div>
+        </div>`;
       }
     });
 
     // Render running plugins HTML
-    const pluginsHtmlList = activePlugins.map(p => {
+    const pluginsHtmlList = filteredActivePlugins.map(p => {
       // Find all entity values published by this plugin
       const entities = Object.values(cachedEntities || {}).filter(item =>
         item.node_id === p.id ||
@@ -6254,6 +6279,7 @@ window.submitSaveHost = async function () {
     }
 
     closeModal('host-modal');
+    window.currentHostsData = null;
     loadHosts();
   } catch (err) {
     alert(`Failed to save host details: ${err.message}`);
@@ -6269,6 +6295,7 @@ window.deleteHost = async function (id) {
       method: 'DELETE'
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    window.currentHostsData = null;
     loadHosts();
   } catch (err) {
     alert(`Failed to delete host: ${err.message}`);
@@ -6594,10 +6621,38 @@ function showPluginsView() {
   const navPlugins = document.getElementById('nav-plugins');
   if (navPlugins) navPlugins.classList.add('active');
 
+  // Hook search block on input dynamically
+  const searchInput = document.getElementById('plugin-search');
+  if (searchInput && !searchInput.dataset.hooked) {
+    searchInput.dataset.hooked = 'true';
+    searchInput.addEventListener('input', () => {
+      const activeTabBtn = document.querySelector('#plugins-view .tab-btn.active');
+      const activeTab = activeTabBtn && activeTabBtn.id.includes('marketplace') ? 'marketplace' : 'installed';
+      if (activeTab === 'installed') {
+        loadInstalledPlugins();
+      } else {
+        loadMarketplacePlugins();
+      }
+    });
+  }
+
+  // Hook drag prevention loops dynamically on first open
+  document.querySelectorAll('.nav-item, #toggle-sidebar, .brand').forEach(el => {
+    el.setAttribute('draggable', 'false');
+    el.addEventListener('dragstart', (e) => {
+      e.preventDefault();
+      return false;
+    });
+  });
+
   switchPluginTab('installed');
 }
 
 window.switchPluginTab = function (tab) {
+  // Clear search query when changing tabs
+  const searchInput = document.getElementById('plugin-search');
+  if (searchInput) searchInput.value = '';
+
   const tabs = {
     installed: document.getElementById('plugin-tab-installed'),
     marketplace: document.getElementById('plugin-tab-marketplace')
@@ -6637,62 +6692,119 @@ window.switchPluginTab = function (tab) {
   }
 };
 
-async function loadInstalledPlugins() {
+window.switchPluginsLayout = function (layout) {
+  window.pluginsViewLayout = layout;
+
+  const btnGrid = document.getElementById('btn-plugins-grid');
+  const btnList = document.getElementById('btn-plugins-list');
+
+  if (btnGrid && btnList) {
+    if (layout === 'grid') {
+      btnGrid.classList.add('active');
+      btnGrid.style.background = 'rgba(255,255,255,0.08)';
+      btnGrid.querySelector('i').style.color = '#fff';
+
+      btnList.classList.remove('active');
+      btnList.style.background = 'none';
+      btnList.querySelector('i').style.color = 'var(--text-secondary)';
+    } else {
+      btnList.classList.add('active');
+      btnList.style.background = 'rgba(255,255,255,0.08)';
+      btnList.querySelector('i').style.color = '#fff';
+
+      btnGrid.classList.remove('active');
+      btnGrid.style.background = 'none';
+      btnGrid.querySelector('i').style.color = 'var(--text-secondary)';
+    }
+  }
+
+  // Rerender active view
+  const activeTabBtn = document.querySelector('#plugins-view .tab-btn.active');
+  const activeTab = activeTabBtn && activeTabBtn.id.includes('marketplace') ? 'marketplace' : 'installed';
+  if (activeTab === 'installed') {
+    loadInstalledPlugins();
+  } else {
+    loadMarketplacePlugins();
+  }
+};
+
+async function loadInstalledPlugins(forceFetch = false) {
   const listContainer = document.getElementById('installed-plugins-list');
   if (!listContainer) return;
 
-  listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">Loading installed plugins...</p>`;
-
   const { httpUrl } = getApiUrls();
-  try {
-    const res = await fetch(`${httpUrl}/api/plugins/installed`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const plugins = await res.json();
-
-    if (plugins.length === 0) {
-      listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0;">No plugins installed. Visit "Store Marketplace" to add custom monitors.</p>`;
+  if (forceFetch || !window.installedPluginsData) {
+    listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">Loading installed plugins...</p>`;
+    try {
+      const res = await fetch(`${httpUrl}/api/plugins/installed`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      window.installedPluginsData = await res.json();
+    } catch (err) {
+      listContainer.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem; text-align:center; padding:24px 0;">Failed to load installed plugins list: ${err.message}</p>`;
       return;
     }
+  }
 
-    listContainer.innerHTML = plugins.map(p => {
-      // Collect status attributes from entity states if the plugin publishes metrics
-      const entityKeyStatus = `plugin-${p.id}-status`;
-      const entityVal = (cachedEntities && cachedEntities[entityKeyStatus]) ? cachedEntities[entityKeyStatus] : null;
-      const runningStatus = entityVal ? (entityVal.attributes?.status || 'stopped') : (p.enabled ? 'running' : 'stopped');
+  // Read search term
+  const searchInput = document.getElementById('plugin-search');
+  const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
-      let badgeColor = '#ef4444'; // Red for stopped/crashed
-      if (runningStatus === 'running') badgeColor = '#10b981'; // Green
-      if (runningStatus === 'crashed') badgeColor = '#f59e0b'; // Amber
+  const filtered = window.installedPluginsData.filter(p => {
+    return p.name.toLowerCase().includes(searchVal) ||
+      p.id.toLowerCase().includes(searchVal) ||
+      (p.description && p.description.toLowerCase().includes(searchVal));
+  });
 
-      // Dynamic config forms compiler mapping manifest settings_schema
-      const schema = p.settings_schema || {};
-      const config = p.config || {};
-      let configFieldsHTML = '';
+  if (filtered.length === 0) {
+    listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0;">No matching installed plugins found.</p>`;
+    return;
+  }
 
-      if (Object.keys(schema).length > 0) {
-        configFieldsHTML = Object.keys(schema).map(key => {
-          const field = schema[key];
-          const val = config[key] !== undefined ? config[key] : (field.default !== undefined ? field.default : '');
-          const label = field.label || key.replace('_', ' ').replace('-', ' ').title();
-          const inputType = field.secret ? 'password' : (field.type === 'integer' ? 'number' : 'text');
+  const layout = window.pluginsViewLayout || 'grid';
+  if (layout === 'grid') {
+    listContainer.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;";
+  } else {
+    listContainer.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
+  }
 
-          return `
-            <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px; width: 100%;">
-              <label style="font-size:0.75rem; color:#fff; font-weight:600;">${label}</label>
-              <input type="${inputType}" class="settings-input plugin-config-input" data-plugin-id="${p.id}" data-key="${key}" value="${val}" style="padding: 8px 12px; font-size:0.8rem;">
-            </div>
-          `;
-        }).join('');
-      } else {
-        configFieldsHTML = `<p style="color:var(--text-secondary); font-size:0.7rem; font-style:italic;">No setup parameters required for this module.</p>`;
-      }
+  listContainer.innerHTML = filtered.map(p => {
+    const entityKeyStatus = `plugin-${p.id}-status`;
+    const entityVal = (cachedEntities && cachedEntities[entityKeyStatus]) ? cachedEntities[entityKeyStatus] : null;
+    const runningStatus = entityVal ? (entityVal.attributes?.status || 'stopped') : (p.enabled ? 'running' : 'stopped');
 
+    let badgeColor = '#ef4444'; // Red for stopped/crashed
+    if (runningStatus === 'running') badgeColor = '#10b981'; // Green
+    if (runningStatus === 'crashed') badgeColor = '#f59e0b'; // Amber
+
+    const schema = p.settings_schema || {};
+    const config = p.config || {};
+    let configFieldsHTML = '';
+
+    if (Object.keys(schema).length > 0) {
+      configFieldsHTML = Object.keys(schema).map(key => {
+        const field = schema[key];
+        const val = config[key] !== undefined ? config[key] : (field.default !== undefined ? field.default : '');
+        const label = field.label || key.replace('_', ' ').replace('-', ' ').title();
+        const inputType = field.secret ? 'password' : (field.type === 'integer' ? 'number' : 'text');
+
+        return `
+          <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px; width: 100%;">
+            <label style="font-size:0.75rem; color:#fff; font-weight:600;">${label}</label>
+            <input type="${inputType}" class="settings-input plugin-config-input" data-plugin-id="${p.id}" data-key="${key}" value="${val}" style="padding: 8px 12px; font-size:0.8rem;">
+          </div>
+        `;
+      }).join('');
+    } else {
+      configFieldsHTML = `<p style="color:var(--text-secondary); font-size:0.7rem; font-style:italic;">No setup parameters required for this module.</p>`;
+    }
+
+    if (layout === 'grid') {
       return `
         <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
               <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${p.name} <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">(v${p.version})</span></h4>
-              <p style="margin:4px 0 0 0; font-size:0.75rem; color:var(--text-secondary);">${p.description}</p>
+              <p style="margin:4px 0 0 0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ''}</p>
             </div>
             
             <div style="display:flex; align-items:center; gap:12px;">
@@ -6705,72 +6817,125 @@ async function loadInstalledPlugins() {
             </div>
           </div>
 
-          <!-- Configuration parameters inline dropdown -->
           <details style="border-top:1px dashed var(--border-soft); padding-top:12px; margin-top:8px;">
             <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600;">Configuration setup & credentials</summary>
             <div style="padding-top:12px; display:flex; flex-direction:column; gap:4px; max-width: 500px;">
               ${configFieldsHTML}
               <div style="display:flex; gap:10px; margin-top:8px;">
                 <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
-                <button class="btn btn-danger" onclick="uninstallPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fecaca;">Uninstall</button>
+                <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
+                <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>
+                <button class="btn btn-danger" onclick="uninstallPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fecaca; margin-left:auto;">Uninstall</button>
               </div>
             </div>
           </details>
         </div>
       `;
-    }).join('');
-  } catch (err) {
-    listContainer.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem; text-align:center; padding:24px 0;">Failed to load installed plugins list: ${err.message}</p>`;
-  }
+    } else {
+      return `
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+            <h4 style="margin:0; font-size:0.9rem; font-weight:700; color:#fff;">${p.name} <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">(v${p.version})</span></h4>
+            <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ''}</p>
+          </div>
+          <div style="display:flex; align-items:center; gap:16px;">
+            <span class="status-pill" style="background:${badgeColor}; color:#fff; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px;">${runningStatus}</span>
+            <label class="switch">
+              <input type="checkbox" ${p.enabled ? 'checked' : ''} onclick="toggleInstalledPlugin('${p.id}')">
+              <span class="slider-checkbox round"></span>
+            </label>
+            <details style="position:relative;">
+              <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600; list-style:none;">Config</summary>
+              <div style="position:absolute; right:0; top:24px; background:#181614; border:1px solid var(--border-soft); border-radius:8px; padding:16px; min-width:300px; z-index:100; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+                ${configFieldsHTML}
+                <div style="display:flex; gap:10px; margin-top:8px; justify-content:flex-end;">
+                  <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
+                  <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
+                  <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>
+                  <button class="btn btn-danger" onclick="uninstallPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fecaca;">Uninstall</button>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      `;
+    }
+  }).join('');
 }
 
-async function loadMarketplacePlugins() {
+async function loadMarketplacePlugins(forceFetch = false) {
   const storeContainer = document.getElementById('marketplace-plugins-list');
   if (!storeContainer) return;
 
-  storeContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0; grid-column:1/-1;">Loading plugins catalog from Github index repository...</p>`;
-
   const { httpUrl } = getApiUrls();
-  try {
-    const res = await fetch(`${httpUrl}/api/plugins/marketplace`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const catalog = await res.json();
+  if (forceFetch || !window.marketplacePluginsData) {
+    storeContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0; grid-column:1/-1;">Loading plugins catalog from Github index repository...</p>`;
+    try {
+      const [catRes, instRes] = await Promise.all([
+        fetch(`${httpUrl}/api/plugins/marketplace`),
+        fetch(`${httpUrl}/api/plugins/installed`).catch(e => ({ ok: false }))
+      ]);
 
-    if (catalog.length === 0) {
-      storeContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0; grid-column:1/-1;">Store registry currently unavailable or offline.</p>`;
+      if (!catRes.ok) throw new Error(`HTTP ${catRes.status}`);
+      window.marketplacePluginsData = await catRes.json();
+      window.installedPluginsListForMarketplace = instRes.ok ? await instRes.json() : [];
+    } catch (err) {
+      storeContainer.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem; text-align:center; padding:24px 0; grid-column:1/-1;">Could not fetch remote marketplace elements: ${err.message}</p>`;
       return;
     }
+  }
 
-    // Also load installed list to distinguish installment buttons status
-    const instRes = await fetch(`${httpUrl}/api/plugins/installed`);
-    const installed = instRes.ok ? await instRes.json() : [];
-    const installedIds = installed.map(i => i.id);
+  const searchInput = document.getElementById('plugin-search');
+  const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
-    storeContainer.innerHTML = catalog.map(p => {
-      const isInstalled = installedIds.includes(p.id);
-      const isOutdated = isInstalled && (installed.find(i => i.id === p.id)?.version !== p.version);
+  const filtered = window.marketplacePluginsData.filter(p => {
+    return p.name.toLowerCase().includes(searchVal) ||
+      p.id.toLowerCase().includes(searchVal) ||
+      (p.description && p.description.toLowerCase().includes(searchVal));
+  });
 
-      let actionBtnHTML = `
-        <button class="btn btn-primary" onclick="installSelectedPlugin('${p.id}')" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px;">
-          Install Plugin
-        </button>
-      `;
-      if (isInstalled) {
-        if (isOutdated) {
-          actionBtnHTML = `
-            <button class="btn btn-secondary" onclick="installSelectedPlugin('${p.id}')" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px; border-color:var(--accent-orange); color:var(--accent-orange);">
-              Update (v${p.version})
-            </button>
-          `;
-        } else {
-          actionBtnHTML = `
-            <button class="btn btn-secondary" disabled style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px; opacity:0.5; cursor:not-allowed;">
-              Already Installed
-            </button>
-          `;
-        }
+  if (filtered.length === 0) {
+    storeContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0; grid-column:1/-1;">No matching marketplace plugins found.</p>`;
+    return;
+  }
+
+  const installed = window.installedPluginsListForMarketplace || [];
+  const installedIds = installed.map(i => i.id);
+
+  const layout = window.pluginsViewLayout || 'grid';
+
+  if (layout === 'grid') {
+    storeContainer.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;";
+  } else {
+    storeContainer.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
+  }
+
+  storeContainer.innerHTML = filtered.map(p => {
+    const isInstalled = installedIds.includes(p.id);
+    const isOutdated = isInstalled && (installed.find(i => i.id === p.id)?.version !== p.version);
+
+    let actionBtnHTML = `
+      <button class="btn btn-primary" onclick="installSelectedPlugin('${p.id}')" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px;">
+        Install Plugin
+      </button>
+    `;
+    if (isInstalled) {
+      if (isOutdated) {
+        actionBtnHTML = `
+          <button class="btn btn-secondary" onclick="installSelectedPlugin('${p.id}')" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px; border-color:var(--accent-orange); color:var(--accent-orange);">
+            Update (v${p.version})
+          </button>
+        `;
+      } else {
+        actionBtnHTML = `
+          <button class="btn btn-secondary" disabled style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px; opacity:0.5; cursor:not-allowed;">
+            Already Installed
+          </button>
+        `;
       }
+    }
 
+    if (layout === 'grid') {
       return `
         <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 18px; display:flex; flex-direction:column; justify-content:space-between;">
           <div>
@@ -6778,15 +6943,29 @@ async function loadMarketplacePlugins() {
               <h4 style="margin:0; font-size:0.9rem; font-weight:700; color:#fff;">${p.name}</h4>
               <span style="font-size:0.65rem; background:rgba(255,255,255,0.08); color:var(--text-secondary); padding:2px 6px; border-radius:3px;">v${p.version}</span>
             </div>
-            <p style="margin:8px 0 0 0; font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">${p.description}</p>
+            <p style="margin:8px 0 0 0; font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">${p.description || ''}</p>
           </div>
           ${actionBtnHTML}
         </div>
       `;
-    }).join('');
-  } catch (err) {
-    storeContainer.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem; text-align:center; padding:24px 0; grid-column:1/-1;">Could not fetch remote marketplace elements: ${err.message}</p>`;
-  }
+    } else {
+      let listActionBtnHTML = actionBtnHTML.replace('margin-top:12px;', 'margin-top:0;');
+      return `
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 18px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <h4 style="margin:0; font-size:0.9rem; font-weight:700; color:#fff;">${p.name}</h4>
+              <span style="font-size:0.65rem; background:rgba(255,255,255,0.08); color:var(--text-secondary); padding:2px 6px; border-radius:3px;">v${p.version}</span>
+            </div>
+            <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ''}</p>
+          </div>
+          <div style="min-width:145px; display: flex; justify-content: flex-end;">
+            ${listActionBtnHTML}
+          </div>
+        </div>
+      `;
+    }
+  }).join('');
 }
 
 window.installSelectedPlugin = async function (pluginId) {
@@ -6798,6 +6977,8 @@ window.installSelectedPlugin = async function (pluginId) {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (res.ok) {
+      window.installedPluginsData = null;
+      window.marketplacePluginsData = null;
       showToast(`Successfully extracted "${pluginId}" files. Spawning env build...`, 'success');
       switchPluginTab('installed');
     } else {
@@ -6817,6 +6998,7 @@ window.toggleInstalledPlugin = async function (pluginId) {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (res.ok) {
+      window.installedPluginsData = null;
       const data = await res.json();
       showToast(`Plugin toggled successfully. Active: ${data.enabled}`, 'success');
       loadInstalledPlugins();
@@ -6850,6 +7032,7 @@ window.savePluginConfig = async function (pluginId) {
       body: JSON.stringify({ config })
     });
     if (res.ok) {
+      window.installedPluginsData = null;
       showToast("Configuration parameters updated.", 'success');
       loadInstalledPlugins();
     } else {
@@ -6861,7 +7044,7 @@ window.savePluginConfig = async function (pluginId) {
 };
 
 window.uninstallPlugin = async function (pluginId) {
-  if (!confirm(`Are you sure you want to stop process and delete all files for "${pluginId}"?`)) return;
+  if (!await showConfirm(`Are you sure you want to stop process and delete all files for "${pluginId}"?`, "Uninstall Plugin")) return;
 
   showToast(`Pruning entries and directory files for "${pluginId}"...`, 'info');
   const { httpUrl } = getApiUrls();
@@ -6871,6 +7054,8 @@ window.uninstallPlugin = async function (pluginId) {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (res.ok) {
+      window.installedPluginsData = null;
+      window.marketplacePluginsData = null;
       showToast("Plugin uninstalled successfully.", 'success');
       loadInstalledPlugins();
     } else {
@@ -6878,6 +7063,91 @@ window.uninstallPlugin = async function (pluginId) {
     }
   } catch (err) {
     showToast(`Uninstall operations failed: ${err.message}`, 'error');
+  }
+};
+
+window.activeLogPluginId = null;
+window.activeLogPluginName = '';
+window.logRefreshInterval = null;
+
+window.showPluginLogs = function (pluginId, pluginName) {
+  window.activeLogPluginId = pluginId;
+  window.activeLogPluginName = pluginName;
+
+  const title = document.getElementById('plugin-log-title');
+  if (title) title.textContent = `Execution Logs: ${pluginName}`;
+
+  window.openModal('plugin-log-modal');
+  refreshPluginLogs();
+
+  // Auto refresh every 3 seconds
+  if (window.logRefreshInterval) clearInterval(window.logRefreshInterval);
+  window.logRefreshInterval = setInterval(refreshPluginLogs, 3000);
+};
+
+window.closePluginLogModal = function () {
+  window.closeModal('plugin-log-modal');
+};
+
+const originalCloseModal = window.closeModal;
+window.closeModal = function (modalId) {
+  if (modalId === 'plugin-log-modal') {
+    if (window.logRefreshInterval) {
+      clearInterval(window.logRefreshInterval);
+      window.logRefreshInterval = null;
+    }
+  }
+  if (originalCloseModal) originalCloseModal(modalId);
+};
+
+window.refreshPluginLogs = async function () {
+  if (!window.activeLogPluginId) return;
+  const body = document.getElementById('plugin-log-body');
+  if (!body) return;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/plugins/logs/${window.activeLogPluginId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const logs = data.logs || [];
+      if (logs.length === 0) {
+        body.textContent = 'No logs captured yet.';
+      } else {
+        body.textContent = logs.map(l => `[${l.timestamp}] [${l.level}] ${l.message}`).join('\n');
+        // Scroll to bottom
+        body.scrollTop = body.scrollHeight;
+      }
+    } else {
+      body.textContent = 'Failed to fetch logs from server.';
+    }
+  } catch (err) {
+    body.textContent = `Error: ${err.message}`;
+  }
+};
+
+window.killPlugin = async function (pluginId) {
+  if (!await showConfirm(`Are you sure you want to force terminate the plugin "${pluginId}" process immediately?`, "Force Kill Plugin")) return;
+
+  showToast(`Killing plugin process "${pluginId}"...`, 'info');
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/plugins/kill/${pluginId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      window.installedPluginsData = null;
+      showToast("Plugin force killed.", 'success');
+      loadInstalledPlugins();
+    } else {
+      const data = await res.json();
+      alert(`Kill failure: ${data.detail || 'unknown error'}`);
+    }
+  } catch (err) {
+    showToast(`Kill request failed: ${err.message}`, 'error');
   }
 };
 

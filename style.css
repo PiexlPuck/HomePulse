@@ -136,6 +136,15 @@ nav {
   font-weight: 500;
   transition: all var(--transition-speed) var(--transition-curve);
   white-space: nowrap;
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+.brand,
+.toggle-sidebar-btn,
+.sidebar-footer {
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 .nav-item-left {

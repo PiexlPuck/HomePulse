@@ -2581,8 +2581,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "node_id": v["node_id"],
                         "entity_id": v["entity_key"],
                         "value": v["value"],
-                        "status": v["status"],
-                        "status_type": v["status_type"]
+                        "status": v.get("status", "unknown"),
+                        "status_type": v.get("status_type", "default")
                     })
                 
                 # Push initial audit logs

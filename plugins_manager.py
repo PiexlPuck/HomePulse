@@ -83,6 +83,38 @@ async def start_all_enabled_plugins():
     except Exception as e:
         logger.error(f"Error starting enabled plugins: {e}")
 
+import threading
+import time
+
+# Logs cache for plugins (plugin_id -> list of log dicts)
+plugin_logs: Dict[str, List[Dict[str, Any]]] = {}
+
+def add_plugin_log(plugin_id: str, level: str, message: str):
+    if plugin_id not in plugin_logs:
+        plugin_logs[plugin_id] = []
+    log_entry = {
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "level": level.upper(),
+        "message": message
+    }
+    plugin_logs[plugin_id].append(log_entry)
+    if len(plugin_logs[plugin_id]) > 200:
+        plugin_logs[plugin_id].pop(0)
+
+def read_stream(stream, plugin_id, level):
+    try:
+        for line in iter(stream.readline, ''):
+            if not line:
+                break
+            add_plugin_log(plugin_id, level, line.strip())
+    except Exception as e:
+        logger.error(f"Error reading plugin stream {plugin_id}: {e}")
+    finally:
+        try:
+            stream.close()
+        except:
+            pass
+
 async def start_plugin(plugin_id: str, config: Dict[str, Any]):
     # Stop compile/running process if already active
     await stop_plugin(plugin_id)
@@ -131,6 +163,12 @@ async def start_plugin(plugin_id: str, config: Dict[str, Any]):
             text=True
         )
         active_processes[plugin_id] = proc
+        
+        # Start thread-based readers to consume stdout and stderr to avoid buffer filling issues
+        t1 = threading.Thread(target=read_stream, args=(proc.stdout, plugin_id, "INFO"), daemon=True)
+        t2 = threading.Thread(target=read_stream, args=(proc.stderr, plugin_id, "ERROR"), daemon=True)
+        t1.start()
+        t2.start()
         
         # Update entity state to reflect plugin is running
         entity_key = f"plugin-{plugin_id}-status"
@@ -502,6 +540,8 @@ async def gateway_post_logs(payload: Dict[str, Any]):
     else:
         logger.info(log_line)
         
+    add_plugin_log(plugin_name, level, message)
+        
     # Broadcast dynamic log to admin client logger
     if ws_manager is not None:
         await ws_manager.broadcast({
@@ -514,3 +554,38 @@ async def gateway_post_logs(payload: Dict[str, Any]):
             }
         })
     return {"status": "success"}
+
+@plugins_router.get("/logs/{plugin_id}")
+async def get_plugin_logs(plugin_id: str):
+    """Returns cached log lines for the given plugin."""
+    logs = plugin_logs.get(plugin_id, [])
+    return {"logs": logs}
+
+@plugins_router.post("/kill/{plugin_id}")
+async def kill_plugin_payload(plugin_id: str):
+    """Force-terminates a plugin process immediately."""
+    proc = active_processes.pop(plugin_id, None)
+    if proc:
+        try:
+            proc.kill()
+            logger.warning(f"Plugin {plugin_id} force killed by administrator.")
+        except Exception as e:
+            logger.error(f"Error killing plugin {plugin_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+            
+    # Update DB enabled to false
+    if db_pool:
+        async with db_pool.acquire() as conn:
+            await conn.execute("UPDATE plugins SET enabled = FALSE WHERE id = $1;", plugin_id)
+            
+    # Update state to OFF in entity states
+    entity_key = f"plugin-{plugin_id}-status"
+    if entity_states is not None and entity_key in entity_states:
+        entity_states[entity_key]["value"] = "OFF"
+        entity_states[entity_key]["attributes"]["status"] = "stopped"
+        if ws_manager is not None:
+            await ws_manager.broadcast({
+                "event": "entity_update",
+                "data": entity_states[entity_key]
+            })
+    return {"status": "success", "message": f"Plugin {plugin_id} force-terminated."}
