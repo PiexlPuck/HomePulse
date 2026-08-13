@@ -6142,7 +6142,15 @@ async function loadHosts(forceFetch = false) {
             <div>
               <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
                 <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">Plugin: ${p.name}</h4>
-                <span class="status-pill stable" style="font-size:0.6rem; padding: 2px 6px;">RUNNING</span>
+                <div style="display:flex; gap:6.5px; align-items:center;">
+                  <button class="btn-icon" onclick="event.stopPropagation(); showPluginLogs('${p.id}', '${p.name}')" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="View Logs">
+                    <i data-lucide="terminal" style="width:14px; height:14px; color:#94a3b8;"></i>
+                  </button>
+                  <button class="btn-icon" onclick="event.stopPropagation(); killPlugin('${p.id}')" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="Force Kill">
+                    <i data-lucide="power" style="width:14px; height:14px; color:#f43f5e;"></i>
+                  </button>
+                  <span class="status-pill stable" style="font-size:0.6rem; padding: 2px 6px;">RUNNING</span>
+                </div>
               </div>
               <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">Local Daemon (v${p.version})</p>
             </div>
@@ -6159,6 +6167,14 @@ async function loadHosts(forceFetch = false) {
                 <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">Local Daemon (v${p.version})</p>
               </div>
               <div style="display:flex; align-items:center; gap:20px;">
+                <div style="display:flex; gap:6.5px; border-left:1px solid var(--border-soft); padding-left:16px; align-items:center;">
+                  <button class="btn-icon" onclick="event.stopPropagation(); showPluginLogs('${p.id}', '${p.name}')" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="View Logs">
+                    <i data-lucide="terminal" style="width:14px; height:14px; color:#94a3b8;"></i>
+                  </button>
+                  <button class="btn-icon" onclick="event.stopPropagation(); killPlugin('${p.id}')" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="Force Kill">
+                    <i data-lucide="power" style="width:14px; height:14px; color:#f43f5e;"></i>
+                  </button>
+                </div>
                 <span class="status-pill stable" style="font-size:0.6rem; padding: 2px 6px;">RUNNING</span>
               </div>
             </div>
@@ -6699,22 +6715,24 @@ window.switchPluginsLayout = function (layout) {
   const btnList = document.getElementById('btn-plugins-list');
 
   if (btnGrid && btnList) {
+    const iconGrid = btnGrid.querySelector('svg, i');
+    const iconList = btnList.querySelector('svg, i');
     if (layout === 'grid') {
       btnGrid.classList.add('active');
       btnGrid.style.background = 'rgba(255,255,255,0.08)';
-      btnGrid.querySelector('i').style.color = '#fff';
+      if (iconGrid) iconGrid.style.color = '#fff';
 
       btnList.classList.remove('active');
       btnList.style.background = 'none';
-      btnList.querySelector('i').style.color = 'var(--text-secondary)';
+      if (iconList) iconList.style.color = 'var(--text-secondary)';
     } else {
       btnList.classList.add('active');
       btnList.style.background = 'rgba(255,255,255,0.08)';
-      btnList.querySelector('i').style.color = '#fff';
+      if (iconList) iconList.style.color = '#fff';
 
       btnGrid.classList.remove('active');
       btnGrid.style.background = 'none';
-      btnGrid.querySelector('i').style.color = 'var(--text-secondary)';
+      if (iconGrid) iconGrid.style.color = 'var(--text-secondary)';
     }
   }
 
@@ -6733,12 +6751,20 @@ async function loadInstalledPlugins(forceFetch = false) {
   if (!listContainer) return;
 
   const { httpUrl } = getApiUrls();
-  if (forceFetch || !window.installedPluginsData) {
+  if (forceFetch || !window.installedPluginsData || !window.marketplacePluginsData) {
     listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">Loading installed plugins...</p>`;
     try {
-      const res = await fetch(`${httpUrl}/api/plugins/installed`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      window.installedPluginsData = await res.json();
+      const [instRes, catRes] = await Promise.all([
+        fetch(`${httpUrl}/api/plugins/installed`),
+        fetch(`${httpUrl}/api/plugins/marketplace`).catch(e => { console.error(e); return { ok: false }; })
+      ]);
+      if (!instRes.ok) throw new Error(`HTTP ${instRes.status}`);
+      window.installedPluginsData = await instRes.json();
+      if (catRes && catRes.ok) {
+        window.marketplacePluginsData = await catRes.json();
+      } else {
+        window.marketplacePluginsData = window.marketplacePluginsData || [];
+      }
     } catch (err) {
       listContainer.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem; text-align:center; padding:24px 0;">Failed to load installed plugins list: ${err.message}</p>`;
       return;
@@ -6772,9 +6798,30 @@ async function loadInstalledPlugins(forceFetch = false) {
     const entityVal = (cachedEntities && cachedEntities[entityKeyStatus]) ? cachedEntities[entityKeyStatus] : null;
     const runningStatus = entityVal ? (entityVal.attributes?.status || 'stopped') : (p.enabled ? 'running' : 'stopped');
 
+    const marketplacePlugin = (window.marketplacePluginsData || []).find(m => m.id === p.id);
+    const hasUpdate = marketplacePlugin && marketplacePlugin.version !== p.version;
+
     let badgeColor = '#ef4444'; // Red for stopped/crashed
+    let statusText = runningStatus;
     if (runningStatus === 'running') badgeColor = '#10b981'; // Green
     if (runningStatus === 'crashed') badgeColor = '#f59e0b'; // Amber
+    if (hasUpdate) {
+      badgeColor = '#eab308'; // Yellow
+      statusText = 'update available';
+    }
+
+    let cardBg = 'rgba(255,255,255,0.02)';
+    let cardBorder = 'var(--border-soft)';
+    let updateBtnHTML = '';
+    if (hasUpdate) {
+      cardBg = 'rgba(234,179,8,0.03)';
+      cardBorder = '#eab308';
+      updateBtnHTML = `
+        <button class="btn btn-primary" onclick="installSelectedPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:#eab308; border-color:#eab308; color:#000; font-weight:700;">
+          Update to v${marketplacePlugin.version}
+        </button>
+      `;
+    }
 
     const schema = p.settings_schema || {};
     const config = p.config || {};
@@ -6800,7 +6847,7 @@ async function loadInstalledPlugins(forceFetch = false) {
 
     if (layout === 'grid') {
       return `
-        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
               <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${p.name} <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">(v${p.version})</span></h4>
@@ -6808,7 +6855,7 @@ async function loadInstalledPlugins(forceFetch = false) {
             </div>
             
             <div style="display:flex; align-items:center; gap:12px;">
-              <span class="status-pill" style="background:${badgeColor}; color:#fff; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px;">${runningStatus}</span>
+              <span class="status-pill" style="background:${badgeColor}; color:${hasUpdate ? '#000' : '#fff'}; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px; font-weight:${hasUpdate ? '700' : 'normal'};">${statusText}</span>
               
               <label class="switch">
                 <input type="checkbox" ${p.enabled ? 'checked' : ''} onclick="toggleInstalledPlugin('${p.id}')">
@@ -6821,7 +6868,8 @@ async function loadInstalledPlugins(forceFetch = false) {
             <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600;">Configuration setup & credentials</summary>
             <div style="padding-top:12px; display:flex; flex-direction:column; gap:4px; max-width: 500px;">
               ${configFieldsHTML}
-              <div style="display:flex; gap:10px; margin-top:8px;">
+              <div style="display:flex; gap:10px; margin-top:8px; flex-wrap:wrap;">
+                ${updateBtnHTML}
                 <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
                 <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
                 <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>
@@ -6833,13 +6881,13 @@ async function loadInstalledPlugins(forceFetch = false) {
       `;
     } else {
       return `
-        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <div style="background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
           <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
             <h4 style="margin:0; font-size:0.9rem; font-weight:700; color:#fff;">${p.name} <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">(v${p.version})</span></h4>
             <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ''}</p>
           </div>
           <div style="display:flex; align-items:center; gap:16px;">
-            <span class="status-pill" style="background:${badgeColor}; color:#fff; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px;">${runningStatus}</span>
+            <span class="status-pill" style="background:${badgeColor}; color:${hasUpdate ? '#000' : '#fff'}; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px; font-weight:${hasUpdate ? '700' : 'normal'};">${statusText}</span>
             <label class="switch">
               <input type="checkbox" ${p.enabled ? 'checked' : ''} onclick="toggleInstalledPlugin('${p.id}')">
               <span class="slider-checkbox round"></span>
@@ -6848,7 +6896,8 @@ async function loadInstalledPlugins(forceFetch = false) {
               <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600; list-style:none;">Config</summary>
               <div style="position:absolute; right:0; top:24px; background:#181614; border:1px solid var(--border-soft); border-radius:8px; padding:16px; min-width:300px; z-index:100; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
                 ${configFieldsHTML}
-                <div style="display:flex; gap:10px; margin-top:8px; justify-content:flex-end;">
+                <div style="display:flex; gap:10px; margin-top:8px; justify-content:flex-end; flex-wrap:wrap;">
+                  ${updateBtnHTML}
                   <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
                   <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
                   <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>

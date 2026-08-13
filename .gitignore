@@ -13,3 +13,6 @@ __pycache__/
 
 # OS artifacts
 .DS_Store
+
+# Plugins
+plugins/
