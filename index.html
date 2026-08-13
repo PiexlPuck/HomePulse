@@ -51,44 +51,19 @@
           <span>Uptime History</span>
         </div>
       </a>
-      <!-- Alert Router Group -->
-      <div class="nav-group" id="nav-group-alerts" style="display: flex; flex-direction: column;">
-        <a href="#" class="nav-item nav-group-toggle" id="nav-alert-router" onclick="toggleNavGroup('alerts', event)">
-          <div class="nav-item-left">
-            <i data-lucide="bell-ring"></i>
-            <span>Alert Router</span>
-          </div>
-          <i data-lucide="chevron-down" class="group-arrow" id="alerts-arrow"
-            style="width: 14px; height: 14px; color: var(--text-secondary); transition: transform 0.2s;"></i>
-        </a>
-        <div class="nav-group-items" id="alerts-submenu"
-          style="padding-left: 12px; display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
-          <a href="#" class="nav-item" id="nav-automations" style="font-size: 0.8rem; padding: 8px 12px;">
-            <div class="nav-item-left">
-              <i data-lucide="bell" style="width: 14px; height: 14px;"></i>
-              <span>Alert Rules</span>
-            </div>
-          </a>
-          <a href="#" class="nav-item" id="nav-channels" style="font-size: 0.8rem; padding: 8px 12px;">
-            <div class="nav-item-left">
-              <i data-lucide="send" style="width: 14px; height: 14px;"></i>
-              <span>Notification Channels</span>
-            </div>
-          </a>
+      <a href="#" class="nav-item" id="nav-automations">
+        <div class="nav-item-left">
+          <i data-lucide="bell-ring"></i>
+          <span>Alert Router</span>
         </div>
-      </div>
+      </a>
       <a href="#" class="nav-item" id="nav-discovery">
         <div class="nav-item-left">
           <i data-lucide="radio"></i>
           <span>Discovery Queue</span>
         </div>
       </a>
-      <a href="#" class="nav-item" id="nav-devtools">
-        <div class="nav-item-left">
-          <i data-lucide="terminal"></i>
-          <span>Developer Tools</span>
-        </div>
-      </a>
+
       <a href="#" class="nav-item" id="nav-settings">
         <div class="nav-item-left">
           <i data-lucide="settings"></i>
@@ -559,7 +534,25 @@
 
     <!-- Alert Rules View Panel -->
     <div class="settings-view hide" id="automations-view">
-      <div class="settings-card"
+      <!-- Tabs switcher inside view container -->
+      <div
+        style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border-soft); padding-bottom: 6px; max-width: 1000px;">
+        <button id="alert-tab-rules" class="tab-btn active" onclick="switchAlertRouterTab('rules')"
+          style="background:none; border:none; padding:8px 16px; color:var(--text-primary); cursor:pointer; font-weight:700; border-bottom: 2px solid var(--accent-orange); border-radius:0; font-size:0.85rem; outline:none; transition: all 0.2s;">
+          Alert Rules
+        </button>
+        <button id="alert-tab-channels" class="tab-btn" onclick="switchAlertRouterTab('channels')"
+          style="background:none; border:none; padding:8px 16px; color:var(--text-secondary); cursor:pointer; font-weight:500; border-radius:0; font-size:0.85rem; outline:none; transition: all 0.2s;">
+          Notification Channels
+        </button>
+        <button id="alert-tab-groups" class="tab-btn" onclick="switchAlertRouterTab('groups')"
+          style="background:none; border:none; padding:8px 16px; color:var(--text-secondary); cursor:pointer; font-weight:500; border-radius:0; font-size:0.85rem; outline:none; transition: all 0.2s;">
+          Target Groups
+        </button>
+      </div>
+
+      <!-- Rules Content Card -->
+      <div id="alert-router-rules-card" class="settings-card"
         style="max-width: 1000px; padding: 24px; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; box-sizing: border-box;">
         <div
           style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-soft); padding-bottom: 16px; margin-bottom: 20px;">
@@ -580,12 +573,10 @@
             configured yet.</p>
         </div>
       </div>
-    </div>
 
-    <!-- Notification Channels View Panel -->
-    <div class="settings-view hide" id="channels-view">
-      <div class="settings-card"
-        style="max-width: 1000px; padding: 24px; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; box-sizing: border-box;">
+      <!-- Channels Content Card (Hidden by default) -->
+      <div id="alert-router-channels-card" class="settings-card"
+        style="display: none; max-width: 1000px; padding: 24px; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; box-sizing: border-box;">
         <div
           style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-soft); padding-bottom: 16px; margin-bottom: 20px;">
           <div>
@@ -604,6 +595,35 @@
         <div id="alert-channels-list" style="display: flex; flex-direction: column; gap: 12px;">
           <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No notification
             channels configured yet.</p>
+        </div>
+      </div>
+
+      <!-- Target Groups Content Card (Hidden by default) -->
+      <div id="alert-router-groups-card" class="settings-card"
+        style="display: none; max-width: 1000px; padding: 24px; min-height: 520px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; box-sizing: border-box;">
+        <div
+          style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-soft); padding-bottom: 16px; margin-bottom: 20px;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">Monitor Target
+              Groups</h3>
+            <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-secondary);">Define custom groups (or
+              tags) to segment and map warning rules to monitors.</p>
+          </div>
+          <!-- Create Group Inline Form -->
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="new-group-name" placeholder="Group Name (e.g. DB Cluster)"
+              style="background: rgba(18, 18, 18, 0.5); border: 1px solid var(--border-soft); border-radius: 6px; padding: 8px 12px; color: var(--text-primary); font-size: 0.8rem; outline: none; width: 220px;">
+            <button class="btn btn-primary" onclick="createMonitorGroup()"
+              style="font-size: 0.75rem; padding: 8px 16px; cursor: pointer;">
+              + Create Group
+            </button>
+          </div>
+        </div>
+
+        <!-- Groups Container List -->
+        <div id="alert-groups-list" style="display: flex; flex-direction: column; gap: 12px;">
+          <p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No target groups
+            configured yet.</p>
         </div>
       </div>
     </div>
@@ -882,54 +902,7 @@
       </div>
     </div>
 
-    <!-- Developer Tools View Panel -->
-    <div class="settings-view hide" id="developer-tools-view">
-      <div class="settings-card" style="max-width: 800px;">
-        <div class="settings-header">
-          <h3>Developer Tools &amp; Web Shell</h3>
-          <p>Access background system diagnostics, debug logs, and execute terminal test queries.</p>
-        </div>
-        <div class="settings-form">
-          <!-- Simulated Diagnostic Shell -->
-          <div
-            style="background: #09090b; border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; font-family: monospace;">
-            <div
-              style="background: #18181b; padding: 8px 16px; font-size: 0.72rem; color: var(--text-secondary); border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px;">
-              <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></span>
-              <span style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></span>
-              <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></span>
-              <span style="margin-left: 8px; font-weight: 600;">bash — core-mon.local</span>
-            </div>
-            <div
-              style="padding: 16px; font-size: 0.78rem; line-height: 1.5; color: #a1a1aa; height: 280px; overflow-y: auto;">
-              <div style="color: #3b82f6;">HomePulse Diagnostic Console (V1.2.0-stable)</div>
-              <div style="color: var(--text-secondary); margin-bottom: 10px;">Type 'help' to view available commands.
-              </div>
-              <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span style="color: #f4f4f5;">pulse-status
-                  --verify-metrics</span></div>
-              <div style="color: #10b981; margin-bottom: 10px;">[SUCCESS] telemetry stream link validated. All active
-                listeners (4) connected.</div>
-              <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span style="color: #f4f4f5;">cat
-                  /etc/homepulse/config.json</span></div>
-              <div style="color: #71717a; margin-bottom: 10px;">{ "db_pool_size": 10, "mdns_broadcast": true,
-                "token_auth": "enabled" }</div>
-              <div style="margin-bottom: 4px;">admin@core-mon.local:~$ <span
-                  style="position: relative; display: inline-block;">
-                  <input type="text" id="shell-mock-input" value="pulse-ping gateway.local" readonly
-                    style="background:transparent; border:none; color:#f0e6d3; font-family:monospace; font-size:0.78rem; outline:none; padding:0; width:300px;">
-                </span></div>
-            </div>
-          </div>
-          <div style="display: flex; gap: 10px; margin-top: 16px;">
-            <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 6px 14px; cursor: pointer;">Clear
-              Terminal</button>
-            <button class="btn btn-primary"
-              style="font-size: 0.75rem; padding: 6px 14px; cursor: not-allowed; opacity: 0.6;" disabled>Execute
-              Command</button>
-          </div>
-        </div>
-      </div>
-    </div>
+
 
     <!-- Bottom section spacer -->
     <div style="height: 40px;"></div>
@@ -1100,21 +1073,21 @@
 
         <!-- YAML Container -->
         <div id="editor-yaml-container" style="display: none; flex-direction: column; gap: 8px; width: 100%;">
-          <span style="font-size:0.7rem; color:var(--text-secondary);">Directly edit this card's Lovelace parameters
-            using YAML:</span>
-          <div id="edit-widget-yaml-error"
-            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 8px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-size:0.75rem; color:var(--text-secondary); font-weight: 500;">Directly edit this card's
+              Lovelace parameters using YAML:</span>
+            <div id="yaml-linter-status"
+              style="display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: #10b981; font-weight: 600;">
+              <i data-lucide="check-circle" style="width: 14px; height: 14px; color: #10b981;"></i>
+              <span>YAML Format Valid</span>
+            </div>
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; width: 100%;">
+          <div id="edit-widget-yaml-error"
+            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 8px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap; margin-bottom: 8px;">
+          </div>
+          <div style="width: 100%;">
             <textarea id="edit-widget-yaml-textarea"
               style="background:#121214; border: 1px solid var(--border-soft); border-radius: 6px; color:#e4e4e7; font-family:monospace; font-size:0.8rem; padding:12px; height:320px; resize:none; outline:none; line-height:1.4; box-sizing: border-box; width: 100%;"></textarea>
-            <div id="yaml-preview-panel"
-              style="border: 1px solid var(--border-soft); border-radius: 6px; background: rgba(0,0,0,0.2); padding: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 320px; box-sizing: border-box; position: relative; overflow: hidden; width: 100%;">
-              <span
-                style="position: absolute; top: 8px; left: 8px; font-size: 0.65rem; text-transform: uppercase; color: var(--accent-orange); font-weight: bold; letter-spacing: 0.5px;">Live
-                Preview</span>
-              <div id="yaml-preview-card-wrapper" style="width: 100%; max-width: 250px;"></div>
-            </div>
           </div>
         </div>
       </div>
@@ -1408,6 +1381,13 @@
               value="General">
           </div>
           <div class="modal-group">
+            <label>Target Groups</label>
+            <div id="add-mon-groups-container"
+              style="display: flex; flex-direction: column; gap: 6px; padding: 10px; background: rgba(0,0,0,0.18); border: 1px solid var(--border-soft); border-radius: 6px; max-height: 120px; overflow-y: auto;">
+              <span style="color:var(--text-secondary); font-size:0.75rem;">No target groups defined yet.</span>
+            </div>
+          </div>
+          <div class="modal-group">
             <label for="mon-type">Monitor Type</label>
             <select id="mon-type" class="modal-input" onchange="onMonitorTypeChange(this.value)"
               style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">
@@ -1471,6 +1451,13 @@
             <label for="edit-mon-category">Category / Folder</label>
             <input type="text" class="modal-input" id="edit-mon-category"
               placeholder="e.g. Databases, Internal, Gateways">
+          </div>
+          <div class="modal-group">
+            <label>Target Groups</label>
+            <div id="edit-mon-groups-container"
+              style="display: flex; flex-direction: column; gap: 6px; padding: 10px; background: rgba(0,0,0,0.18); border: 1px solid var(--border-soft); border-radius: 6px; max-height: 120px; overflow-y: auto;">
+              <span style="color:var(--text-secondary); font-size:0.75rem;">No target groups defined yet.</span>
+            </div>
           </div>
           <div class="modal-group">
             <label for="edit-mon-type">Monitor Type</label>
@@ -1692,7 +1679,18 @@
                   <option value="type_ssl">All SSL Probes</option>
                   <option value="type_port">All Port Probes</option>
                   <option value="custom">Specific Monitors list (Inclusion)</option>
+                  <option value="custom_groups">Specific Target Groups (Inclusion)</option>
                 </select>
+              </div>
+
+              <!-- List of groups for target group matching -->
+              <div class="modal-group" id="rule-groups-selection-wrapper"
+                style="display: flex; flex-direction: column; gap: 6px; display: none;">
+                <label>Select Target Groups</label>
+                <div id="rule-groups-selection-list"
+                  style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; background: #221d16; display: flex; flex-direction: column; gap: 6px;">
+                  <!-- Filled dynamically by JS -->
+                </div>
               </div>
 
               <!-- List of monitors for inclusion/exclusion -->

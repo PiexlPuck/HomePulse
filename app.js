@@ -460,6 +460,41 @@ function buildDashboardCards(entitiesMap) {
     if (w > 1) cardEl.classList.add(`grid-w-${w}`);
     if (h > 1) cardEl.classList.add(`grid-h-${h}`);
 
+    if (widget.type === 'error') {
+      cardEl.style.background = '#f59e0b';
+      cardEl.style.border = '1px solid #d97706';
+      cardEl.style.color = '#000000';
+      cardEl.style.display = 'flex';
+      cardEl.style.flexDirection = 'column';
+      cardEl.style.justifyContent = 'center';
+      cardEl.style.alignItems = 'center';
+      cardEl.style.minHeight = '140px';
+      cardEl.style.padding = '16px';
+      cardEl.style.borderRadius = '8px';
+      cardEl.style.boxSizing = 'border-box';
+      cardEl.style.textAlign = 'center';
+      cardEl.style.position = 'relative';
+
+      if (typeof isEditMode !== 'undefined' && isEditMode) {
+        cardEl.setAttribute('draggable', 'true');
+        cardEl.addEventListener('dragstart', handleDragStart);
+        cardEl.addEventListener('dragover', handleDragOver);
+        cardEl.addEventListener('dragleave', handleDragLeave);
+        cardEl.addEventListener('drop', handleDrop);
+        cardEl.addEventListener('dragend', handleDragEnd);
+        cardEl.ondblclick = () => openCardEditor(widget.id);
+      }
+
+      cardEl.innerHTML = `
+        <i data-lucide="alert-triangle" style="width: 36px; height: 36px; color: #000; margin-bottom: 8px;"></i>
+        <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">Configuration Error</div>
+        <div style="font-size: 0.72rem; opacity: 0.85; margin-top: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${widget.options.error_message || 'YAML parsing exception'}">${widget.options.error_message || 'YAML format exception'}</div>
+      `;
+      grid.appendChild(cardEl);
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
+
     // If widget has single primary entity target
     if (widget.entities && widget.entities.length === 1 && (widget.type === 'sensor' || widget.type === 'control' || widget.type === 'value')) {
       const eRef = widget.entities[0];
@@ -470,7 +505,8 @@ function buildDashboardCards(entitiesMap) {
       const item = matchedKey ? entitiesMap[matchedKey] : null;
 
       if (item) {
-        cardEl.id = `card-${item.node_id}-${item.entity_key}`; // Keep legacy ID for WS update mappings
+        cardEl.setAttribute('data-node-id', item.node_id);
+        cardEl.setAttribute('data-entity-key', item.entity_key);
         cardEl.setAttribute('data-value-type', item.value_type || 'float');
         cardEl.setAttribute('data-unit', widget.options.unit || item.unit || '');
 
@@ -1077,7 +1113,7 @@ function updateCardState(nodeId, entityId, val, status, statusType) {
     if (statusType) cachedEntities[matchedKey].status_type = statusType;
   }
 
-  const card = document.getElementById(`card-${nodeId}-${entityId}`);
+  const card = document.querySelector(`[data-node-id="${nodeId}"][data-entity-key="${entityId}"]`);
   if (!card) return;
 
   const valueType = card.getAttribute('data-value-type');
@@ -1651,6 +1687,57 @@ function showProbesView() {
   navigateProbesLevel(1);
 }
 
+window.switchAlertRouterTab = function (subTab) {
+  const cards = {
+    rules: document.getElementById('alert-router-rules-card'),
+    channels: document.getElementById('alert-router-channels-card'),
+    groups: document.getElementById('alert-router-groups-card')
+  };
+  const btns = {
+    rules: document.getElementById('alert-tab-rules'),
+    channels: document.getElementById('alert-tab-channels'),
+    groups: document.getElementById('alert-tab-groups')
+  };
+
+  Object.keys(cards).forEach(key => {
+    if (cards[key]) {
+      cards[key].style.display = (key === subTab) ? 'block' : 'none';
+    }
+  });
+
+  Object.keys(btns).forEach(key => {
+    const btn = btns[key];
+    if (btn) {
+      if (key === subTab) {
+        btn.classList.add('active');
+        btn.style.borderBottom = '2px solid var(--accent-orange)';
+        btn.style.color = 'var(--text-primary)';
+        btn.style.fontWeight = '700';
+      } else {
+        btn.classList.remove('active');
+        btn.style.borderBottom = 'none';
+        btn.style.color = 'var(--text-secondary)';
+        btn.style.fontWeight = '500';
+      }
+    }
+  });
+
+  if (subTab === 'rules') {
+    const { httpUrl } = getApiUrls();
+    fetch(`${httpUrl}/api/monitor-groups`)
+      .then(res => res.ok ? res.json() : [])
+      .then(grps => {
+        window.cachedGroups = grps;
+        loadAlertRules();
+      })
+      .catch(() => loadAlertRules());
+  } else if (subTab === 'channels') {
+    loadNotificationChannels();
+  } else if (subTab === 'groups') {
+    loadMonitorGroups();
+  }
+};
+
 function showAutomationsView() {
   const mainContent = document.getElementById('main-content');
   if (mainContent && mainContent.classList.contains('edit-mode')) {
@@ -1669,47 +1756,12 @@ function showAutomationsView() {
   const navAutomations = document.getElementById('nav-automations');
   if (navAutomations) navAutomations.classList.add('active');
 
-  loadAlertRules();
+  switchAlertRouterTab('rules');
 }
 
 function showChannelsView() {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent && mainContent.classList.contains('edit-mode')) {
-    const editToggleBtn = document.getElementById('edit-toggle-btn');
-    if (editToggleBtn) editToggleBtn.click();
-  }
-
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'none';
-
-  hideAllViews();
-
-  const channelsView = document.getElementById('channels-view');
-  if (channelsView) channelsView.classList.remove('hide');
-
-  const navChannels = document.getElementById('nav-channels');
-  if (navChannels) navChannels.classList.add('active');
-
-  loadNotificationChannels();
-}
-
-function showDeveloperToolsView() {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent && mainContent.classList.contains('edit-mode')) {
-    const editToggleBtn = document.getElementById('edit-toggle-btn');
-    if (editToggleBtn) editToggleBtn.click();
-  }
-
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'none';
-
-  hideAllViews();
-
-  const devtoolsView = document.getElementById('developer-tools-view');
-  if (devtoolsView) devtoolsView.classList.remove('hide');
-
-  const navDevtools = document.getElementById('nav-devtools');
-  if (navDevtools) navDevtools.classList.add('active');
+  showAutomationsView();
+  switchAlertRouterTab('channels');
 }
 
 // Bind nav triggers during initialization
@@ -1740,21 +1792,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const navChannels = document.getElementById('nav-channels');
-  if (navChannels) {
-    navChannels.addEventListener('click', (e) => {
-      e.preventDefault();
-      showChannelsView();
-    });
-  }
 
-  const navDevtools = document.getElementById('nav-devtools');
-  if (navDevtools) {
-    navDevtools.addEventListener('click', (e) => {
-      e.preventDefault();
-      showDeveloperToolsView();
-    });
-  }
 
   const navHistory = document.getElementById('nav-history');
   if (navHistory) {
@@ -2468,6 +2506,29 @@ function initializeWidgets() {
     options: { gridWidth: 3, gridHeight: 1 }
   });
 
+  // Demo Misconfigured Card
+  widgets.push({
+    id: "widget-hp-demo-error",
+    type: "error",
+    title: "Misconfigured Card",
+    tab: "main",
+    entities: [],
+    options: {
+      gridWidth: 1,
+      gridHeight: 1,
+      yaml_error_config: `id: widget-hp-demo-error
+type: sensor
+title: Improperly Configured Gauge
+tab: main
+entities:
+  - invalid-entity-node-reference
+options:
+  graphic: unmatched_graphic_type
+  color: invalid_color_structure`,
+      error_message: "YAML parsing failed: entities list must reference valid {nodeId, entityKey} objects."
+    }
+  });
+
   localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
   return widgets;
 }
@@ -2582,8 +2643,9 @@ function saveWidgetSettings() {
   const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
   if (!yamlTextarea) return;
 
+  let parsedWidget = null;
   try {
-    const parsedWidget = jsyaml.load(yamlTextarea.value);
+    parsedWidget = jsyaml.load(yamlTextarea.value);
     if (!parsedWidget || typeof parsedWidget !== 'object') {
       throw new Error("YAML must represent a valid Lovelace card object structure.");
     }
@@ -2596,25 +2658,29 @@ function saveWidgetSettings() {
     if (!parsedWidget.tab) {
       throw new Error("Card configuration is missing a destination 'tab' field.");
     }
-
-    widgets[widgetIdx] = parsedWidget;
-    localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
-
   } catch (e) {
-    console.error("Card YAML editor parse warning: ", e);
-    // Switch tabs to show valid code errors
-    toggleWidgetEditorMode('yaml');
+    console.warn("Card YAML editor parse warning, saving as error widget: ", e);
+    // Parse tab from string via regex, defaulting to activeTab
+    const tabMatch = yamlTextarea.value.match(/tab:\s*['"]?([a-zA-Z0-9_\-]+)['"]?/);
+    const tab = tabMatch ? tabMatch[1] : (widgets[widgetIdx].tab || activeTab);
 
-    if (errorBanner) {
-      errorBanner.textContent = "Validation Failure: " + e.message;
-      errorBanner.style.display = 'block';
-      const modalBody = document.querySelector('#widget-editor-modal .modal-body');
-      if (modalBody) modalBody.scrollTop = 0;
-    } else {
-      alert("Validation error: " + e.message);
-    }
-    return; // Block save
+    // Construct error config object fallback
+    parsedWidget = {
+      id: id,
+      type: "error",
+      tab: tab,
+      title: "Misconfigured Card",
+      options: {
+        gridWidth: 1,
+        gridHeight: 1,
+        yaml_error_config: yamlTextarea.value,
+        error_message: e.message
+      }
+    };
   }
+
+  widgets[widgetIdx] = parsedWidget;
+  localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
 
   closeModal('widget-editor-modal');
   buildDashboardCards(cachedEntities);
@@ -2688,6 +2754,12 @@ function syncFormFieldsToYAML() {
   const widget = widgets.find(w => w.id === widgetId);
   if (!widget) return;
 
+  const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+  if (widget.type === 'error' && widget.options && widget.options.yaml_error_config) {
+    if (yamlTextarea) yamlTextarea.value = widget.options.yaml_error_config;
+    return;
+  }
+
   const draftWidget = {
     id: widget.id,
     type: widget.type,
@@ -2748,8 +2820,8 @@ function syncYAMLToFormFields() {
 
 function updateYamlPreview(yamlStr) {
   const errBanner = document.getElementById('edit-widget-yaml-error');
-  const previewWrapper = document.getElementById('yaml-preview-card-wrapper');
-  if (!previewWrapper) return;
+  const linterStatus = document.getElementById('yaml-linter-status');
+  if (!linterStatus) return;
 
   try {
     const parsed = jsyaml.load(yamlStr);
@@ -2760,22 +2832,21 @@ function updateYamlPreview(yamlStr) {
       throw new Error("Card configuration is missing a 'type' field.");
     }
 
-    if (parsed.entity && typeof parsed.entity === 'string') {
-      const ref = window.resolveSensorIdToEntityRef(parsed.entity);
-      if (ref) parsed.entities = [ref];
-    }
-    if (parsed.entities && Array.isArray(parsed.entities)) {
-      parsed.entities = parsed.entities.map(item => {
-        if (typeof item === 'string') {
-          return window.resolveSensorIdToEntityRef(item) || item;
-        }
-        return item;
-      });
-    }
-
     if (errBanner) errBanner.style.display = 'none';
-    previewWrapper.innerHTML = renderMockCardHTML(parsed);
+    linterStatus.style.color = '#10b981';
+    linterStatus.innerHTML = `
+      <i data-lucide="check-circle" style="width: 14px; height: 14px; color: #10b981;"></i>
+      <span>YAML Format Valid</span>
+    `;
+    if (window.lucide) window.lucide.createIcons();
   } catch (e) {
+    linterStatus.style.color = '#ef4444';
+    linterStatus.innerHTML = `
+      <i data-lucide="alert-triangle" style="width: 14px; height: 14px; color: #ef4444;"></i>
+      <span>YAML Format Error</span>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+
     if (errBanner) {
       errBanner.textContent = "Live Parse Warning: " + e.message;
       errBanner.style.display = 'block';
@@ -3800,6 +3871,7 @@ window.selectProbeTypeToConfigure = function (type) {
   if (timeoutInput) timeoutInput.value = '5';
 
   onMonitorTypeChange(type);
+  populateMonitorGroupCheckboxes('add-mon-groups-container', []);
 
   openModal('add-monitor-modal');
 };
@@ -3818,6 +3890,8 @@ async function submitAddMonitor() {
   const interval = parseInt(document.getElementById('mon-interval').value) || 30;
   const timeout = parseInt(document.getElementById('mon-timeout').value) || 5;
   const category = document.getElementById('mon-category').value.trim() || 'General';
+
+  const checkedGroupIds = Array.from(document.querySelectorAll('#add-mon-groups-container .mon-group-chk:checked')).map(c => parseInt(c.value));
 
   if (!name || !target) {
     alert("Required fields Name and Target Address must be filled!");
@@ -3840,7 +3914,8 @@ async function submitAddMonitor() {
             target: `http://${cleanTarget}`,
             check_interval: interval,
             timeout,
-            category
+            category,
+            group_ids: checkedGroupIds
           })
         });
         if (!resHttp.ok) {
@@ -3857,7 +3932,8 @@ async function submitAddMonitor() {
             target: `https://${cleanTarget}`,
             check_interval: interval,
             timeout,
-            category
+            category,
+            group_ids: checkedGroupIds
           })
         });
         if (!resHttps.ok) {
@@ -3875,7 +3951,8 @@ async function submitAddMonitor() {
             target: urlPrefix + cleanTarget,
             check_interval: interval,
             timeout,
-            category
+            category,
+            group_ids: checkedGroupIds
           })
         });
         if (!res.ok) {
@@ -3887,7 +3964,7 @@ async function submitAddMonitor() {
       const res = await fetch(`${httpUrl}/api/monitors`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type: type, target, check_interval: interval, timeout, category })
+        body: JSON.stringify({ name, type: type, target, check_interval: interval, timeout, category, group_ids: checkedGroupIds })
       });
       if (!res.ok) {
         const errData = await res.json();
@@ -3988,6 +4065,7 @@ async function openEditMonitor(monId, event) {
       document.getElementById('edit-mon-target').value = mon1.target.replace(/^(https?:\/\/)+/i, '');
       document.getElementById('edit-mon-interval').value = mon1.check_interval;
       document.getElementById('edit-mon-timeout').value = mon1.timeout;
+      await populateMonitorGroupCheckboxes('edit-mon-groups-container', mon1.group_ids || []);
     } else {
       const mon = monitors.find(m => String(m.id) === String(monId));
       if (!mon) {
@@ -4010,6 +4088,7 @@ async function openEditMonitor(monId, event) {
 
       document.getElementById('edit-mon-interval').value = mon.check_interval;
       document.getElementById('edit-mon-timeout').value = mon.timeout;
+      await populateMonitorGroupCheckboxes('edit-mon-groups-container', mon.group_ids || []);
     }
 
     onEditMonitorTypeChange(document.getElementById('edit-mon-type').value);
@@ -4027,6 +4106,8 @@ async function submitEditMonitor() {
   const interval = parseInt(document.getElementById('edit-mon-interval').value) || 30;
   const timeout = parseInt(document.getElementById('edit-mon-timeout').value) || 5;
   const category = document.getElementById('edit-mon-category').value.trim() || 'General';
+
+  const checkedGroupIds = Array.from(document.querySelectorAll('#edit-mon-groups-container .mon-group-chk:checked')).map(c => parseInt(c.value));
 
   if (!name || !target) {
     alert("Required fields Name and Target Address must be filled!");
@@ -4053,7 +4134,8 @@ async function submitEditMonitor() {
               target: `http://${cleanTarget}`,
               check_interval: interval,
               timeout: timeout,
-              category
+              category,
+              group_ids: checkedGroupIds
             })
           });
           if (!res1.ok) throw new Error(`HTTP Update failed`);
@@ -4067,7 +4149,8 @@ async function submitEditMonitor() {
               target: `https://${cleanTarget}`,
               check_interval: interval,
               timeout: timeout,
-              category
+              category,
+              group_ids: checkedGroupIds
             })
           });
           if (!res2.ok) throw new Error(`HTTPS Update failed`);
@@ -4081,7 +4164,8 @@ async function submitEditMonitor() {
               target: `http://${cleanTarget}`,
               check_interval: interval,
               timeout: timeout,
-              category
+              category,
+              group_ids: checkedGroupIds
             })
           });
           if (!res1.ok) throw new Error(`HTTP Update failed`);
@@ -4095,7 +4179,8 @@ async function submitEditMonitor() {
               target: `https://${cleanTarget}`,
               check_interval: interval,
               timeout: timeout,
-              category
+              category,
+              group_ids: checkedGroupIds
             })
           });
           if (!res2.ok) throw new Error(`HTTPS creation failed`);
@@ -4115,7 +4200,8 @@ async function submitEditMonitor() {
               target: finalTarget,
               check_interval: interval,
               timeout: timeout,
-              category
+              category,
+              group_ids: checkedGroupIds
             })
           });
           if (!res1.ok) throw new Error(`Failed to update ungrouped monitor`);
@@ -4130,7 +4216,8 @@ async function submitEditMonitor() {
               target: finalTarget,
               check_interval: interval,
               timeout: timeout,
-              category
+              category,
+              group_ids: checkedGroupIds
             })
           });
           if (!res1.ok) throw new Error(`Failed to update monitor`);
@@ -4146,7 +4233,8 @@ async function submitEditMonitor() {
           target: target,
           check_interval: interval,
           timeout: timeout,
-          category
+          category,
+          group_ids: checkedGroupIds
         })
       });
       if (!res.ok) throw new Error(`Failed to update monitor`);
@@ -4476,6 +4564,113 @@ function switchAlertSubView(viewName) {
   }
 }
 
+window.cachedGroups = [];
+
+async function loadMonitorGroups() {
+  const { httpUrl } = getApiUrls();
+  const listEl = document.getElementById('alert-groups-list');
+  if (!listEl) return;
+
+  try {
+    const res = await fetch(`${httpUrl}/api/monitor-groups`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    window.cachedGroups = data;
+
+    if (data.length === 0) {
+      listEl.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No target groups configured yet.</p>`;
+    } else {
+      listEl.innerHTML = data.map(grp => `
+        <div class="channel-card" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:16px; border:1px solid var(--border-soft); border-radius:8px;">
+          <div>
+            <h4 style="margin:0; font-size:0.95rem; color:var(--text-primary); font-weight:600;">${grp.name}</h4>
+            <span style="font-size:0.75rem; color:var(--text-secondary); display:flex; align-items:center; gap:6px; margin-top:4px;">
+              <i class="fa-solid fa-server" style="color:var(--accent-orange); font-size:0.7rem;"></i>
+              ${grp.monitor_count === 1 ? '1 Monitor mapped' : `${grp.monitor_count} Monitors mapped`}
+            </span>
+          </div>
+          <button class="btn btn-secondary" onclick="deleteMonitorGroup(${grp.id})" style="padding:6px 12px; font-size:0.72rem; color:var(--semantic-red); border-color:rgba(239, 68, 68, 0.2); background:rgba(239, 68, 68, 0.05); cursor:pointer;">
+            Remove Group
+          </button>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    console.error("Failed to load monitor groups:", err);
+    listEl.innerHTML = `<p style="color:var(--semantic-red); font-size:0.8rem; text-align:center; padding:24px 0;">Failed to fetch monitor groups: ${err.message}</p>`;
+  }
+}
+
+async function createMonitorGroup() {
+  const inputEl = document.getElementById('new-group-name');
+  if (!inputEl) return;
+  const name = inputEl.value.trim();
+  if (!name) {
+    alert("Group Name cannot be empty.");
+    return;
+  }
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/monitor-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+    inputEl.value = '';
+    await loadMonitorGroups();
+  } catch (err) {
+    alert(`Failed to create Target Group: ${err.message}`);
+  }
+}
+
+async function deleteMonitorGroup(gid) {
+  if (!confirm("Are you sure you want to delete this target group? This will unmap any monitors assigned to it.")) {
+    return;
+  }
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/monitor-groups/${gid}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await loadMonitorGroups();
+  } catch (err) {
+    alert(`Failed to delete Target Group: ${err.message}`);
+  }
+}
+
+async function populateMonitorGroupCheckboxes(targetContainerId, selectedGroupIds = []) {
+  const container = document.getElementById(targetContainerId);
+  if (!container) return;
+
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/monitor-groups`);
+    if (res.ok) {
+      window.cachedGroups = await res.json();
+    }
+  } catch (err) {
+    console.error("Failed to sync group checkboxes:", err);
+  }
+
+  if (window.cachedGroups.length === 0) {
+    container.innerHTML = `<span style="color:var(--text-secondary); font-size:0.75rem;">No target groups defined yet. Go to Alert Router > Target Groups to add.</span>`;
+    return;
+  }
+
+  container.innerHTML = window.cachedGroups.map(grp => `
+    <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer;">
+      <input type="checkbox" class="mon-group-chk" value="${grp.id}" ${selectedGroupIds.includes(grp.id) ? 'checked' : ''} style="accent-color:var(--accent-orange);">
+      <span>${grp.name}</span>
+    </label>
+  `).join('');
+}
+
 async function loadNotificationChannels() {
   const { httpUrl } = getApiUrls();
   const listEl = document.getElementById('alert-channels-list');
@@ -4548,6 +4743,24 @@ async function loadAlertRules() {
     }
 
     listEl.innerHTML = data.map(rule => {
+      // Build Target description
+      let targetDesc = '';
+      if (rule.target_type === 'all') {
+        targetDesc = 'All Monitors';
+      } else if (rule.target_type.startsWith('type_')) {
+        targetDesc = `All ${rule.target_type.slice(5).toUpperCase()} Probes`;
+      } else if (rule.target_type.startsWith('category_')) {
+        targetDesc = `Category: ${rule.target_type.slice(9)}`;
+      } else if (rule.target_type === 'custom') {
+        targetDesc = `${rule.monitors_list ? rule.monitors_list.length : 0} Monitors`;
+      } else if (rule.target_type === 'custom_groups') {
+        const grpNames = (rule.target_groups || []).map(gid => {
+          const match = window.cachedGroups.find(g => g.id === gid);
+          return match ? match.name : `Group #${gid}`;
+        }).join(', ') || 'No groups selected';
+        targetDesc = `Groups: ${grpNames}`;
+      }
+
       // Build conditions presentation text
       const condsText = rule.rules_json.map((c, idx) => {
         const prefix = idx > 0 ? ` <span style="color:var(--accent-orange); font-weight:700;">${c.join_type}</span> ` : '';
@@ -4582,8 +4795,11 @@ async function loadAlertRules() {
             </div>
           </div>
           
-          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-soft); padding-top:10px; margin-top:4px;">
-            <span style="font-size:0.68rem; color:var(--text-secondary);"><i data-lucide="send" style="width:10px; height:10px; display:inline-block; vertical-align:middle; margin-right:4px;"></i>Channels: <strong style="color:var(--text-primary);">${chanNames}</strong></span>
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-soft); padding-top:10px; margin-top:4px; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-size:0.68rem; color:var(--text-secondary);"><i data-lucide="target" style="width:10px; height:10px; display:inline-block; vertical-align:middle; margin-right:4px;"></i>Target: <strong style="color:var(--text-primary);">${targetDesc}</strong></span>
+              <span style="font-size:0.68rem; color:var(--text-secondary);"><i data-lucide="send" style="width:10px; height:10px; display:inline-block; vertical-align:middle; margin-right:4px;"></i>Channels: <strong style="color:var(--text-primary);">${chanNames}</strong></span>
+            </div>
             <div style="display:flex; align-items:center; gap:8px;">
               <button class="btn btn-secondary" onclick="openRuleComposer(${rule.id})" style="font-size:0.7rem; padding:4px 10px;">Edit</button>
               <button class="btn-icon" onclick="deleteRuleSource(${rule.id}, event)" style="background:none; border:none; cursor:pointer;" title="Delete Rule">
@@ -4835,12 +5051,23 @@ async function deleteChannelSource(cid, event) {
 }
 
 function onRuleTargetTypeChange(val) {
+  const monWrapper = document.getElementById('rule-monitors-selection-wrapper');
+  const grpsWrapper = document.getElementById('rule-groups-selection-wrapper');
   const label = document.getElementById('rule-monitors-selection-label');
-  if (!label) return;
-  if (val === 'custom') {
-    label.textContent = 'Include Specific Monitors (Selected targets only)';
+
+  if (val === 'custom_groups') {
+    if (monWrapper) monWrapper.style.display = 'none';
+    if (grpsWrapper) grpsWrapper.style.display = 'flex';
   } else {
-    label.textContent = 'Exclude Specific Monitors (Applies to all but checked targets)';
+    if (monWrapper) monWrapper.style.display = 'flex';
+    if (grpsWrapper) grpsWrapper.style.display = 'none';
+    if (label) {
+      if (val === 'custom') {
+        label.textContent = 'Include Specific Monitors (Selected targets only)';
+      } else {
+        label.textContent = 'Exclude Specific Monitors (Applies to all but checked targets)';
+      }
+    }
   }
 }
 
@@ -4913,6 +5140,26 @@ async function openRuleComposer(rid = null) {
     console.error("Failed to load monitors in rule composer:", err);
   }
 
+  const grpsListContainer = document.getElementById('rule-groups-selection-list');
+  if (grpsListContainer) grpsListContainer.innerHTML = '';
+  try {
+    const { httpUrl } = getApiUrls();
+    const resGrp = await fetch(`${httpUrl}/api/monitor-groups`);
+    if (resGrp.ok) {
+      window.cachedGroups = await resGrp.json();
+      if (grpsListContainer) {
+        grpsListContainer.innerHTML = window.cachedGroups.map(grp => `
+          <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer;">
+            <input type="checkbox" class="rule-group-chk" value="${grp.id}" style="accent-color:var(--accent-orange);">
+            <span>${grp.name} (${grp.monitor_count} monitors)</span>
+          </label>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load target groups in rule composer:", err);
+  }
+
   if (rid) {
     titleEl.textContent = 'Edit Alert Rule';
     try {
@@ -4944,6 +5191,14 @@ async function openRuleComposer(rid = null) {
         const selectedMonIds = rule.monitors_list || [];
         document.querySelectorAll('.rule-monitor-chk').forEach(c => {
           if (selectedMonIds.includes(parseInt(c.value))) {
+            c.checked = true;
+          }
+        });
+
+        // Toggle target group checkboxes
+        const selectedGroupIds = rule.target_groups || [];
+        document.querySelectorAll('.rule-group-chk').forEach(c => {
+          if (selectedGroupIds.includes(parseInt(c.value))) {
             c.checked = true;
           }
         });
@@ -5077,6 +5332,11 @@ async function submitSaveRule() {
     monitors_list.push(parseInt(c.value));
   });
 
+  const target_groups = [];
+  document.querySelectorAll('.rule-group-chk:checked').forEach(c => {
+    target_groups.push(parseInt(c.value));
+  });
+
   const { httpUrl } = getApiUrls();
   const rid = window.activeAlertRuleId;
   const method = rid ? 'PUT' : 'POST';
@@ -5086,7 +5346,7 @@ async function submitSaveRule() {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, rules_json: conditions, channel_ids, enabled: true, target_type, monitors_list })
+      body: JSON.stringify({ name, rules_json: conditions, channel_ids, enabled: true, target_type, monitors_list, target_groups })
     });
     if (!res.ok) {
       const err = await res.json();

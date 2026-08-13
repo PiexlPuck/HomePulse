@@ -280,6 +280,7 @@ class RulePayload(BaseModel):
     enabled: bool = True
     target_type: Optional[str] = "all"
     monitors_list: Optional[List[int]] = []
+    target_groups: Optional[List[int]] = []
 
 # 1. DB Init Routine
 async def init_db_pool():
@@ -383,10 +384,23 @@ async def init_db_pool():
                 except Exception as ar_err:
                     logger.warning(f"Error establishing alert_rules table: {ar_err}")
 
-                # Ensure alert_rules target_type columns exist & create active_alerts mapping
                 try:
                     await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_type VARCHAR(64) DEFAULT 'all';")
                     await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS monitors_list INT[] DEFAULT '{}'::INT[];")
+                    await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_groups INT[] DEFAULT '{}'::INT[];")
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS monitor_groups (
+                            id SERIAL PRIMARY KEY,
+                            name VARCHAR(64) UNIQUE NOT NULL
+                        );
+                    """)
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS monitor_group_map (
+                            monitor_id INT NOT NULL REFERENCES system_monitors(id) ON DELETE CASCADE,
+                            group_id INT NOT NULL REFERENCES monitor_groups(id) ON DELETE CASCADE,
+                            PRIMARY KEY (monitor_id, group_id)
+                        );
+                    """)
                     await conn.execute("""
                         CREATE TABLE IF NOT EXISTS active_alerts (
                             rule_id INT NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
@@ -395,7 +409,7 @@ async def init_db_pool():
                             PRIMARY KEY (rule_id, monitor_id)
                         );
                     """)
-                    logger.info("active_alerts table and alert_rules column migrations verified.")
+                    logger.info("active_alerts and monitor_groups/map schemas and migrations verified.")
                 except Exception as mig_err:
                     logger.warning(f"Error executing alarm router migrations: {mig_err}")
 
@@ -613,7 +627,7 @@ async def alerts_evaluator_task():
             
         try:
             async with db_pool.acquire() as conn:
-                rules = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, target_type, monitors_list FROM alert_rules WHERE enabled = TRUE;")
+                rules = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, target_type, monitors_list, target_groups FROM alert_rules WHERE enabled = TRUE;")
                 for r in rules:
                     rid = r["id"]
                     rname = r["name"]
@@ -621,6 +635,7 @@ async def alerts_evaluator_task():
                     old_status = r["status"] or "normal"
                     target_type = r["target_type"] or "all"
                     monitors_list = r["monitors_list"] or []
+                    target_groups = r["target_groups"] or []
                     
                     try:
                         conditions = json.loads(r["rules_json"]) if isinstance(r["rules_json"], str) else r["rules_json"]
@@ -629,7 +644,14 @@ async def alerts_evaluator_task():
                         continue
                         
                     # Resolve matching monitors
-                    all_monitors = await conn.fetch("SELECT id, name, type, target, enabled, category FROM system_monitors WHERE enabled = TRUE;")
+                    all_monitors = await conn.fetch("""
+                        SELECT sm.id, sm.name, sm.type, sm.target, sm.enabled, sm.category,
+                               COALESCE(array_agg(mgm.group_id) FILTER (WHERE mgm.group_id IS NOT NULL), '{}') AS group_ids
+                        FROM system_monitors sm
+                        LEFT JOIN monitor_group_map mgm ON sm.id = mgm.monitor_id
+                        WHERE sm.enabled = TRUE
+                        GROUP BY sm.id;
+                    """)
                     matching_monitors = []
                     
                     for m in all_monitors:
@@ -647,6 +669,8 @@ async def alerts_evaluator_task():
                             match = ((m["category"] or "General") == expected_category)
                         elif target_type == "custom":
                             match = (mid in monitors_list)
+                        elif target_type == "custom_groups":
+                            match = any(gid in target_groups for gid in (m["group_ids"] or []))
                             
                         # Exclude checks (only if target_type is not "custom" where monitors_list is inclusion list)
                         if match and target_type != "custom":
@@ -1390,6 +1414,7 @@ class MonitorPayload(BaseModel):
     check_interval: int = 30
     timeout: int = 5
     category: Optional[str] = 'General'
+    group_ids: Optional[List[int]] = []
 
 class HostPayload(BaseModel):
     name: str
@@ -1492,7 +1517,7 @@ async def get_rules():
         return JSONResponse(content=[])
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, last_fired, target_type, monitors_list FROM alert_rules ORDER BY id ASC;")
+            rows = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, last_fired, target_type, monitors_list, target_groups FROM alert_rules ORDER BY id ASC;")
             res = []
             for r in rows:
                 d = dict(r)
@@ -1513,8 +1538,8 @@ async def add_rule(payload: RulePayload):
         rules_str = json.dumps([r.model_dump() for r in payload.rules_json])
         async with db_pool.acquire() as conn:
             row = await conn.fetchrow(
-                "INSERT INTO alert_rules (name, rules_json, channel_ids, enabled, target_type, monitors_list) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id;",
-                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list
+                "INSERT INTO alert_rules (name, rules_json, channel_ids, enabled, target_type, monitors_list, target_groups) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id;",
+                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list, payload.target_groups
             )
             await conn.execute(
                 "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
@@ -1533,8 +1558,8 @@ async def update_rule(rid: int, payload: RulePayload):
         rules_str = json.dumps([r.model_dump() for r in payload.rules_json])
         async with db_pool.acquire() as conn:
             await conn.execute(
-                "UPDATE alert_rules SET name = $1, rules_json = $2, channel_ids = $3, enabled = $4, target_type = $5, monitors_list = $6 WHERE id = $7;",
-                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list, rid
+                "UPDATE alert_rules SET name = $1, rules_json = $2, channel_ids = $3, enabled = $4, target_type = $5, monitors_list = $6, target_groups = $7 WHERE id = $8;",
+                payload.name, rules_str, payload.channel_ids, payload.enabled, payload.target_type, payload.monitors_list, payload.target_groups, rid
             )
             await conn.execute(
                 "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
@@ -1561,13 +1586,82 @@ async def delete_rule(rid: int):
         logger.error(f"Failed to delete rule: {e}")
         raise HTTPException(status_code=500, detail="Database delete error.")
 
+class MonitorGroupPayload(BaseModel):
+    name: str
+
+@app.get("/api/monitor-groups")
+async def get_monitor_groups():
+    if not db_pool:
+        return JSONResponse(content=[])
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT mg.id, mg.name, COUNT(mgm.monitor_id)::int AS monitor_count
+                FROM monitor_groups mg
+                LEFT JOIN monitor_group_map mgm ON mg.id = mgm.group_id
+                GROUP BY mg.id, mg.name
+                ORDER BY mg.id ASC;
+            """)
+            return JSONResponse(content=[dict(r) for r in rows])
+    except Exception as e:
+        logger.error(f"Failed to fetch monitor groups: {e}")
+        raise HTTPException(status_code=500, detail="Database query error.")
+
+@app.post("/api/monitor-groups")
+async def add_monitor_group(payload: MonitorGroupPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    name_clean = payload.name.strip()
+    if not name_clean:
+        raise HTTPException(status_code=400, detail="Group Name cannot be empty.")
+    try:
+        async with db_pool.acquire() as conn:
+            gid = await conn.fetchval(
+                "INSERT INTO monitor_groups (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id;",
+                name_clean
+            )
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"Created monitor target group: {name_clean}"
+            )
+            return JSONResponse(content={"status": "success", "id": gid})
+    except Exception as e:
+        logger.error(f"Failed to save monitor group: {e}")
+        raise HTTPException(status_code=500, detail="Database insert error.")
+
+@app.delete("/api/monitor-groups/{gid}")
+async def delete_monitor_group(gid: int):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            deleted_name = await conn.fetchval("DELETE FROM monitor_groups WHERE id = $1 RETURNING name;", gid)
+            if deleted_name:
+                await conn.execute(
+                    "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                    "info", f"Deleted monitor target group: {deleted_name}"
+                )
+            return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error(f"Failed to delete monitor group: {e}")
+        raise HTTPException(status_code=500, detail="Database delete error.")
+
 @app.get("/api/monitors")
 async def get_monitors():
     if not db_pool:
         return JSONResponse(content=[])
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name, type, target, check_interval, timeout, last_status, last_latency, last_checked, enabled, host_id, category FROM system_monitors ORDER BY id ASC;")
+            rows = await conn.fetch("""
+                SELECT sm.id, sm.name, sm.type, sm.target, sm.check_interval, sm.timeout, 
+                       sm.last_status, sm.last_latency, sm.last_checked, sm.enabled, 
+                       sm.host_id, sm.category, 
+                       COALESCE(array_agg(mgm.group_id) FILTER (WHERE mgm.group_id IS NOT NULL), '{}') AS group_ids
+                FROM system_monitors sm
+                LEFT JOIN monitor_group_map mgm ON sm.id = mgm.monitor_id
+                GROUP BY sm.id
+                ORDER BY sm.id ASC;
+            """)
             res = []
             for r in rows:
                 d = dict(r)
@@ -1596,6 +1690,10 @@ async def add_monitor(payload: MonitorPayload):
                    VALUES ($1, $2, $3, $4, $5, 'unknown', true, $6) RETURNING id;""",
                 payload.name.strip(), payload.type, payload.target.strip(), payload.check_interval, payload.timeout, payload.category or 'General'
             )
+            
+            if payload.group_ids:
+                for gid in payload.group_ids:
+                    await conn.execute("INSERT INTO monitor_group_map (monitor_id, group_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;", monitor_id, gid)
             
             entity_states[f"monitor-{monitor_id}-status"] = {
                 "node_id": "monitors",
@@ -1714,6 +1812,11 @@ async def update_monitor(monitor_id: int, payload: MonitorPayload):
                    WHERE id = $7;""",
                 payload.name.strip(), payload.type, payload.target.strip(), payload.check_interval, payload.timeout, payload.category or 'General', monitor_id
             )
+            
+            await conn.execute("DELETE FROM monitor_group_map WHERE monitor_id = $1;", monitor_id)
+            if payload.group_ids:
+                for gid in payload.group_ids:
+                    await conn.execute("INSERT INTO monitor_group_map (monitor_id, group_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;", monitor_id, gid)
             
             status_key = f"monitor-{monitor_id}-status"
             latency_key = f"monitor-{monitor_id}-latency"
