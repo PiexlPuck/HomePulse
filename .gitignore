@@ -16,3 +16,6 @@ __pycache__/
 
 # Plugins
 plugins/
+
+# Environment secrets
+.env

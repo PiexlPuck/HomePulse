@@ -27,7 +27,7 @@ watchdog_task: Optional[asyncio.Task] = None
 plugins_router = APIRouter(prefix="/api/plugins", tags=["Plugins"])
 
 # Base paths
-PLUGINS_DIR = "/mnt/HomePulse/plugins"
+PLUGINS_DIR = os.getenv("PLUGINS_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins"))
 os.makedirs(PLUGINS_DIR, exist_ok=True)
 
 class PluginConfigPayload(BaseModel):

@@ -287,7 +287,10 @@ class RulePayload(BaseModel):
 # 1. DB Init Routine
 async def init_db_pool():
     global db_pool
-    database_url = os.getenv("DATABASE_URL", "postgresql://hp_admin:hpsafe_dbpass123@localhost/homepulse")
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        logger.error("DATABASE_URL environment variable is required but missing or empty!")
+        raise RuntimeError("DATABASE_URL environment variable is required")
     logger.info("Initializing Database connection pool...")
     for attempt in range(10):
         try:

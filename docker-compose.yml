@@ -5,9 +5,9 @@ services:
     environment:
       POSTGRES_DB: homepulse
       POSTGRES_USER: hp_admin
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-hpsafe_dbpass123}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db:/docker-entrypoint-initdb.d
@@ -26,11 +26,12 @@ services:
       homepulse-db:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://hp_admin:${DB_PASSWORD:-hpsafe_dbpass123}@127.0.0.1:5432/homepulse
-      - SECRET_KEY=${JWT_SECRET_KEY:-default_secret_key_834927}
+      - DATABASE_URL=postgresql://hp_admin:${DB_PASSWORD}@127.0.0.1:5432/homepulse
+      - SECRET_KEY=${JWT_SECRET_KEY}
     volumes:
-      - .:/app
-    command: sh -c "pip install --no-cache-dir -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000"
+      - ./plugins:/app/plugins
+      - ./db_backups:/app/db_backups
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     restart: always
     network_mode: "host"
     healthcheck:
