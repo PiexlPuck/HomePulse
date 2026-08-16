@@ -115,10 +115,17 @@ def read_stream(stream, plugin_id, level):
         except:
             pass
 
-async def start_plugin(plugin_id: str, config: Dict[str, Any]):
+async def start_plugin(plugin_id: str, config: Any):
     # Stop compile/running process if already active
     await stop_plugin(plugin_id)
     
+    if isinstance(config, str):
+        try:
+            config = json.loads(config)
+        except Exception as e:
+            logger.error(f"Failed to parse JSON config string for plugin {plugin_id}: {e}")
+            config = {}
+            
     plugin_dir = os.path.join(PLUGINS_DIR, plugin_id)
     if not os.path.isdir(plugin_dir):
         logger.error(f"Cannot start plugin {plugin_id}: Directory does not exist.")
@@ -152,10 +159,11 @@ async def start_plugin(plugin_id: str, config: Dict[str, Any]):
         # Inject API Gateway configs
         env["HOMEPULSE_API_URL"] = "http://localhost:8000/api/plugins/gateway"
         env["PLUGIN_ID"] = plugin_id
+        env["PYTHONUNBUFFERED"] = "1"
         
         logger.info(f"Spawning subprocess for plugin {plugin_id} with {interpreter}...")
         proc = subprocess.Popen(
-            [interpreter, script_path],
+            [interpreter, "-u", script_path],
             env=env,
             cwd=plugin_dir,
             stdout=subprocess.PIPE,
