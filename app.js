@@ -1024,6 +1024,20 @@ function handleIncomingWSEvent(data) {
       handleLiveMonitorWSUpdate(data.entity_id, data.value, data.status, data.status_type);
     }
   }
+  else if (data.event === 'entity_update') {
+    const ent = data.data;
+    if (ent && ent.entity_key) {
+      cachedEntities[ent.entity_key] = ent;
+      const pluginsView = document.getElementById('plugins-view');
+      if (pluginsView && !pluginsView.classList.contains('hidden')) {
+        loadInstalledPlugins();
+      }
+      const hostsView = document.getElementById('hosts-view');
+      if (hostsView && !hostsView.classList.contains('hidden')) {
+        loadHosts();
+      }
+    }
+  }
 
   // B. Audit Log updates
   else if (data.event === 'audit_logged') {
@@ -7049,8 +7063,25 @@ window.toggleInstalledPlugin = async function (pluginId) {
     if (res.ok) {
       window.installedPluginsData = null;
       const data = await res.json();
+
+      const entKey = `plugin-${pluginId}-status`;
+      if (typeof cachedEntities !== 'undefined' && cachedEntities) {
+        cachedEntities[entKey] = cachedEntities[entKey] || {
+          node_id: 'plugins',
+          entity_key: entKey,
+          name: `Plugin: ${pluginId}`,
+          type: 'binary_sensor'
+        };
+        cachedEntities[entKey].value = data.enabled ? 'ON' : 'OFF';
+        cachedEntities[entKey].attributes = cachedEntities[entKey].attributes || {};
+        cachedEntities[entKey].attributes.status = data.enabled ? 'running' : 'stopped';
+      }
+
       showToast(`Plugin toggled successfully. Active: ${data.enabled}`, 'success');
       loadInstalledPlugins();
+      if (typeof loadHosts === 'function') {
+        loadHosts();
+      }
     } else {
       alert("Failed to toggle plugin process.");
       loadInstalledPlugins();
