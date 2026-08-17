@@ -165,130 +165,131 @@
           </div>
 
           <div class="settings-form">
-          </div>
 
 
 
-          <!-- Timezone -->
-          <div class="settings-group">
-            <label for="setting-timezone">Display Timezone</label>
-            <select id="setting-timezone">
-              <option value="UTC">UTC — Universal Coordinated Time</option>
-              <option value="local">⟳ Local Host Time (auto-detect)</option>
-              <optgroup label="── Americas ──">
-                <option value="America/New_York">EST — New York (UTC-5)</option>
-                <option value="America/Chicago">CST — Chicago (UTC-6)</option>
-                <option value="America/Denver">MST — Denver (UTC-7)</option>
-                <option value="America/Los_Angeles">PST — Los Angeles (UTC-8)</option>
-                <option value="America/Anchorage">AKST — Anchorage (UTC-9)</option>
-                <option value="Pacific/Honolulu">HST — Honolulu (UTC-10)</option>
-                <option value="America/Toronto">EST — Toronto (UTC-5)</option>
-                <option value="America/Vancouver">PST — Vancouver (UTC-8)</option>
-                <option value="America/Sao_Paulo">BRT — São Paulo (UTC-3)</option>
-                <option value="America/Argentina/Buenos_Aires">ART — Buenos Aires (UTC-3)</option>
-                <option value="America/Mexico_City">CST — Mexico City (UTC-6)</option>
-              </optgroup>
-              <optgroup label="── Europe ──">
-                <option value="Europe/London">GMT — London (UTC+0/+1)</option>
-                <option value="Europe/Dublin">IST — Dublin (UTC+0/+1)</option>
-                <option value="Europe/Lisbon">WET — Lisbon (UTC+0/+1)</option>
-                <option value="Europe/Paris">CET — Paris (UTC+1/+2)</option>
-                <option value="Europe/Berlin">CET — Berlin (UTC+1/+2)</option>
-                <option value="Europe/Amsterdam">CET — Amsterdam (UTC+1/+2)</option>
-                <option value="Europe/Madrid">CET — Madrid (UTC+1/+2)</option>
-                <option value="Europe/Rome">CET — Rome (UTC+1/+2)</option>
-                <option value="Europe/Warsaw">CET — Warsaw (UTC+1/+2)</option>
-                <option value="Europe/Stockholm">CET — Stockholm (UTC+1/+2)</option>
-                <option value="Europe/Moscow">MSK — Moscow (UTC+3)</option>
-                <option value="Europe/Istanbul">TRT — Istanbul (UTC+3)</option>
-                <option value="Europe/Athens">EET — Athens (UTC+2/+3)</option>
-                <option value="Europe/Helsinki">EET — Helsinki (UTC+2/+3)</option>
-                <option value="Europe/Bucharest">EET — Bucharest (UTC+2/+3)</option>
-                <option value="Europe/Kyiv">EET — Kyiv (UTC+2/+3)</option>
-              </optgroup>
-              <optgroup label="── Africa / Middle East ──">
-                <option value="Africa/Cairo">EET — Cairo (UTC+2)</option>
-                <option value="Africa/Johannesburg">SAST — Johannesburg (UTC+2)</option>
-                <option value="Africa/Lagos">WAT — Lagos (UTC+1)</option>
-                <option value="Africa/Nairobi">EAT — Nairobi (UTC+3)</option>
-                <option value="Asia/Dubai">GST — Dubai (UTC+4)</option>
-                <option value="Asia/Riyadh">AST — Riyadh (UTC+3)</option>
-                <option value="Asia/Tehran">IRST — Tehran (UTC+3:30)</option>
-              </optgroup>
-              <optgroup label="── Asia / Pacific ──">
-                <option value="Asia/Kolkata">IST — Kolkata (UTC+5:30)</option>
-                <option value="Asia/Karachi">PKT — Karachi (UTC+5)</option>
-                <option value="Asia/Dhaka">BST — Dhaka (UTC+6)</option>
-                <option value="Asia/Kathmandu">NPT — Kathmandu (UTC+5:45)</option>
-                <option value="Asia/Bangkok">ICT — Bangkok (UTC+7)</option>
-                <option value="Asia/Singapore">SGT — Singapore (UTC+8)</option>
-                <option value="Asia/Shanghai">CST — Shanghai (UTC+8)</option>
-                <option value="Asia/Hong_Kong">HKT — Hong Kong (UTC+8)</option>
-                <option value="Asia/Taipei">CST — Taipei (UTC+8)</option>
-                <option value="Asia/Seoul">KST — Seoul (UTC+9)</option>
-                <option value="Asia/Tokyo">JST — Tokyo (UTC+9)</option>
-                <option value="Australia/Sydney">AEDT — Sydney (UTC+10/+11)</option>
-                <option value="Australia/Melbourne">AEDT — Melbourne (UTC+10/+11)</option>
-                <option value="Australia/Brisbane">AEST — Brisbane (UTC+10)</option>
-                <option value="Australia/Perth">AWST — Perth (UTC+8)</option>
-                <option value="Pacific/Auckland">NZDT — Auckland (UTC+12/+13)</option>
-                <option value="Pacific/Fiji">FJT — Fiji (UTC+12)</option>
-              </optgroup>
-            </select>
-            <small>Target timezone used to format refreshed and audit event timestamps.</small>
-          </div>
-
-          <!-- Access Token -->
-          <div class="settings-group">
-            <label for="setting-psk">Pre-Shared Pairing Key</label>
-            <input type="text" id="setting-psk" class="settings-input" value="device_pin_12345">
-            <small>Access PIN required to approve and authenticate new mDNS nodes.</small>
-          </div>
-
-          <!-- Themes Select -->
-          <div class="settings-group">
-            <label>Visual Skin Theme</label>
-            <div class="theme-grid">
-              <button class="theme-btn active" data-theme="midnight">Midnight</button>
-              <button class="theme-btn" data-theme="glass">Nebula Glass</button>
-              <button class="theme-btn" data-theme="cozy">Cozy Amber</button>
-              <button class="theme-btn" data-theme="cyber">Cyberpunk</button>
+            <!-- Timezone -->
+            <div class="settings-group">
+              <label for="setting-timezone">Display Timezone</label>
+              <select id="setting-timezone">
+                <option value="UTC">UTC — Universal Coordinated Time</option>
+                <option value="local">⟳ Local Host Time (auto-detect)</option>
+                <optgroup label="── Americas ──">
+                  <option value="America/New_York">EST — New York (UTC-5)</option>
+                  <option value="America/Chicago">CST — Chicago (UTC-6)</option>
+                  <option value="America/Denver">MST — Denver (UTC-7)</option>
+                  <option value="America/Los_Angeles">PST — Los Angeles (UTC-8)</option>
+                  <option value="America/Anchorage">AKST — Anchorage (UTC-9)</option>
+                  <option value="Pacific/Honolulu">HST — Honolulu (UTC-10)</option>
+                  <option value="America/Toronto">EST — Toronto (UTC-5)</option>
+                  <option value="America/Vancouver">PST — Vancouver (UTC-8)</option>
+                  <option value="America/Sao_Paulo">BRT — São Paulo (UTC-3)</option>
+                  <option value="America/Argentina/Buenos_Aires">ART — Buenos Aires (UTC-3)</option>
+                  <option value="America/Mexico_City">CST — Mexico City (UTC-6)</option>
+                </optgroup>
+                <optgroup label="── Europe ──">
+                  <option value="Europe/London">GMT — London (UTC+0/+1)</option>
+                  <option value="Europe/Dublin">IST — Dublin (UTC+0/+1)</option>
+                  <option value="Europe/Lisbon">WET — Lisbon (UTC+0/+1)</option>
+                  <option value="Europe/Paris">CET — Paris (UTC+1/+2)</option>
+                  <option value="Europe/Berlin">CET — Berlin (UTC+1/+2)</option>
+                  <option value="Europe/Amsterdam">CET — Amsterdam (UTC+1/+2)</option>
+                  <option value="Europe/Madrid">CET — Madrid (UTC+1/+2)</option>
+                  <option value="Europe/Rome">CET — Rome (UTC+1/+2)</option>
+                  <option value="Europe/Warsaw">CET — Warsaw (UTC+1/+2)</option>
+                  <option value="Europe/Stockholm">CET — Stockholm (UTC+1/+2)</option>
+                  <option value="Europe/Moscow">MSK — Moscow (UTC+3)</option>
+                  <option value="Europe/Istanbul">TRT — Istanbul (UTC+3)</option>
+                  <option value="Europe/Athens">EET — Athens (UTC+2/+3)</option>
+                  <option value="Europe/Helsinki">EET — Helsinki (UTC+2/+3)</option>
+                  <option value="Europe/Bucharest">EET — Bucharest (UTC+2/+3)</option>
+                  <option value="Europe/Kyiv">EET — Kyiv (UTC+2/+3)</option>
+                </optgroup>
+                <optgroup label="── Africa / Middle East ──">
+                  <option value="Africa/Cairo">EET — Cairo (UTC+2)</option>
+                  <option value="Africa/Johannesburg">SAST — Johannesburg (UTC+2)</option>
+                  <option value="Africa/Lagos">WAT — Lagos (UTC+1)</option>
+                  <option value="Africa/Nairobi">EAT — Nairobi (UTC+3)</option>
+                  <option value="Asia/Dubai">GST — Dubai (UTC+4)</option>
+                  <option value="Asia/Riyadh">AST — Riyadh (UTC+3)</option>
+                  <option value="Asia/Tehran">IRST — Tehran (UTC+3:30)</option>
+                </optgroup>
+                <optgroup label="── Asia / Pacific ──">
+                  <option value="Asia/Kolkata">IST — Kolkata (UTC+5:30)</option>
+                  <option value="Asia/Karachi">PKT — Karachi (UTC+5)</option>
+                  <option value="Asia/Dhaka">BST — Dhaka (UTC+6)</option>
+                  <option value="Asia/Kathmandu">NPT — Kathmandu (UTC+5:45)</option>
+                  <option value="Asia/Bangkok">ICT — Bangkok (UTC+7)</option>
+                  <option value="Asia/Singapore">SGT — Singapore (UTC+8)</option>
+                  <option value="Asia/Shanghai">CST — Shanghai (UTC+8)</option>
+                  <option value="Asia/Hong_Kong">HKT — Hong Kong (UTC+8)</option>
+                  <option value="Asia/Taipei">CST — Taipei (UTC+8)</option>
+                  <option value="Asia/Seoul">KST — Seoul (UTC+9)</option>
+                  <option value="Asia/Tokyo">JST — Tokyo (UTC+9)</option>
+                  <option value="Australia/Sydney">AEDT — Sydney (UTC+10/+11)</option>
+                  <option value="Australia/Melbourne">AEDT — Melbourne (UTC+10/+11)</option>
+                  <option value="Australia/Brisbane">AEST — Brisbane (UTC+10)</option>
+                  <option value="Australia/Perth">AWST — Perth (UTC+8)</option>
+                  <option value="Pacific/Auckland">NZDT — Auckland (UTC+12/+13)</option>
+                  <option value="Pacific/Fiji">FJT — Fiji (UTC+12)</option>
+                </optgroup>
+              </select>
+              <small>Target timezone used to format refreshed and audit event timestamps.</small>
             </div>
-          </div>
 
-          <!-- Grid Style Compact -->
-          <div class="settings-group checkbox-group">
-            <label class="switch">
-              <input type="checkbox" id="setting-compact">
-              <span class="slider-checkbox round"></span>
-            </label>
-            <div class="checkbox-label-area">
-              <span class="checkbox-title">Enable Compact Grid Layout</span>
-              <span class="checkbox-desc">Decompress card margins and compress text spacing for high density
-                screens.</span>
+            <!-- Access Token -->
+            <div class="settings-group">
+              <label for="setting-psk">Pre-Shared Pairing Key</label>
+              <input type="text" id="setting-psk" class="settings-input" value="device_pin_12345">
+              <small>Access PIN required to approve and authenticate new mDNS nodes.</small>
             </div>
-          </div>
 
-          <!-- Danger Zone Launch Button -->
-          <div class="settings-group"
-            style="margin-top: 20px; border-top: 1px solid var(--border-soft); padding-top: 20px;">
-            <label style="color: #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Database
-              Maintenance &amp; Cleanup</label>
-            <button class="btn" type="button" onclick="window.openModal('database-prune-modal')"
-              style="margin-top: 8px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); color: #fecaca; font-weight: 600; cursor: pointer; padding: 10px; border-radius: 6px; transition: all 0.2s;">
-              <span>🧹</span> Open Database Danger Zone
-            </button>
-            <small style="color: var(--text-secondary); display: block; margin-top: 6px;">Manage database pruning,
-              custom filtering, and database size optimizations.</small>
-          </div>
+            <!-- Themes Select -->
+            <div class="settings-group">
+              <label>Visual Skin Theme</label>
+              <div class="theme-grid">
+                <button class="theme-btn active" data-theme="midnight">Midnight</button>
+                <button class="theme-btn" data-theme="glass">Nebula Glass</button>
+                <button class="theme-btn" data-theme="cozy">Cozy Amber</button>
+                <button class="theme-btn" data-theme="cyber">Cyberpunk</button>
+              </div>
+            </div>
 
-          <div class="settings-actions">
-            <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
-            <button class="btn btn-secondary" onclick="generateSupportLogs()"
-              style="margin-left: 10px; display: inline-flex; align-items: center; gap: 6px;">
-              <i data-lucide="download" style="width: 14px; height: 14px;"></i>
-              Generate Support Logs
-            </button>
+            <!-- Grid Style Compact -->
+            <div class="settings-group checkbox-group">
+              <label class="switch">
+                <input type="checkbox" id="setting-compact">
+                <span class="slider-checkbox round"></span>
+              </label>
+              <div class="checkbox-label-area">
+                <span class="checkbox-title">Enable Compact Grid Layout</span>
+                <span class="checkbox-desc">Decompress card margins and compress text spacing for high density
+                  screens.</span>
+              </div>
+            </div>
+
+            <!-- Danger Zone Launch Button -->
+            <div class="settings-group"
+              style="margin-top: 20px; border-top: 1px solid var(--border-soft); padding-top: 20px;">
+              <label
+                style="color: #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Database
+                Maintenance &amp; Cleanup</label>
+              <button class="btn" type="button" onclick="window.openModal('database-prune-modal')"
+                style="margin-top: 8px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); color: #fecaca; font-weight: 600; cursor: pointer; padding: 10px; border-radius: 6px; transition: all 0.2s;">
+                <span>🧹</span> Open Database Danger Zone
+              </button>
+              <small style="color: var(--text-secondary); display: block; margin-top: 6px;">Manage database pruning,
+                custom filtering, and database size optimizations.</small>
+            </div>
+
+            <div class="settings-actions">
+              <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+              <button class="btn btn-secondary" onclick="generateSupportLogs()"
+                style="margin-left: 10px; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                Generate Support Logs
+              </button>
+            </div>
           </div>
         </div>
 
