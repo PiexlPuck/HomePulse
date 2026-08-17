@@ -6885,6 +6885,7 @@ async function loadInstalledPlugins(forceFetch = false) {
               <div style="display:flex; gap:10px; margin-top:8px; flex-wrap:wrap;">
                 ${updateBtnHTML}
                 <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
+                ${p.has_readme ? `<button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', false)" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Readme</button>` : ''}
                 <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
                 <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>
                 <button class="btn btn-danger" onclick="uninstallPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fecaca; margin-left:auto;">Uninstall</button>
@@ -6908,11 +6909,12 @@ async function loadInstalledPlugins(forceFetch = false) {
             </label>
             <details style="position:relative;">
               <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600; list-style:none;">Config</summary>
-              <div style="position:absolute; right:0; top:24px; background:#181614; border:1px solid var(--border-soft); border-radius:8px; padding:16px; min-width:300px; z-index:100; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+              <div style="position:absolute; right:0; top:24px; background:#181614; border:1px solid var(--border-soft); border-radius:8px; padding:16px; min-width:320px; z-index:100; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
                 ${configFieldsHTML}
                 <div style="display:flex; gap:10px; margin-top:8px; justify-content:flex-end; flex-wrap:wrap;">
                   ${updateBtnHTML}
                   <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
+                  ${p.has_readme ? `<button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', false)" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Readme</button>` : ''}
                   <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
                   <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>
                   <button class="btn btn-danger" onclick="uninstallPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fecaca;">Uninstall</button>
@@ -6931,17 +6933,23 @@ async function loadMarketplacePlugins(forceFetch = false) {
   if (!storeContainer) return;
 
   const { httpUrl } = getApiUrls();
+
+  // Decoupled installed state: fetch fresh local info on every store view load.
+  let installed = [];
+  try {
+    const instRes = await fetch(`${httpUrl}/api/plugins/installed`);
+    if (instRes.ok) installed = await instRes.json();
+  } catch (e) {
+    console.error("Failed to load active installed list:", e);
+  }
+  window.installedPluginsListForMarketplace = installed;
+
   if (forceFetch || !window.marketplacePluginsData) {
     storeContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0; grid-column:1/-1;">Loading plugins catalog from Github index repository...</p>`;
     try {
-      const [catRes, instRes] = await Promise.all([
-        fetch(`${httpUrl}/api/plugins/marketplace`),
-        fetch(`${httpUrl}/api/plugins/installed`).catch(e => ({ ok: false }))
-      ]);
-
+      const catRes = await fetch(`${httpUrl}/api/plugins/marketplace`);
       if (!catRes.ok) throw new Error(`HTTP ${catRes.status}`);
       window.marketplacePluginsData = await catRes.json();
-      window.installedPluginsListForMarketplace = instRes.ok ? await instRes.json() : [];
     } catch (err) {
       storeContainer.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem; text-align:center; padding:24px 0; grid-column:1/-1;">Could not fetch remote marketplace elements: ${err.message}</p>`;
       return;
@@ -6962,8 +6970,8 @@ async function loadMarketplacePlugins(forceFetch = false) {
     return;
   }
 
-  const installed = window.installedPluginsListForMarketplace || [];
-  const installedIds = installed.map(i => i.id);
+  const targetInstalled = window.installedPluginsListForMarketplace || [];
+  const installedIds = targetInstalled.map(i => i.id);
 
   const layout = window.pluginsViewLayout || 'grid';
 
@@ -6975,7 +6983,7 @@ async function loadMarketplacePlugins(forceFetch = false) {
 
   storeContainer.innerHTML = filtered.map(p => {
     const isInstalled = installedIds.includes(p.id);
-    const isOutdated = isInstalled && (installed.find(i => i.id === p.id)?.version !== p.version);
+    const isOutdated = isInstalled && (targetInstalled.find(i => i.id === p.id)?.version !== p.version);
 
     let actionBtnHTML = `
       <button class="btn btn-primary" onclick="installSelectedPlugin('${p.id}')" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px;">
@@ -6999,6 +7007,11 @@ async function loadMarketplacePlugins(forceFetch = false) {
     }
 
     if (layout === 'grid') {
+      const readmeBtnHTML = p.has_readme ? `
+        <button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', true)" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">
+          Readme
+        </button>
+      ` : '';
       return `
         <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 18px; display:flex; flex-direction:column; justify-content:space-between;">
           <div>
@@ -7008,11 +7021,19 @@ async function loadMarketplacePlugins(forceFetch = false) {
             </div>
             <p style="margin:8px 0 0 0; font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">${p.description || ''}</p>
           </div>
-          ${actionBtnHTML}
+          <div style="margin-top:12px; display:flex; flex-direction:column; gap:4px;">
+            ${actionBtnHTML.replace('margin-top:12px;', 'margin-top:0;')}
+            ${readmeBtnHTML.replace('margin-top:6px;', 'margin-top:0;')}
+          </div>
         </div>
       `;
     } else {
       let listActionBtnHTML = actionBtnHTML.replace('margin-top:12px;', 'margin-top:0;');
+      const listReadmeBtnHTML = p.has_readme ? `
+        <button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', true)" style="font-size:0.75rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">
+          Readme
+        </button>
+      ` : '';
       return `
         <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 18px; display:flex; justify-content:space-between; align-items:center;">
           <div style="display:flex; flex-direction:column; gap:4px;">
@@ -7022,7 +7043,8 @@ async function loadMarketplacePlugins(forceFetch = false) {
             </div>
             <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ''}</p>
           </div>
-          <div style="min-width:145px; display: flex; justify-content: flex-end;">
+          <div style="min-width:145px; display: flex; justify-content: flex-end; align-items:center; gap:8px;">
+            ${listReadmeBtnHTML}
             ${listActionBtnHTML}
           </div>
         </div>
@@ -7032,6 +7054,34 @@ async function loadMarketplacePlugins(forceFetch = false) {
 }
 
 window.installSelectedPlugin = async function (pluginId) {
+  const buttons = Array.from(document.querySelectorAll('button')).filter(btn => {
+    const oc = btn.getAttribute('onclick') || '';
+    return oc.includes('installSelectedPlugin') && oc.includes(pluginId);
+  });
+
+  const originalState = buttons.map(btn => ({
+    element: btn,
+    innerHTML: btn.innerHTML,
+    disabled: btn.disabled,
+    opacity: btn.style.opacity,
+    cursor: btn.style.cursor
+  }));
+
+  buttons.forEach(btn => {
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    btn.style.cursor = 'not-allowed';
+    btn.innerHTML = `
+      <span style="display:inline-flex; align-items:center; gap:8px; justify-content:center; width:100%;">
+        <svg class="chart-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="animation: spin-loader 0.85s linear infinite; margin: 0; display: inline-block;">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" style="opacity:0.25;"></circle>
+          <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Installing...
+      </span>
+    `;
+  });
+
   showToast(`Initiating download loop for "${pluginId}"...`, 'info');
   const { httpUrl } = getApiUrls();
   try {
@@ -7047,13 +7097,32 @@ window.installSelectedPlugin = async function (pluginId) {
     } else {
       const data = await res.json();
       alert(`Installation failure: ${data.detail || 'unknown error'}`);
+      originalState.forEach(state => {
+        state.element.disabled = state.disabled;
+        state.element.innerHTML = state.innerHTML;
+        state.element.style.opacity = state.opacity;
+        state.element.style.cursor = state.cursor;
+      });
     }
   } catch (err) {
     showToast(`Install request failed: ${err.message}`, 'error');
+    originalState.forEach(state => {
+      state.element.disabled = state.disabled;
+      state.element.innerHTML = state.innerHTML;
+      state.element.style.opacity = state.opacity;
+      state.element.style.cursor = state.cursor;
+    });
   }
 };
 
 window.toggleInstalledPlugin = async function (pluginId) {
+  const checkbox = document.querySelector(`input[type="checkbox"][onclick*="toggleInstalledPlugin('${pluginId}')"]`) ||
+    document.querySelector(`input[type="checkbox"][onclick*="toggleInstalledPlugin(\"${pluginId}\")"]`);
+
+  if (checkbox) {
+    checkbox.disabled = true;
+  }
+
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/plugins/toggle/${pluginId}`, {
@@ -7089,6 +7158,10 @@ window.toggleInstalledPlugin = async function (pluginId) {
   } catch (err) {
     showToast(`Toggle operation failed: ${err.message}`, 'error');
     loadInstalledPlugins();
+  } finally {
+    if (checkbox) {
+      checkbox.disabled = false;
+    }
   }
 };
 
@@ -7230,5 +7303,99 @@ window.killPlugin = async function (pluginId) {
     showToast(`Kill request failed: ${err.message}`, 'error');
   }
 };
+
+window.showPluginReadme = async function (pluginId, isMarketplace) {
+  const title = document.getElementById('plugin-readme-title');
+  const body = document.getElementById('plugin-readme-body');
+
+  if (title) title.textContent = `Documentation: ${pluginId}`;
+  if (body) body.innerHTML = '<p style="color:var(--text-secondary); font-style:italic;">Loading documentation...</p>';
+
+  window.openModal('plugin-readme-modal');
+
+  const { httpUrl } = getApiUrls();
+  try {
+    let url = '';
+    if (isMarketplace) {
+      const p = (window.marketplacePluginsData || []).find(m => m.id === pluginId);
+      if (p && p.readme_url) {
+        url = p.readme_url;
+      } else {
+        throw new Error("Online README URL not found. The plugin might not have documentation.");
+      }
+    } else {
+      url = `${httpUrl}/api/plugins/readme/${pluginId}`;
+    }
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed to load README file: ${res.statusText}`);
+    }
+
+    let markdown = '';
+    if (isMarketplace) {
+      markdown = await res.text();
+    } else {
+      const data = await res.json();
+      markdown = data.content;
+    }
+
+    if (body) {
+      body.innerHTML = parseMarkdownToHTML(markdown);
+    }
+  } catch (err) {
+    if (body) {
+      body.innerHTML = `<p style="color:#f87171; font-weight:600;">Error: ${err.message}</p>`;
+    }
+  }
+};
+
+function parseMarkdownToHTML(md) {
+  if (!md) return '';
+  let html = md
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
+    return `<pre style="background:rgba(0,0,0,0.3); padding:12px; border-radius:6px; border:1px solid var(--border-soft); overflow-x:auto; margin:12px 0;"><code style="font-family:monospace; font-size:0.8rem; color:#fca5a5;">${code.trim()}</code></pre>`;
+  });
+
+  html = html.replace(/`([^`]+)`/g, '<code style="font-family:monospace; background:rgba(255,255,255,0.08); padding:2px 4px; border-radius:3px; font-size:0.85em; color:#fca5a5;">$1</code>');
+
+  html = html.replace(/^# (.*$)/gim, '<h2 style="margin:20px 0 10px 0; color:#fff; font-size:1.4rem; border-bottom:1px solid var(--border-soft); padding-bottom:6px;">$1</h2>');
+  html = html.replace(/^## (.*$)/gim, '<h3 style="margin:16px 0 8px 0; color:#fff; font-size:1.15rem;">$1</h3>');
+  html = html.replace(/^### (.*$)/gim, '<h4 style="margin:12px 0 6px 0; color:#fff; font-size:1rem;">$1</h4>');
+
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#fff;">$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  const lines = html.split('\n');
+  let inList = false;
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim();
+    if (line.startsWith('* ') || line.startsWith('- ')) {
+      if (!inList) {
+        lines[i] = '<ul style="margin:8px 0; padding-left:20px; list-style-type:disc;">\n<li style="margin:4px 0; font-size:0.8rem; color:var(--text-secondary);">' + line.substring(2) + '</li>';
+        inList = true;
+      } else {
+        lines[i] = '<li style="margin:4px 0; font-size:0.8rem; color:var(--text-secondary);">' + line.substring(2) + '</li>';
+      }
+    } else {
+      if (inList) {
+        lines[i - 1] = lines[i - 1] + '\n</ul>';
+        inList = false;
+      }
+      if (line !== '' && !line.startsWith('<h') && !line.startsWith('<pre') && !line.startsWith('<ul') && !line.startsWith('</ul') && !line.startsWith('<li')) {
+        lines[i] = `<p style="margin:8px 0; font-size:0.8rem; line-height:1.5; color:var(--text-secondary);">${line}</p>`;
+      }
+    }
+  }
+  if (inList) {
+    lines[lines.length - 1] = lines[lines.length - 1] + '\n</ul>';
+  }
+  html = lines.join('\n');
+  return html;
+}
 
 

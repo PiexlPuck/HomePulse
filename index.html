@@ -2051,6 +2051,26 @@
           </div>
         </div>
 
+        <!-- Plugin README Viewer Modal -->
+        <div class="modal-overlay" id="plugin-readme-modal" style="display: none;">
+          <div class="modal-content"
+            style="width: 90% !important; max-width: 800px !important; height: 80vh !important; display: flex; flex-direction: column;">
+            <div class="modal-header">
+              <h3 id="plugin-readme-title">Plugin Documentation</h3>
+              <button class="modal-close-btn" onclick="closeModal('plugin-readme-modal')">&times;</button>
+            </div>
+            <div class="modal-body"
+              style="flex: 1; padding: 18px 24px; background: #0f0f13; overflow-y: auto; color: var(--text-primary); line-height: 1.6;"
+              id="plugin-readme-body">
+              Loading documentation...
+            </div>
+            <div class="modal-footer"
+              style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end;">
+              <button class="btn btn-secondary" onclick="closeModal('plugin-readme-modal')">Close</button>
+            </div>
+          </div>
+        </div>
+
 </body>
 
 </html>
