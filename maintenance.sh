@@ -282,6 +282,37 @@ rebuild_stack() {
     fi
 }
 
+# Force regenerate environment credentials in .env file
+force_regenerate_env() {
+    echo ""
+    echo -e "${RED}WARNING: Regenerating credentials will overwrite the existing .env file.${NC}"
+    echo -e "${RED}Containers must be restarted to apply newly generated passwords.${NC}"
+    read -p "Are you sure you want to regenerate secure keys? (y/n): " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        if [ -f ".env" ]; then
+            cp .env .env.bak
+            echo -e "${YELLOW}Backup of current .env saved as .env.bak${NC}"
+            rm -f .env
+        fi
+        
+        init_env_file
+        
+        echo ""
+        echo -e "${GREEN}Fresh credentials successfully generated:${NC}"
+        grep -E "DB_PASSWORD|JWT_SECRET_KEY" .env
+        echo ""
+        
+        read -p "Would you like to rebuild and restart containers now to apply changes? (y/n): " rebuild_choice
+        if [[ "$rebuild_choice" =~ ^[Yy]$ ]]; then
+            rebuild_stack
+        else
+            echo -e "${YELLOW}Please remember to rebuild/restart the stack later to apply changes.${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Credential regeneration aborted.${NC}"
+    fi
+}
+
 # Perform repository update
 perform_update() {
     local branch="$1"
@@ -335,9 +366,10 @@ show_menu() {
         echo -e "4) Force Rebuild and Restart Stack"
         echo -e "5) Check for Updates"
         echo -e "6) Perform Fresh Install (Wipe Database & Rebuild)"
-        echo -e "7) Exit"
+        echo -e "7) Force Regenerate/Over-write Environment Credentials"
+        echo -e "8) Exit"
         echo -e "${BLUE}=========================================${NC}"
-        read -p "Select options (1-7): " opt
+        read -p "Select options (1-8): " opt
         case "$opt" in
             1) create_manual_backup ;;
             2) list_and_restore_backup ;;
@@ -345,8 +377,9 @@ show_menu() {
             4) rebuild_stack ;;
             5) check_version ;;
             6) fresh_install ;;
-            7) echo -e "${BLUE}Exiting maintenance utility. Goodbye!${NC}"; exit 0 ;;
-            *) echo -e "${RED}Invalid option selected. Please specify (1-7).${NC}" ;;
+            7) force_regenerate_env ;;
+            8) echo -e "${BLUE}Exiting maintenance utility. Goodbye!${NC}"; exit 0 ;;
+            *) echo -e "${RED}Invalid option selected. Please specify (1-8).${NC}" ;;
         esac
     done
 }
