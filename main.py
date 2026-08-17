@@ -285,6 +285,262 @@ class RulePayload(BaseModel):
     target_groups_operator: Optional[str] = "any"
 
 # 1. DB Init Routine
+async def setup_database_schema(conn):
+    logger.info("Verifying database schema...")
+    # Initialize system_settings table and seed options
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key VARCHAR(64) PRIMARY KEY,
+            value VARCHAR(255) NOT NULL
+        );
+    """)
+    await conn.execute("""
+        INSERT INTO system_settings (key, value) VALUES 
+        ('telemetry_interval', '3'),
+        ('log_retention', '7'),
+        ('auto_prune_enabled', 'false'),
+        ('timezone', 'UTC'),
+        ('preshared_key', 'device_pin_12345'),
+        ('theme', 'midnight'),
+        ('layout_compact', 'false')
+        ON CONFLICT (key) DO NOTHING;
+    """)
+    
+    # Retrieve active configurations to update startup memory configs cache
+    rows = await conn.fetch("SELECT key, value FROM system_settings;")
+    for r in rows:
+        key, val = r["key"], r["value"]
+        if key in ["telemetry_interval", "log_retention"]:
+            app_settings[key] = int(val)
+        else:
+            app_settings[key] = val
+    logger.info(f"Loaded config settings registry cache: {app_settings}")
+
+    # Ensure system_monitors has 'enabled' and 'category' columns
+    try:
+        await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT TRUE;")
+        await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS category VARCHAR(64) DEFAULT 'General';")
+        logger.info("Migrated system_monitors database schema: enabled and category columns verified.")
+    except Exception as mig_err:
+        logger.warning(f"Error checking system_monitors columns migration: {mig_err}")
+
+    # Clean up duplicate/misspelled lowercase proxmox definitions from system_monitors
+    try:
+        await conn.execute("DELETE FROM system_monitors WHERE name = 'proxmox';")
+        logger.info("Cleaned up duplicate/misspelled proxmox monitor definitions.")
+    except Exception as clean_err:
+        logger.warning(f"Error cleaning up proxmox monitor definitions: {clean_err}")
+
+    # Create dashboard_config table
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS dashboard_config (
+                key VARCHAR(64) PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+        """)
+        logger.info("dashboard_config table verified.")
+    except Exception as db_err:
+        logger.warning(f"Error establishing dashboard_config table: {db_err}")
+
+    # Create notification_channels table
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS notification_channels (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                type VARCHAR(32) NOT NULL,
+                config JSONB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        logger.info("notification_channels table verified.")
+    except Exception as nc_err:
+        logger.warning(f"Error establishing notification_channels table: {nc_err}")
+
+        # Create alert_rules table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS alert_rules (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                rules_json JSONB NOT NULL,
+                channel_ids INT[] NOT NULL,
+                enabled BOOLEAN DEFAULT TRUE,
+                status VARCHAR(32) DEFAULT 'normal',
+                last_fired TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                target_type VARCHAR(64) DEFAULT 'all',
+                monitors_list INT[] DEFAULT '{}'::INT[]
+            );
+        """)
+        logger.info("alert_rules table verified.")
+    except Exception as ar_err:
+        logger.warning(f"Error establishing alert_rules table: {ar_err}")
+
+    try:
+        await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_type VARCHAR(64) DEFAULT 'all';")
+        await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS monitors_list INT[] DEFAULT '{}'::INT[];")
+        await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_groups INT[] DEFAULT '{}'::INT[];")
+        await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_groups_operator VARCHAR(10) DEFAULT 'any';")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS monitor_groups (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(64) UNIQUE NOT NULL
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS monitor_group_map (
+                monitor_id INT NOT NULL REFERENCES system_monitors(id) ON DELETE CASCADE,
+                group_id INT NOT NULL REFERENCES monitor_groups(id) ON DELETE CASCADE,
+                PRIMARY KEY (monitor_id, group_id)
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS active_alerts (
+                rule_id INT NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
+                monitor_id INT NOT NULL REFERENCES system_monitors(id) ON DELETE CASCADE,
+                fired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (rule_id, monitor_id)
+            );
+        """)
+        logger.info("active_alerts and monitor_groups/map schemas and migrations verified.")
+    except Exception as mig_err:
+        logger.warning(f"Error executing alarm router migrations: {mig_err}")
+
+    # Create hosts table and sync host_id foreign key constraint
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS hosts (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                target VARCHAR(255) NOT NULL,
+                ping_enabled BOOLEAN DEFAULT FALSE,
+                http_enabled BOOLEAN DEFAULT FALSE,
+                https_enabled BOOLEAN DEFAULT FALSE,
+                ssl_enabled BOOLEAN DEFAULT FALSE,
+                port_enabled BOOLEAN DEFAULT FALSE,
+                port_number INT,
+                polling_interval INT DEFAULT 3,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await conn.execute("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS polling_interval INT DEFAULT 3;")
+        await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS host_id INT REFERENCES hosts(id) ON DELETE CASCADE;")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs (timestamp);")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_system_audits_timestamp ON system_audits (timestamp);")
+        logger.info("hosts database schema, indexes, and relationships verified.")
+    except Exception as hosts_err:
+        logger.warning(f"Error establishing hosts and schemas: {hosts_err}")
+
+    # Rename Plex monitors to distinguish SSL and Ping metrics
+    try:
+        await conn.execute("UPDATE system_monitors SET name = 'Plex SSL Status' WHERE LOWER(name) = 'plex' AND type = 'ssl';")
+        await conn.execute("UPDATE system_monitors SET name = 'Plex Ping Status' WHERE LOWER(name) = 'plex' AND type = 'ping';")
+        logger.info("Renamed Plex monitor targets to differentiate engines.")
+    except Exception as plex_err:
+        logger.warning(f"Error updating Plex monitor names: {plex_err}")
+
+    # Query built-in monitors to pre-register their entity states
+    try:
+        mon_rows = await conn.fetch("SELECT id, name, enabled FROM system_monitors;")
+        for m in mon_rows:
+            mid = m["id"]
+            mname = m["name"]
+            enabled = m["enabled"] if "enabled" in m else True
+            status_val = "unknown" if enabled else "disabled"
+            status_desc = "Unknown" if enabled else "Disabled"
+            status_type = "default" if enabled else "default"
+            status_color = "var(--text-secondary)" if enabled else "#6b7280"
+            status_icon = "activity" if enabled else "shield-off"
+            
+            entity_states[f"monitor-{mid}-status"] = {
+                "node_id": "monitors",
+                "entity_key": f"monitor-{mid}-status",
+                "name": f"{mname} Status",
+                "type": "sensor",
+                "value_type": "string",
+                "unit": "",
+                "value": status_val,
+                "status": status_desc,
+                "status_type": status_type,
+                "tags": "main",
+                "icon": status_icon,
+                "color": status_color
+            }
+            entity_states[f"monitor-{mid}-latency"] = {
+                "node_id": "monitors",
+                "entity_key": f"monitor-{mid}-latency",
+                "name": f"{mname} Latency",
+                "type": "sensor",
+                "value_type": "float",
+                "unit": "ms",
+                "value": 0.0,
+                "status": "Stable" if enabled else "Disabled",
+                "status_type": "stable" if enabled else "default",
+                "tags": "main",
+                "icon": "activity",
+                "color": "#3b82f6" if enabled else "#6b7280",
+                "graphic": "sparkline"
+            }
+    except Exception as e:
+        logger.error(f"Failed to pre-register monitor entities: {e}")
+
+    # Auto-provision "Main Monitor Host" and "Database Node" if not exist in hosts table
+    try:
+        host_exists = await conn.fetchrow("SELECT id FROM hosts WHERE target = '127.0.0.1';")
+        if not host_exists:
+            logger.info("Auto-provisioning default Core Monitor Host and PostgreSQL host...")
+            
+            # 1. Main Host
+            host_payload_main = HostPayload(
+                name="Core Monitor Host",
+                target="127.0.0.1",
+                ping_enabled=True,
+                http_enabled=False,
+                https_enabled=False,
+                ssl_enabled=False,
+                port_enabled=False,
+                port_number=None,
+                polling_interval=3
+            )
+            # Insert Core Host
+            host_id_main = await conn.fetchval(
+                """INSERT INTO hosts (name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval) 
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;""",
+                host_payload_main.name, host_payload_main.target, host_payload_main.ping_enabled,
+                host_payload_main.http_enabled, host_payload_main.https_enabled, host_payload_main.ssl_enabled,
+                host_payload_main.port_enabled, host_payload_main.port_number, host_payload_main.polling_interval
+            )
+            await sync_host_probers(conn, host_id_main, host_payload_main)
+
+            # 2. Database Server Host
+            host_payload_db = HostPayload(
+                name="PostgreSQL Database Node",
+                target="localhost",
+                ping_enabled=False,
+                http_enabled=False,
+                https_enabled=False,
+                ssl_enabled=False,
+                port_enabled=True,
+                port_number=5432,
+                polling_interval=5
+            )
+            host_id_db = await conn.fetchval(
+                """INSERT INTO hosts (name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval) 
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;""",
+                host_payload_db.name, host_payload_db.target, host_payload_db.ping_enabled,
+                host_payload_db.http_enabled, host_payload_db.https_enabled, host_payload_db.ssl_enabled,
+                host_payload_db.port_enabled, host_payload_db.port_number, host_payload_db.polling_interval
+            )
+            await sync_host_probers(conn, host_id_db, host_payload_db)
+            logger.info("Default hosts successfully auto-provisioned.")
+    except Exception as prov_err:
+        logger.error(f"Failed to auto-provision default hosts: {prov_err}")
+
+    tables = await conn.fetch("SELECT table_name FROM information_schema.tables WHERE table_schema='public';")
+    logger.info(f"Database schema verification complete. Tables: {[t['table_name'] for t in tables]}")
+
+# 1. DB Init Routine
 async def init_db_pool():
     global db_pool
     database_url = os.getenv("DATABASE_URL")
@@ -296,266 +552,35 @@ async def init_db_pool():
         try:
             db_pool = await asyncpg.create_pool(database_url)
             logger.info("Database connection pool established successfully.")
-            # Run quick tables diagnostics
             async with db_pool.acquire() as conn:
-                logger.info("Verifying database schema...")
-                # Initialize system_settings table and seed options
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS system_settings (
-                        key VARCHAR(64) PRIMARY KEY,
-                        value VARCHAR(255) NOT NULL
-                    );
-                """)
-                await conn.execute("""
-                    INSERT INTO system_settings (key, value) VALUES 
-                    ('telemetry_interval', '3'),
-                    ('log_retention', '7'),
-                    ('auto_prune_enabled', 'false'),
-                    ('timezone', 'UTC'),
-                    ('preshared_key', 'device_pin_12345'),
-                    ('theme', 'midnight'),
-                    ('layout_compact', 'false')
-                    ON CONFLICT (key) DO NOTHING;
-                """)
-                
-                # Retrieve active configurations to update startup memory configs cache
-                rows = await conn.fetch("SELECT key, value FROM system_settings;")
-                for r in rows:
-                    key, val = r["key"], r["value"]
-                    if key in ["telemetry_interval", "log_retention"]:
-                        app_settings[key] = int(val)
-                    else:
-                        app_settings[key] = val
-                logger.info(f"Loaded config settings registry cache: {app_settings}")
-
-                # Ensure system_monitors has 'enabled' and 'category' columns
-                try:
-                    await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT TRUE;")
-                    await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS category VARCHAR(64) DEFAULT 'General';")
-                    logger.info("Migrated system_monitors database schema: enabled and category columns verified.")
-                except Exception as mig_err:
-                    logger.warning(f"Error checking system_monitors columns migration: {mig_err}")
-
-                # Clean up duplicate/misspelled lowercase proxmox definitions from system_monitors
-                try:
-                    await conn.execute("DELETE FROM system_monitors WHERE name = 'proxmox';")
-                    logger.info("Cleaned up duplicate/misspelled proxmox monitor definitions.")
-                except Exception as clean_err:
-                    logger.warning(f"Error cleaning up proxmox monitor definitions: {clean_err}")
-
-                # Create dashboard_config table
-                try:
-                    await conn.execute("""
-                        CREATE TABLE IF NOT EXISTS dashboard_config (
-                            key VARCHAR(64) PRIMARY KEY,
-                            value TEXT NOT NULL
-                        );
-                    """)
-                    logger.info("dashboard_config table verified.")
-                except Exception as db_err:
-                    logger.warning(f"Error establishing dashboard_config table: {db_err}")
-
-                # Create notification_channels table
-                try:
-                    await conn.execute("""
-                        CREATE TABLE IF NOT EXISTS notification_channels (
-                            id SERIAL PRIMARY KEY,
-                            name VARCHAR(255) NOT NULL,
-                            type VARCHAR(32) NOT NULL,
-                            config JSONB NOT NULL,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        );
-                    """)
-                    logger.info("notification_channels table verified.")
-                except Exception as nc_err:
-                    logger.warning(f"Error establishing notification_channels table: {nc_err}")
-
-                    # Create alert_rules table
-                    await conn.execute("""
-                        CREATE TABLE IF NOT EXISTS alert_rules (
-                            id SERIAL PRIMARY KEY,
-                            name VARCHAR(255) NOT NULL,
-                            rules_json JSONB NOT NULL,
-                            channel_ids INT[] NOT NULL,
-                            enabled BOOLEAN DEFAULT TRUE,
-                            status VARCHAR(32) DEFAULT 'normal',
-                            last_fired TIMESTAMP,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            target_type VARCHAR(64) DEFAULT 'all',
-                            monitors_list INT[] DEFAULT '{}'::INT[]
-                        );
-                    """)
-                    logger.info("alert_rules table verified.")
-                except Exception as ar_err:
-                    logger.warning(f"Error establishing alert_rules table: {ar_err}")
-
-                try:
-                    await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_type VARCHAR(64) DEFAULT 'all';")
-                    await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS monitors_list INT[] DEFAULT '{}'::INT[];")
-                    await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_groups INT[] DEFAULT '{}'::INT[];")
-                    await conn.execute("ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS target_groups_operator VARCHAR(10) DEFAULT 'any';")
-                    await conn.execute("""
-                        CREATE TABLE IF NOT EXISTS monitor_groups (
-                            id SERIAL PRIMARY KEY,
-                            name VARCHAR(64) UNIQUE NOT NULL
-                        );
-                    """)
-                    await conn.execute("""
-                        CREATE TABLE IF NOT EXISTS monitor_group_map (
-                            monitor_id INT NOT NULL REFERENCES system_monitors(id) ON DELETE CASCADE,
-                            group_id INT NOT NULL REFERENCES monitor_groups(id) ON DELETE CASCADE,
-                            PRIMARY KEY (monitor_id, group_id)
-                        );
-                    """)
-                    await conn.execute("""
-                        CREATE TABLE IF NOT EXISTS active_alerts (
-                            rule_id INT NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
-                            monitor_id INT NOT NULL REFERENCES system_monitors(id) ON DELETE CASCADE,
-                            fired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            PRIMARY KEY (rule_id, monitor_id)
-                        );
-                    """)
-                    logger.info("active_alerts and monitor_groups/map schemas and migrations verified.")
-                except Exception as mig_err:
-                    logger.warning(f"Error executing alarm router migrations: {mig_err}")
-
-                # Create hosts table and sync host_id foreign key constraint
-                try:
-                    await conn.execute("""
-                        CREATE TABLE IF NOT EXISTS hosts (
-                            id SERIAL PRIMARY KEY,
-                            name VARCHAR(255) NOT NULL,
-                            target VARCHAR(255) NOT NULL,
-                            ping_enabled BOOLEAN DEFAULT FALSE,
-                            http_enabled BOOLEAN DEFAULT FALSE,
-                            https_enabled BOOLEAN DEFAULT FALSE,
-                            ssl_enabled BOOLEAN DEFAULT FALSE,
-                            port_enabled BOOLEAN DEFAULT FALSE,
-                            port_number INT,
-                            polling_interval INT DEFAULT 3,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        );
-                    """)
-                    await conn.execute("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS polling_interval INT DEFAULT 3;")
-                    await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS host_id INT REFERENCES hosts(id) ON DELETE CASCADE;")
-                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs (timestamp);")
-                    await conn.execute("CREATE INDEX IF NOT EXISTS idx_system_audits_timestamp ON system_audits (timestamp);")
-                    logger.info("hosts database schema, indexes, and relationships verified.")
-                except Exception as hosts_err:
-                    logger.warning(f"Error establishing hosts and schemas: {hosts_err}")
-
-                # Rename Plex monitors to distinguish SSL and Ping metrics
-                try:
-                    await conn.execute("UPDATE system_monitors SET name = 'Plex SSL Status' WHERE LOWER(name) = 'plex' AND type = 'ssl';")
-                    await conn.execute("UPDATE system_monitors SET name = 'Plex Ping Status' WHERE LOWER(name) = 'plex' AND type = 'ping';")
-                    logger.info("Renamed Plex monitor targets to differentiate engines.")
-                except Exception as plex_err:
-                    logger.warning(f"Error updating Plex monitor names: {plex_err}")
-
-                # Query built-in monitors to pre-register their entity states
-                try:
-                    mon_rows = await conn.fetch("SELECT id, name, enabled FROM system_monitors;")
-                    for m in mon_rows:
-                        mid = m["id"]
-                        mname = m["name"]
-                        enabled = m["enabled"] if "enabled" in m else True
-                        status_val = "unknown" if enabled else "disabled"
-                        status_desc = "Unknown" if enabled else "Disabled"
-                        status_type = "default" if enabled else "default"
-                        status_color = "var(--text-secondary)" if enabled else "#6b7280"
-                        status_icon = "activity" if enabled else "shield-off"
-                        
-                        entity_states[f"monitor-{mid}-status"] = {
-                            "node_id": "monitors",
-                            "entity_key": f"monitor-{mid}-status",
-                            "name": f"{mname} Status",
-                            "type": "sensor",
-                            "value_type": "string",
-                            "unit": "",
-                            "value": status_val,
-                            "status": status_desc,
-                            "status_type": status_type,
-                            "tags": "main",
-                            "icon": status_icon,
-                            "color": status_color
-                        }
-                        entity_states[f"monitor-{mid}-latency"] = {
-                            "node_id": "monitors",
-                            "entity_key": f"monitor-{mid}-latency",
-                            "name": f"{mname} Latency",
-                            "type": "sensor",
-                            "value_type": "float",
-                            "unit": "ms",
-                            "value": 0.0,
-                            "status": "Stable" if enabled else "Disabled",
-                            "status_type": "stable" if enabled else "default",
-                            "tags": "main",
-                            "icon": "activity",
-                            "color": "#3b82f6" if enabled else "#6b7280",
-                            "graphic": "sparkline"
-                        }
-                except Exception as e:
-                    logger.error(f"Failed to pre-register monitor entities: {e}")
-
-                # Auto-provision "Main Monitor Host" and "Database Node" if not exist in hosts table
-                try:
-                    host_exists = await conn.fetchrow("SELECT id FROM hosts WHERE target = '127.0.0.1';")
-                    if not host_exists:
-                        logger.info("Auto-provisioning default Core Monitor Host and PostgreSQL host...")
-                        
-                        # 1. Main Host
-                        host_payload_main = HostPayload(
-                            name="Core Monitor Host",
-                            target="127.0.0.1",
-                            ping_enabled=True,
-                            http_enabled=False,
-                            https_enabled=False,
-                            ssl_enabled=False,
-                            port_enabled=False,
-                            port_number=None,
-                            polling_interval=3
-                        )
-                        # Insert Core Host
-                        host_id_main = await conn.fetchval(
-                            """INSERT INTO hosts (name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval) 
-                               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;""",
-                            host_payload_main.name, host_payload_main.target, host_payload_main.ping_enabled,
-                            host_payload_main.http_enabled, host_payload_main.https_enabled, host_payload_main.ssl_enabled,
-                            host_payload_main.port_enabled, host_payload_main.port_number, host_payload_main.polling_interval
-                        )
-                        await sync_host_probers(conn, host_id_main, host_payload_main)
-
-                        # 2. Database Server Host
-                        host_payload_db = HostPayload(
-                            name="PostgreSQL Database Node",
-                            target="localhost",
-                            ping_enabled=False,
-                            http_enabled=False,
-                            https_enabled=False,
-                            ssl_enabled=False,
-                            port_enabled=True,
-                            port_number=5432,
-                            polling_interval=5
-                        )
-                        host_id_db = await conn.fetchval(
-                            """INSERT INTO hosts (name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval) 
-                               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;""",
-                            host_payload_db.name, host_payload_db.target, host_payload_db.ping_enabled,
-                            host_payload_db.http_enabled, host_payload_db.https_enabled, host_payload_db.ssl_enabled,
-                            host_payload_db.port_enabled, host_payload_db.port_number, host_payload_db.polling_interval
-                        )
-                        await sync_host_probers(conn, host_id_db, host_payload_db)
-                        logger.info("Default hosts successfully auto-provisioned.")
-                except Exception as prov_err:
-                    logger.error(f"Failed to auto-provision default hosts: {prov_err}")
-
-                tables = await conn.fetch("SELECT table_name FROM information_schema.tables WHERE table_schema='public';")
-                logger.info(f"Database schema verification complete. Tables: {[t['table_name'] for t in tables]}")
+                await setup_database_schema(conn)
             return
         except Exception as e:
             logger.warning(f"Database setup wait loop (attempt {attempt+1}/10)... Error: {e}")
             await asyncio.sleep(3)
     logger.error("Could not coordinate Database connection, proceeding in standalone mode.")
+    asyncio.create_task(db_reconnection_watchdog())
+
+async def db_reconnection_watchdog():
+    global db_pool
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        return
+    while True:
+        if not db_pool:
+            try:
+                logger.info("Reconnection watchdog: Attempting to connect to Database...")
+                db_pool = await asyncpg.create_pool(database_url)
+                logger.info("Reconnection watchdog: Database connection pool established successfully.")
+                async with db_pool.acquire() as conn:
+                    await setup_database_schema(conn)
+                logger.info("Reconnection watchdog: Database self-healing sync complete.")
+                break
+            except Exception as e:
+                logger.warning(f"Reconnection watchdog connection attempt failed: {e}")
+        else:
+            break
+        await asyncio.sleep(15)
 
 def evaluate_condition(entity_key: str, operator: str, target_val: str) -> bool:
     state = entity_states.get(entity_key)
