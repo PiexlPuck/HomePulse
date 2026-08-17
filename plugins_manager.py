@@ -59,6 +59,42 @@ async def db_migration_and_startup():
                         );
                     """)
                     logger.info("Database table 'plugins' verified successfully.")
+                    
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS plugin_entity_states (
+                            entity_key VARCHAR(255) PRIMARY KEY,
+                            plugin_id VARCHAR(64) REFERENCES plugins(id) ON DELETE CASCADE,
+                            node_id VARCHAR(64) NOT NULL,
+                            name VARCHAR(255) NOT NULL,
+                            type VARCHAR(64) NOT NULL,
+                            value VARCHAR(255),
+                            value_type VARCHAR(64) DEFAULT 'string',
+                            attributes JSONB DEFAULT '{}'::JSONB,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    logger.info("Database table 'plugin_entity_states' verified successfully.")
+
+                    # Load saved entity states from DB
+                    rows = await conn.fetch("SELECT * FROM plugin_entity_states;")
+                    for r in rows:
+                        if entity_states is not None:
+                            try:
+                                attrs = r["attributes"]
+                                if isinstance(attrs, str):
+                                    attrs = json.loads(attrs)
+                                entity_states[r["entity_key"]] = {
+                                    "node_id": r["node_id"],
+                                    "entity_key": r["entity_key"],
+                                    "name": r["name"],
+                                    "type": r["type"],
+                                    "value": r["value"],
+                                    "value_type": r["value_type"],
+                                    "attributes": attrs or {}
+                                }
+                            except Exception as parse_err:
+                                logger.error(f"Error parsing entity state attributes for {r['entity_key']}: {parse_err}")
+                    logger.info(f"Restored {len(rows)} plugin entity states from DB.")
                 
                 # Start all enabled plugins
                 await start_all_enabled_plugins()
@@ -192,6 +228,20 @@ async def start_plugin(plugin_id: str, config: Any):
                     "status": "running"
                 }
             }
+            if db_pool:
+                try:
+                    attrs_json = json.dumps(entity_states[entity_key]["attributes"])
+                    async with db_pool.acquire() as conn:
+                        await conn.execute("""
+                            INSERT INTO plugin_entity_states (entity_key, plugin_id, node_id, name, type, value, value_type, attributes, updated_at)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                            ON CONFLICT (entity_key) DO UPDATE SET
+                                value = EXCLUDED.value,
+                                attributes = EXCLUDED.attributes,
+                                updated_at = NOW();
+                        """, entity_key, plugin_id, entity_states[entity_key]["node_id"], entity_states[entity_key]["name"], entity_states[entity_key]["type"], "ON", "string", attrs_json)
+                except Exception as dberr:
+                    logger.error(f"Error saving plugin status to DB: {dberr}")
             if ws_manager is not None:
                 await ws_manager.broadcast({
                     "event": "entity_update",
@@ -201,6 +251,55 @@ async def start_plugin(plugin_id: str, config: Any):
     except Exception as e:
         logger.error(f"Exception starting plugin {plugin_id}: {e}")
         return False
+
+async def stop_or_idle_plugin_entities(plugin_id: str, status_val: str = "stopped"):
+    """Turns status and binary sensor entities of a stopped plugin to stopped/idle in cache + database, leaving telemetry intact."""
+    if entity_states is not None:
+        for entity_key, ent in list(entity_states.items()):
+            # Check if this entity is related to the plugin
+            if ent.get("node_id") == plugin_id or ent.get("node_id") == f"plugin-{plugin_id}" or entity_key.startswith(f"plugin-{plugin_id}-"):
+                if entity_key == f"plugin-{plugin_id}-status":
+                    ent["value"] = "OFF"
+                    if "attributes" not in ent or ent["attributes"] is None:
+                        ent["attributes"] = {}
+                    ent["attributes"]["status"] = status_val
+                else:
+                    # For sub-probers, if it represents status/state (binary_sensor or name/key contains status/state)
+                    # we modify its value to idle/stopped
+                    ent_type = ent.get("type", "sensor")
+                    ent_key_lower = entity_key.lower()
+                    ent_name_lower = ent.get("name", "").lower()
+                    
+                    if ent_type == "binary_sensor" or "status" in ent_key_lower or "status" in ent_name_lower or "state" in ent_key_lower or "state" in ent_name_lower:
+                        # Change value (like ONLINE / OK) to stopped or idle
+                        ent["value"] = status_val
+                        
+                    if "attributes" not in ent or ent["attributes"] is None:
+                        ent["attributes"] = {}
+                    ent["attributes"]["status"] = status_val
+                
+                # Persist to database
+                if db_pool:
+                    try:
+                        attrs_json = json.dumps(ent.get("attributes", {}))
+                        async with db_pool.acquire() as conn:
+                            await conn.execute("""
+                                INSERT INTO plugin_entity_states (entity_key, plugin_id, node_id, name, type, value, value_type, attributes, updated_at)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                                ON CONFLICT (entity_key) DO UPDATE SET
+                                    value = EXCLUDED.value,
+                                    attributes = EXCLUDED.attributes,
+                                    updated_at = NOW();
+                            """, entity_key, plugin_id, ent["node_id"], ent["name"], ent["type"], str(ent["value"]), ent.get("value_type", "string"), attrs_json)
+                    except Exception as dberr:
+                        logger.error(f"Error saving updated entity state for {entity_key}: {dberr}")
+                
+                # Broadcast through WebSocket
+                if ws_manager is not None:
+                    await ws_manager.broadcast({
+                        "event": "entity_update",
+                        "data": ent
+                    })
 
 async def stop_plugin(plugin_id: str):
     proc = active_processes.pop(plugin_id, None)
@@ -219,16 +318,8 @@ async def stop_plugin(plugin_id: str):
         except Exception as e:
             logger.error(f"Error stopping plugin process {plugin_id}: {e}")
             
-    # Update state to OFF
-    entity_key = f"plugin-{plugin_id}-status"
-    if entity_states is not None and entity_key in entity_states:
-        entity_states[entity_key]["value"] = "OFF"
-        entity_states[entity_key]["attributes"]["status"] = "stopped"
-        if ws_manager is not None:
-            await ws_manager.broadcast({
-                "event": "entity_update",
-                "data": entity_states[entity_key]
-            })
+    # Update state of all plugin entities to stopped
+    await stop_or_idle_plugin_entities(plugin_id, "stopped")
 
 async def plugins_watchdog_loop():
     while True:
@@ -249,12 +340,25 @@ async def plugins_watchdog_loop():
                     
                     # Update status
                     active_processes.pop(plugin_id, None)
+                    await stop_or_idle_plugin_entities(plugin_id, "crashed")
+                    
+                    # Add extra crash details to the status entity
                     entity_key = f"plugin-{plugin_id}-status"
                     if entity_states is not None and entity_key in entity_states:
-                        entity_states[entity_key]["value"] = "OFF"
-                        entity_states[entity_key]["attributes"]["status"] = "crashed"
                         entity_states[entity_key]["attributes"]["exit_code"] = exit_code
-                        entity_states[entity_key]["attributes"]["error"] = stderr_data[-200:] # Last 200 chars
+                        entity_states[entity_key]["attributes"]["error"] = stderr_data[-200:]
+                        if db_pool:
+                            try:
+                                attrs_json = json.dumps(entity_states[entity_key]["attributes"])
+                                async with db_pool.acquire() as conn:
+                                    await conn.execute("""
+                                        UPDATE plugin_entity_states 
+                                        SET attributes = $1, value = 'OFF'
+                                        WHERE entity_key = $2;
+                                    """, attrs_json, entity_key)
+                            except Exception as dberr:
+                                logger.error(f"Error saving crash details: {dberr}")
+                                
                         if ws_manager is not None:
                             await ws_manager.broadcast({
                                 "event": "entity_update",
@@ -551,16 +655,19 @@ async def uninstall_plugin(plugin_id: str):
     if db_pool:
         async with db_pool.acquire() as conn:
             await conn.execute("DELETE FROM plugins WHERE id = $1;", plugin_id)
+            await conn.execute("DELETE FROM plugin_entity_states WHERE plugin_id = $1;", plugin_id)
             
-    # Remove entity state
-    entity_key = f"plugin-{plugin_id}-status"
+    # Remove entity states from cache if we have any
     if entity_states is not None:
-        entity_states.pop(entity_key, None)
-        if ws_manager is not None:
-            await ws_manager.broadcast({
-                "event": "entity_update",
-                "data": {"entity_key": entity_key, "deleted": True}
-            })
+        for entity_key in list(entity_states.keys()):
+            ent = entity_states[entity_key]
+            if ent.get("node_id") == plugin_id or ent.get("node_id") == f"plugin-{plugin_id}" or entity_key.startswith(f"plugin-{plugin_id}-"):
+                entity_states.pop(entity_key, None)
+                if ws_manager is not None:
+                    await ws_manager.broadcast({
+                        "event": "entity_update",
+                        "data": {"entity_key": entity_key, "deleted": True}
+                    })
             
     return {"status": "success", "message": f"Plugin {plugin_id} uninstalled successfully."}
 
@@ -583,6 +690,38 @@ async def gateway_post_state(payload: Dict[str, Any]):
             "value_type": payload.get("value_type", "string"),
             "attributes": payload.get("attributes", {})
         }
+        
+        plugin_id = payload.get("node_id")
+        if db_pool and plugin_id:
+            try:
+                attrs_json = json.dumps(payload.get("attributes", {}))
+                async with db_pool.acquire() as conn:
+                    await conn.execute("""
+                        INSERT INTO plugin_entity_states (entity_key, plugin_id, node_id, name, type, value, value_type, attributes, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                        ON CONFLICT (entity_key) DO UPDATE SET
+                            value = EXCLUDED.value,
+                            attributes = EXCLUDED.attributes,
+                            updated_at = NOW();
+                    """, entity_key, plugin_id, payload.get("node_id"), payload.get("name"), payload.get("type"), str(payload.get("value")), payload.get("value_type", "string"), attrs_json)
+                    
+                    # Autodetect historic telemetry: if value is numeric, insert it to telemetry_logs
+                    val_str = str(payload.get("value"))
+                    is_numeric = False
+                    try:
+                        float(val_str)
+                        is_numeric = True
+                    except ValueError:
+                        pass
+                        
+                    if is_numeric:
+                        await conn.execute(
+                            "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
+                            payload.get("node_id"), entity_key, val_str
+                        )
+            except Exception as dberr:
+                logger.error(f"Error saving plugin entity state to DB: {dberr}")
+                
         if ws_manager is not None:
             await ws_manager.broadcast({
                 "event": "entity_update",
@@ -643,14 +782,6 @@ async def kill_plugin_payload(plugin_id: str):
         async with db_pool.acquire() as conn:
             await conn.execute("UPDATE plugins SET enabled = FALSE WHERE id = $1;", plugin_id)
             
-    # Update state to OFF in entity states
-    entity_key = f"plugin-{plugin_id}-status"
-    if entity_states is not None and entity_key in entity_states:
-        entity_states[entity_key]["value"] = "OFF"
-        entity_states[entity_key]["attributes"]["status"] = "stopped"
-        if ws_manager is not None:
-            await ws_manager.broadcast({
-                "event": "entity_update",
-                "data": entity_states[entity_key]
-            })
+    # Update state of all plugin entities to stopped
+    await stop_or_idle_plugin_entities(plugin_id, "stopped")
     return {"status": "success", "message": f"Plugin {plugin_id} force-terminated."}

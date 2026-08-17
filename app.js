@@ -6494,9 +6494,32 @@ window.openHostDetail = async function (hostId) {
           // Get extra details from attributes if present
           let detailsHtml = '';
           if (m.attributes && Object.keys(m.attributes).length > 0) {
+            const formatBytes = (bytes) => {
+              if (bytes === 0) return '0 B';
+              if (!bytes || isNaN(bytes)) return bytes;
+              const k = 1024;
+              const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+              let i = Math.floor(Math.log(bytes) / Math.log(k));
+              if (i < 0) i = 0;
+              if (i >= sizes.length) i = sizes.length - 1;
+              return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            };
+
             detailsHtml = Object.keys(m.attributes)
               .filter(attr => attr !== 'status' && attr !== 'version')
-              .map(attr => `<div>${attr}: <span style="color:#fff;">${JSON.stringify(m.attributes[attr])}</span></div>`)
+              .map(attr => {
+                let val = m.attributes[attr];
+                const keyLower = attr.toLowerCase();
+                // Format sizes/bytes to human readable form
+                if (typeof val === 'number' && (keyLower.includes('bytes') || keyLower === 'size' || keyLower.includes('_size') || keyLower.includes('capacity') || keyLower.includes('bandwidth'))) {
+                  val = formatBytes(val);
+                } else if (typeof val === 'object' && val !== null) {
+                  val = `<pre style="margin: 2px 0 0 0; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.65rem; color: #fff; background: rgba(0,0,0,0.22); padding: 5px; border-radius: 4px; line-height: 1.3;">${JSON.stringify(val, null, 2)}</pre>`;
+                } else {
+                  val = `<span style="color:#fff; word-break: break-all;">${val}</span>`;
+                }
+                return `<div style="margin-top: 4px; line-height: 1.4;">${attr}: ${typeof val === 'string' && val.startsWith('<pre') ? val : val}</div>`;
+              })
               .join('');
           }
 
