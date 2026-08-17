@@ -21,6 +21,30 @@ print_header() {
     echo -e "${BLUE}===============================================${NC}"
 }
 
+# Ensure .env file exists and contains secure configurations
+init_env_file() {
+    if [ ! -f ".env" ]; then
+        echo -e "${YELLOW}Creating secure .env file with auto-generated passwords...${NC}"
+        local db_pass jwt_secret
+        if command -v python3 &>/dev/null; then
+            db_pass=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))")
+            jwt_secret=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+        else
+            db_pass=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 20)
+            jwt_secret=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 48)
+        fi
+
+        cat <<EOF > .env
+# HomePulse stack environment configurations
+DB_PASSWORD=${db_pass}
+JWT_SECRET_KEY=${jwt_secret}
+# Optional path override for plugins directory persistence
+PLUGINS_DIR=./plugins
+EOF
+        echo -e "${GREEN}Created .env file successfully.${NC}"
+    fi
+}
+
 # Check main system requirements
 check_dependencies() {
     if ! command -v git &> /dev/null; then
@@ -31,6 +55,7 @@ check_dependencies() {
         echo -e "${RED}Error: Docker is not installed. Please install Docker first.${NC}"
         exit 1
     fi
+    init_env_file
 }
 
 # Check for updates by fetching and comparing commit hashes
