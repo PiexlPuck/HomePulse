@@ -6884,7 +6884,7 @@ async function loadInstalledPlugins(forceFetch = false) {
 
     if (layout === 'grid') {
       return `
-        <div style="background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+        <div class="plugin-card" style="background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
               <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${p.name} <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">(v${p.version})</span></h4>
@@ -6903,7 +6903,7 @@ async function loadInstalledPlugins(forceFetch = false) {
 
           <details style="border-top:1px dashed var(--border-soft); padding-top:12px; margin-top:8px;">
             <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600;">Configuration setup & credentials</summary>
-            <div style="padding-top:12px; display:flex; flex-direction:column; gap:4px; max-width: 500px;">
+            <div style="padding-top:12px; display:flex; flex-direction:column; gap:4px; max-width: 100%;">
               ${configFieldsHTML}
               <div style="display:flex; gap:10px; margin-top:8px; flex-wrap:wrap;">
                 ${updateBtnHTML}
