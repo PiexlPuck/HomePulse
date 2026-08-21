@@ -39,7 +39,7 @@
           <span>Host Manager</span>
         </div>
       </a>
-      <a href="#" class="nav-item" id="nav-probes">
+      <a href="#" class="nav-item" id="nav-probes" style="display: none;">
         <div class="nav-item-left">
           <i data-lucide="shield-check"></i>
           <span>Service Monitors</span>
@@ -265,6 +265,20 @@
                 <span class="checkbox-title">Enable Compact Grid Layout</span>
                 <span class="checkbox-desc">Decompress card margins and compress text spacing for high density
                   screens.</span>
+              </div>
+            </div>
+
+            <!-- Service Monitors Toggle -->
+            <div class="settings-group checkbox-group">
+              <label class="switch">
+                <input type="checkbox" id="setting-show-service-monitors">
+                <span class="slider-checkbox round"></span>
+              </label>
+              <div class="checkbox-label-area">
+                <span class="checkbox-title">Show Service Monitors Page</span>
+                <span class="checkbox-desc">Show or hide the Service Monitors tab from the sidebar menu.</span>
+                <small style="color: var(--text-secondary); display: block; margin-top: 2px; font-size: 0.72rem;">This
+                  is a feature that might be removed in the future.</small>
               </div>
             </div>
 
@@ -632,7 +646,7 @@
 
     <!-- Uptime History View Panel -->
     <div class="settings-view hide" id="uptime-history-view">
-      <div class="settings-card" style="max-width: 1000px;">
+      <div class="settings-card">
         <div class="settings-header"
           style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
@@ -778,7 +792,7 @@
 
     <!-- Host Manager View Panel -->
     <div class="settings-view hide" id="hosts-view">
-      <div class="settings-card" style="max-width: 1000px;">
+      <div class="settings-card">
         <div class="settings-header"
           style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
@@ -835,7 +849,7 @@
 
     <!-- Host Detail View Panel (Full Page) -->
     <div class="settings-view hide" id="host-detail-view">
-      <div class="settings-card" style="max-width: 1000px; padding: 24px;">
+      <div class="settings-card" style="padding: 24px;">
         <div class="settings-header"
           style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-soft); padding-bottom: 16px; margin-bottom: 20px;">
           <div>
@@ -932,7 +946,7 @@
     <!-- Plugins Integration View Panel -->
     <div class="settings-view hide" id="plugins-view">
       <div class="settings-card"
-        style="max-width: 1200px; padding: 24px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; box-sizing: border-box;">
+        style="padding: 24px; background: rgba(30, 27, 24, 0.45); backdrop-filter: blur(16px); border: 1px solid var(--border-soft); border-radius: 12px; box-sizing: border-box;">
         <div class="settings-header"
           style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-soft); padding-bottom: 16px; margin-bottom: 20px;">
           <div>
@@ -1752,77 +1766,91 @@
         <!-- Alert Rule Modal Overlay -->
         <div class="modal-overlay" id="rule-modal" style="display: none;">
           <div class="modal-content"
-            style="max-width: 680px; width: 90%; display: flex; flex-direction: column; max-height: 90vh;">
+            style="max-width: 680px; width: 90%; display: flex; flex-direction: column; max-height: 95vh;">
             <div class="modal-header">
               <h3 id="rule-modal-title">Configure Alert Rule</h3>
               <button class="modal-close-btn" onclick="closeModal('rule-modal')">&times;</button>
             </div>
             <div class="modal-body"
               style="display: flex; flex-direction: column; gap: 14px; padding: 16px; overflow-y: auto; flex: 1;">
+
               <div class="modal-group">
                 <label for="rule-name">Rule Name</label>
                 <input type="text" class="modal-input" id="rule-name"
                   placeholder="e.g. Cabinet CPU Thermal Threshold Alert">
               </div>
 
-              <!-- Target selection group -->
-              <div class="modal-group">
-                <label for="rule-target-type">Target Monitors Group</label>
-                <select id="rule-target-type" class="modal-input" onchange="onRuleTargetTypeChange(this.value)"
-                  style="background:#221d16; color:#f0e6d3; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; width:100%;">
-                  <option value="all">All Monitors</option>
-                  <option value="type_ping">All Ping Probes</option>
-                  <option value="type_http">All HTTP Probes</option>
-                  <option value="type_ssl">All SSL Probes</option>
-                  <option value="type_port">All Port Probes</option>
-                  <option value="custom">Specific Monitors list (Inclusion)</option>
-                  <option value="custom_groups">Specific Target Groups (Inclusion)</option>
-                </select>
-              </div>
+              <!-- Rule Trigger Settings Section -->
+              <div
+                style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+                <label style="margin: 0; font-size: 0.85rem; font-weight: 700; color: var(--text-primary);">1. Trigger
+                  Conditions</label>
 
-              <!-- List of groups for target group matching -->
-              <div class="modal-group" id="rule-groups-selection-wrapper"
-                style="display: flex; flex-direction: column; gap: 6px; display: none;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                  <label style="margin: 0;">Select Target Groups</label>
-                  <select id="rule-groups-operator"
-                    style="background: #25221d; color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 6px; font-size: 0.72rem; outline: none; cursor: pointer;">
-                    <option value="any">Match ANY selected (OR)</option>
-                    <option value="all">Match ALL selected (AND)</option>
+                <!-- Offline Trigger -->
+                <div
+                  style="display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-primary);">
+                  <input type="checkbox" id="rule-trigger-offline" style="accent-color: var(--accent-orange);" checked>
+                  <span>Alert if Target is Offline / Unknown / Faulted</span>
+                </div>
+
+                <!-- Latency Trigger -->
+                <div
+                  style="display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-primary); flex-wrap: wrap;">
+                  <input type="checkbox" id="rule-trigger-latency" style="accent-color: var(--accent-orange);">
+                  <span>Alert if Target Latency is over</span>
+                  <input type="number" id="rule-trigger-latency-ms" value="100"
+                    style="width: 70px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 6px; color: #fff; text-align: center; outline: none;">
+                  <span>ms</span>
+                </div>
+
+                <!-- Custom Trigger -->
+                <div
+                  style="display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-primary); flex-wrap: wrap;">
+                  <input type="checkbox" id="rule-trigger-custom" style="accent-color: var(--accent-orange);">
+                  <span>Alert if value</span>
+                  <select id="rule-trigger-custom-op"
+                    style="background:#221d16; color:#f0e6d3; border:1px solid var(--border-soft); border-radius:4px; padding:2px 6px; outline:none; cursor:pointer;">
+                    <option value="==">is equal to</option>
+                    <option value="!=">is not equal to</option>
+                    <option value="contains">contains</option>
                   </select>
+                  <input type="text" id="rule-trigger-custom-val" placeholder="e.g. FAULTED"
+                    style="width: 120px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 6px; color: #fff; outline:none;">
                 </div>
-                <div id="rule-groups-selection-list"
-                  style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; background: #221d16; display: flex; flex-direction: column; gap: 6px;">
+              </div>
+
+              <!-- Multi-Sensor Targets Selector -->
+              <div
+                style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+                <div
+                  style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                  <label style="margin: 0; font-size: 0.85rem; font-weight: 700; color: var(--text-primary);">2. Mapped
+                    Alert Targets (Checks & Plugins)</label>
+                  <input type="text" id="rule-target-search" oninput="filterRuleTargetsSelector()"
+                    placeholder="Search targets..."
+                    style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 8px; color: #fff; font-size: 0.72rem; outline: none; width: 150px;">
+                </div>
+                <div id="rule-targets-selector-list"
+                  style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; background: #221d16; display: flex; flex-direction: column; gap: 6px;">
                   <!-- Filled dynamically by JS -->
                 </div>
               </div>
 
-              <!-- List of monitors for inclusion/exclusion -->
-              <div class="modal-group" id="rule-monitors-selection-wrapper"
-                style="display: flex; flex-direction: column; gap: 6px;">
-                <label id="rule-monitors-selection-label">Exclude Specific Monitors</label>
-                <div id="rule-monitors-selection-list"
-                  style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; background: #221d16; display: flex; flex-direction: column; gap: 6px;">
-                  <!-- Filled dynamically by JS -->
-                </div>
-              </div>
-
-              <!-- Rule Conditions Visual Editor Builder -->
-              <div class="modal-group" style="display: flex; flex-direction: column; gap: 6px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <label style="margin: 0;">Trigger Conditions</label>
-                  <button class="btn btn-secondary" onclick="addVisualRuleConditionRow()"
-                    style="font-size: 0.68rem; padding: 2px 8px; cursor: pointer;">+ Add Condition</button>
-                </div>
-                <div id="rule-conditions-editor-container"
-                  style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
-                  <!-- Condition lines are appended here -->
-                </div>
+              <!-- Cooldown Settings Group -->
+              <div class="modal-group">
+                <label for="rule-cooldown">3. Notification Cooldown Interval</label>
+                <select id="rule-cooldown" class="modal-input"
+                  style="background:#221d16; color:#f0e6d3; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; width:100%;">
+                  <option value="1m">1 Minute</option>
+                  <option value="5m" selected>5 Minutes</option>
+                  <option value="1h">1 Hour</option>
+                  <option value="24h">24 Hours</option>
+                </select>
               </div>
 
               <!-- Channels Association checkboxes -->
               <div class="modal-group">
-                <label>Dispatch Notifications via Channels</label>
+                <label>4. Dispatch Notifications via Channels</label>
                 <div id="rule-channels-list-container"
                   style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px; max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px 12px; border-radius: 6px; background: #221d16;">
                   <!-- Channels select checkboxes render here -->

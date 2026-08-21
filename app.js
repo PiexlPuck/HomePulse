@@ -1029,11 +1029,13 @@ function handleIncomingWSEvent(data) {
     if (ent && ent.entity_key) {
       cachedEntities[ent.entity_key] = ent;
       const pluginsView = document.getElementById('plugins-view');
-      if (pluginsView && !pluginsView.classList.contains('hidden')) {
+      if (pluginsView && !pluginsView.classList.contains('hide')) {
+        console.log("WebSocket event entity_update: refreshing installed plugins list.");
         loadInstalledPlugins();
       }
       const hostsView = document.getElementById('hosts-view');
-      if (hostsView && !hostsView.classList.contains('hidden')) {
+      if (hostsView && !hostsView.classList.contains('hide')) {
+        console.log("WebSocket event entity_update: refreshing hosts manager view.");
         loadHosts();
       }
     }
@@ -1093,6 +1095,15 @@ function applyGlobalSettings(data) {
   if (compactEl) {
     compactEl.checked = (data.layout_compact === 'true');
     document.body.classList.toggle('layout-compact', compactEl.checked);
+  }
+
+  const monitorsToggleEl = document.getElementById('setting-show-service-monitors');
+  if (monitorsToggleEl && data.show_service_monitors !== undefined) {
+    monitorsToggleEl.checked = (data.show_service_monitors === 'true');
+    const navProbes = document.getElementById('nav-probes');
+    if (navProbes) {
+      navProbes.style.display = (data.show_service_monitors === 'true') ? '' : 'none';
+    }
   }
 
   if (data.theme) {
@@ -1948,6 +1959,17 @@ function initSettingsControls() {
     });
   }
 
+  // Show service monitors toggle
+  const monitorsToggleEl = document.getElementById('setting-show-service-monitors');
+  if (monitorsToggleEl) {
+    monitorsToggleEl.addEventListener('change', () => {
+      const navProbes = document.getElementById('nav-probes');
+      if (navProbes) {
+        navProbes.style.display = monitorsToggleEl.checked ? '' : 'none';
+      }
+    });
+  }
+
   // Save settings button
   const saveBtn = document.getElementById('btn-save-settings');
   if (saveBtn) {
@@ -1957,7 +1979,8 @@ function initSettingsControls() {
         timezone: document.getElementById('setting-timezone')?.value || 'UTC',
         preshared_key: document.getElementById('setting-psk')?.value || 'device_pin_12345',
         theme: document.querySelector('.theme-btn.active')?.getAttribute('data-theme') || 'midnight',
-        layout_compact: String(document.getElementById('setting-compact')?.checked || false)
+        layout_compact: String(document.getElementById('setting-compact')?.checked || false),
+        show_service_monitors: String(document.getElementById('setting-show-service-monitors')?.checked || false)
       };
 
       // Preserve current background telemetry settings if they exist
@@ -4769,7 +4792,9 @@ async function loadAlertRules() {
     listEl.innerHTML = data.map(rule => {
       // Build Target description
       let targetDesc = '';
-      if (rule.target_type === 'all') {
+      if (rule.targets_list && rule.targets_list.length > 0) {
+        targetDesc = `${rule.targets_list.length} Targets`;
+      } else if (rule.target_type === 'all') {
         targetDesc = 'All Monitors';
       } else if (rule.target_type.startsWith('type_')) {
         targetDesc = `All ${rule.target_type.slice(5).toUpperCase()} Probes`;
@@ -4808,7 +4833,7 @@ async function loadAlertRules() {
             <div>
               <h4 style="font-size:0.85rem; font-weight:700; color:var(--text-primary); margin:0 0 4px 0;">${rule.name}</h4>
               <div style="font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">
-                ${condsText}
+                ${condsText} <span style="color:var(--text-muted); font-size:0.7rem; margin-left: 8px;">(Cooldown: ${rule.cooldown_interval || '5m'})</span>
               </div>
             </div>
             <div style="display:flex; align-items:center; gap:12px;">
@@ -5101,21 +5126,21 @@ async function openRuleComposer(rid = null) {
   const modal = document.getElementById('rule-modal');
   const titleEl = document.getElementById('rule-modal-title');
   const nameInput = document.getElementById('rule-name');
-  const targetTypeSelect = document.getElementById('rule-target-type');
-  const conditionsContainer = document.getElementById('rule-conditions-editor-container');
-  const channelsContainer = document.getElementById('rule-channels-list-container');
-  const monitorsListContainer = document.getElementById('rule-monitors-selection-list');
 
   if (!modal) return;
 
-  conditionsContainer.innerHTML = '';
-  if (targetTypeSelect) {
-    targetTypeSelect.value = 'all';
-    onRuleTargetTypeChange('all');
-  }
-  if (monitorsListContainer) monitorsListContainer.innerHTML = '';
+  // Reset inputs to default values
+  nameInput.value = '';
+  document.getElementById('rule-trigger-offline').checked = true;
+  document.getElementById('rule-trigger-latency').checked = false;
+  document.getElementById('rule-trigger-latency-ms').value = '100';
+  document.getElementById('rule-trigger-custom').checked = false;
+  document.getElementById('rule-trigger-custom-op').value = '==';
+  document.getElementById('rule-trigger-custom-val').value = '';
+  document.getElementById('rule-cooldown').value = '5m';
 
   // Render linked channel checkboxes
+  const channelsContainer = document.getElementById('rule-channels-list-container');
   if (window.cachedChannels.length === 0) {
     channelsContainer.innerHTML = `<span style="font-size:0.72rem; color:var(--text-secondary);">No notification channels configured yet. Create a channel profile first!</span>`;
   } else {
@@ -5127,192 +5152,137 @@ async function openRuleComposer(rid = null) {
     `).join('');
   }
 
-  // Load status of monitors to select
+  // Load and build the unified Mapped Alert Targets catalog (Monitors + Plugins)
+  const targetsListContainer = document.getElementById('rule-targets-selector-list');
+  if (targetsListContainer) {
+    targetsListContainer.innerHTML = `<span style="font-size:0.72rem; color:var(--text-secondary);">Loading available targets...</span>`;
+  }
+
   let monitors = [];
+  let plugins = [];
+  const { httpUrl } = getApiUrls();
+
   try {
-    const { httpUrl } = getApiUrls();
     const resMon = await fetch(`${httpUrl}/api/monitors`);
-    if (resMon.ok) {
-      monitors = await resMon.json();
+    if (resMon.ok) monitors = await resMon.json();
 
-      if (targetTypeSelect) {
-        const categories = Array.from(new Set(monitors.map(m => m.category || 'General')));
-        let optionsHtml = `
-          <option value="all">All Monitors</option>
-          <option value="type_ping">All Ping Probes</option>
-          <option value="type_http">All HTTP Probes</option>
-          <option value="type_ssl">All SSL Probes</option>
-          <option value="type_port">All Port Probes</option>`;
-
-        categories.forEach(cat => {
-          optionsHtml += `<option value="category_${cat}">Category: ${cat}</option>`;
-        });
-
-        optionsHtml += `<option value="custom">Specific Monitors list (Inclusion)</option>`;
-        targetTypeSelect.innerHTML = optionsHtml;
-      }
-
-      if (monitorsListContainer) {
-        monitorsListContainer.innerHTML = monitors.map(m => `
-          <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer;">
-            <input type="checkbox" class="rule-monitor-chk" value="${m.id}" style="accent-color:var(--accent-orange);">
-            <span>${m.name} (${m.type.toUpperCase()}) - ${m.target}</span>
-          </label>
-        `).join('');
-      }
-    }
+    const resPlugins = await fetch(`${httpUrl}/api/plugins/installed`);
+    if (resPlugins.ok) plugins = await resPlugins.json();
+    window.currentActivePluginsData = plugins;
   } catch (err) {
-    console.error("Failed to load monitors in rule composer:", err);
+    console.error("Failed to load targets in rule composer:", err);
   }
 
-  const grpsListContainer = document.getElementById('rule-groups-selection-list');
-  if (grpsListContainer) grpsListContainer.innerHTML = '';
-  try {
-    const { httpUrl } = getApiUrls();
-    const resGrp = await fetch(`${httpUrl}/api/monitor-groups`);
-    if (resGrp.ok) {
-      window.cachedGroups = await resGrp.json();
-      if (grpsListContainer) {
-        grpsListContainer.innerHTML = window.cachedGroups.map(grp => `
-          <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer;">
-            <input type="checkbox" class="rule-group-chk" value="${grp.id}" style="accent-color:var(--accent-orange);">
-            <span>${grp.name} (${grp.monitor_count} monitors)</span>
+  let selectHtml = '';
+  // 1. Add health check monitors
+  monitors.forEach(m => {
+    const tKey = `monitor-${m.id}`;
+    selectHtml += `
+      <label class="rule-target-item" data-key="${tKey}" style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer; padding: 4px 0;">
+        <input type="checkbox" class="rule-target-chk" value="${tKey}" style="accent-color:var(--accent-orange);">
+        <span>Health Checker: <strong>${m.name}</strong> (${m.type.toUpperCase()}) - ${m.target}</span>
+      </label>
+    `;
+  });
+
+  // 2. Add plugin daemon status and manifest custom telemetry entities
+  plugins.forEach(p => {
+    const statusKey = `plugin-${p.id}-status`;
+    selectHtml += `
+      <label class="rule-target-item" data-key="${statusKey}" style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer; padding: 4px 0;">
+        <input type="checkbox" class="rule-target-chk" value="${statusKey}" style="accent-color:var(--accent-orange);">
+        <span>Plugin Daemon: <strong>${p.name}</strong> [${statusKey}]</span>
+      </label>
+    `;
+    if (p.entities) {
+      Object.keys(p.entities).forEach(entityKey => {
+        const ent = p.entities[entityKey];
+        selectHtml += `
+          <label class="rule-target-item" data-key="${entityKey}" style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer; padding: 4px 0;">
+            <input type="checkbox" class="rule-target-chk" value="${entityKey}" style="accent-color:var(--accent-orange);">
+            <span>Plugin Sensor: <strong>${ent.name || entityKey}</strong> [${entityKey}]</span>
           </label>
-        `).join('');
-      }
+        `;
+      });
     }
-  } catch (err) {
-    console.error("Failed to load target groups in rule composer:", err);
+  });
+
+  if (targetsListContainer) {
+    targetsListContainer.innerHTML = selectHtml || `<span style="font-size:0.72rem; color:var(--text-secondary);">No active targets found.</span>`;
   }
 
-  const operatorSelect = document.getElementById('rule-groups-operator');
-  if (operatorSelect) {
-    operatorSelect.value = 'any';
-  }
-
+  // If in edit mode, populate saved values
   if (rid) {
     titleEl.textContent = 'Edit Alert Rule';
     try {
-      const { httpUrl } = getApiUrls();
       const res = await fetch(`${httpUrl}/api/alerts/rules`);
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const list = await res.json();
       const rule = list.find(r => r.id === rid);
       if (rule) {
         nameInput.value = rule.name;
-        if (targetTypeSelect) {
-          targetTypeSelect.value = rule.target_type || 'all';
-          onRuleTargetTypeChange(rule.target_type || 'all');
-        }
+        document.getElementById('rule-cooldown').value = rule.cooldown_interval || '5m';
 
-        // Render conditions rows
+        let offlineChecked = false;
+        let latencyChecked = false;
+        let customChecked = false;
+
         rule.rules_json.forEach(cond => {
-          addVisualRuleConditionRow(cond);
+          if (cond.entity_key === 'status' && cond.operator === '!=' && cond.value === 'ONLINE') {
+            offlineChecked = true;
+          } else if (cond.entity_key === 'latency' && cond.operator === '>') {
+            latencyChecked = true;
+            document.getElementById('rule-trigger-latency-ms').value = cond.value;
+          } else {
+            customChecked = true;
+            document.getElementById('rule-trigger-custom-op').value = cond.operator;
+            document.getElementById('rule-trigger-custom-val').value = cond.value;
+          }
         });
 
-        // Toggle checkboxes
+        document.getElementById('rule-trigger-offline').checked = offlineChecked;
+        document.getElementById('rule-trigger-latency').checked = latencyChecked;
+        document.getElementById('rule-trigger-custom').checked = customChecked;
+
+        // Toggle selected channels
         document.querySelectorAll('.rule-channel-chk').forEach(c => {
-          if (rule.channel_ids.includes(parseInt(c.value))) {
-            c.checked = true;
-          }
+          c.checked = rule.channel_ids.includes(parseInt(c.value));
         });
 
-        // Toggle monitor checkboxes
-        const selectedMonIds = rule.monitors_list || [];
-        document.querySelectorAll('.rule-monitor-chk').forEach(c => {
-          if (selectedMonIds.includes(parseInt(c.value))) {
-            c.checked = true;
-          }
-        });
-
-        // Toggle target group checkboxes
-        const selectedGroupIds = rule.target_groups || [];
-        document.querySelectorAll('.rule-group-chk').forEach(c => {
-          if (selectedGroupIds.includes(parseInt(c.value))) {
-            c.checked = true;
-          }
-        });
-
-        // Toggle target group operator
-        if (operatorSelect) {
-          operatorSelect.value = rule.target_groups_operator || 'any';
+        // Toggle selected targets
+        const ruleTargets = rule.targets_list || [];
+        if (ruleTargets.length === 0 && rule.monitors_list) {
+          rule.monitors_list.forEach(mid => ruleTargets.push(`monitor-${mid}`));
         }
+        document.querySelectorAll('.rule-target-chk').forEach(c => {
+          c.checked = ruleTargets.includes(c.value);
+        });
       }
     } catch (err) {
       alert(`Failed to load rule detail: ${err.message}`);
     }
   } else {
     titleEl.textContent = 'Create Alert Rule';
-    nameInput.value = '';
-    addVisualRuleConditionRow(); // Seed first row
   }
+
+  const searchInput = document.getElementById('rule-target-search');
+  if (searchInput) searchInput.value = '';
 
   openModal('rule-modal');
 }
 
-function addVisualRuleConditionRow(cond = null) {
-  const container = document.getElementById('rule-conditions-editor-container');
-  if (!container) return;
-
-  const rowCount = container.children.length;
-  const isFirstRow = rowCount === 0;
-
-  // Build entity selector options
-  let entityOptionsHtml = `
-    <option value="status" ${cond && cond.entity_key === 'status' ? 'selected' : ''}>Generic Status [status]</option>
-    <option value="latency" ${cond && cond.entity_key === 'latency' ? 'selected' : ''}>Generic Latency [latency]</option>
-  `;
-  Object.values(cachedEntities).forEach(item => {
-    entityOptionsHtml += `<option value="${item.entity_key}" ${cond && cond.entity_key === item.entity_key ? 'selected' : ''}>${item.name || item.entity_key} [${item.entity_key}]</option>`;
+window.filterRuleTargetsSelector = function () {
+  const query = document.getElementById('rule-target-search').value.toLowerCase().trim();
+  const items = document.querySelectorAll('.rule-target-item');
+  items.forEach(item => {
+    const text = item.textContent.toLowerCase();
+    if (text.includes(query)) {
+      item.style.display = 'flex';
+    } else {
+      item.style.display = 'none';
+    }
   });
-
-  const rowDiv = document.createElement('div');
-  rowDiv.className = 'rule-condition-row';
-  rowDiv.style = 'display:flex; gap:8px; align-items:center; width:100%; flex-wrap:wrap; border-bottom:1px solid rgba(255,255,255,0.02); padding-bottom:6px;';
-
-  rowDiv.innerHTML = `
-    <!-- Connector -->
-    <div style="width: 75px; min-width:75px;">
-      ${isFirstRow ? `
-        <span style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; padding-left:14px;">Trigger IF</span>
-      ` : `
-        <select class="cond-join" style="width:100%; background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 6px; font-size:0.72rem;">
-          <option value="AND" ${cond && cond.join_type === 'AND' ? 'selected' : ''}>AND</option>
-          <option value="OR" ${cond && cond.join_type === 'OR' ? 'selected' : ''}>OR</option>
-        </select>
-      `}
-    </div>
-
-    <!-- Entity Dropdown -->
-    <select class="cond-entity" style="flex:2; min-width:150px; background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 6px; font-size:0.72rem;">
-      ${entityOptionsHtml}
-    </select>
-
-    <!-- Operator -->
-    <select class="cond-op" style="width:85px; min-width:85px; background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 6px; font-size:0.72rem;">
-      <option value="==" ${cond && cond.operator === '==' ? 'selected' : ''}>=</option>
-      <option value="!=" ${cond && cond.operator === '!=' ? 'selected' : ''}>!=</option>
-      <option value=">" ${cond && cond.operator === '>' ? 'selected' : ''}>&gt;</option>
-      <option value="<" ${cond && cond.operator === '<' ? 'selected' : ''}>&lt;</option>
-      <option value="contains" ${cond && cond.operator === 'contains' ? 'selected' : ''}>contains</option>
-    </select>
-
-    <!-- Target Value -->
-    <input type="text" class="cond-val" placeholder="value" value="${cond ? cond.value : ''}" style="flex:1; min-width:80px; background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 6px; font-size:0.72rem;">
-
-    <!-- Trash Actions Row delete -->
-    ${isFirstRow ? `
-      <div style="width:24px; height:24px;"></div>
-    ` : `
-      <button class="btn-icon delete-row-btn" onclick="this.parentElement.remove()" style="background:none; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center;" title="Delete Condition">
-        <i data-lucide="x" style="width:14px; height:14px; color:#f43f5e;"></i>
-      </button>
-    `}
-  `;
-
-  container.appendChild(rowDiv);
-  if (window.lucide) window.lucide.createIcons();
-}
+};
 
 async function submitSaveRule() {
   const name = document.getElementById('rule-name').value.trim();
@@ -5321,33 +5291,43 @@ async function submitSaveRule() {
     return;
   }
 
-  // Gather conditions
+  // Gather conditions array from simplified checkboxes
   const conditions = [];
-  const rows = document.querySelectorAll('.rule-condition-row');
 
-  if (rows.length === 0) {
-    alert("Must contain at least 1 trigger condition!");
+  if (document.getElementById('rule-trigger-offline').checked) {
+    conditions.push({ entity_key: 'status', operator: '!=', value: 'ONLINE', join_type: 'OR' });
+  }
+
+  if (document.getElementById('rule-trigger-latency').checked) {
+    const lval = document.getElementById('rule-trigger-latency-ms').value.trim();
+    if (!lval) {
+      alert("Latency threshold limit cannot be empty!");
+      return;
+    }
+    conditions.push({ entity_key: 'latency', operator: '>', value: lval, join_type: 'OR' });
+  }
+
+  if (document.getElementById('rule-trigger-custom').checked) {
+    const cval = document.getElementById('rule-trigger-custom-val').value.trim();
+    if (!cval) {
+      alert("Custom trigger threshold check value cannot be empty!");
+      return;
+    }
+    conditions.push({
+      entity_key: 'status',
+      operator: document.getElementById('rule-trigger-custom-op').value,
+      value: cval,
+      join_type: 'OR'
+    });
+  }
+
+  if (conditions.length === 0) {
+    alert("Please enable at least 1 trigger condition!");
     return;
   }
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const entity_key = row.querySelector('.cond-entity').value;
-    const operator = row.querySelector('.cond-op').value;
-    const value = row.querySelector('.cond-val').value.trim();
-
-    let join_type = '';
-    if (i > 0) {
-      join_type = row.querySelector('.cond-join').value;
-    }
-
-    if (value === '') {
-      alert(`Condition value in row ${i + 1} cannot be empty!`);
-      return;
-    }
-
-    conditions.push({ entity_key, operator, value, join_type });
-  }
+  // Clear first join type connector
+  conditions[0].join_type = '';
 
   // Gather channel IDs
   const channel_ids = [];
@@ -5360,21 +5340,26 @@ async function submitSaveRule() {
     return;
   }
 
-  // Gather target group and monitors list
-  const target_type = document.getElementById('rule-target-type').value;
+  // Gather target keys list
+  const targets_list = [];
+  document.querySelectorAll('.rule-target-chk:checked').forEach(c => {
+    targets_list.push(c.value);
+  });
+
+  if (targets_list.length === 0) {
+    alert("Please select at least 1 target health checker or plugin sensor!");
+    return;
+  }
+
+  // Backward compatibility parsing
   const monitors_list = [];
-  document.querySelectorAll('.rule-monitor-chk:checked').forEach(c => {
-    monitors_list.push(parseInt(c.value));
+  targets_list.forEach(tk => {
+    if (tk.startsWith('monitor-')) {
+      monitors_list.push(parseInt(tk.split('-')[1]));
+    }
   });
 
-  const target_groups = [];
-  document.querySelectorAll('.rule-group-chk:checked').forEach(c => {
-    target_groups.push(parseInt(c.value));
-  });
-
-  const target_groups_operator = document.getElementById('rule-groups-operator')
-    ? document.getElementById('rule-groups-operator').value
-    : 'any';
+  const cooldown_interval = document.getElementById('rule-cooldown').value || '5m';
 
   const { httpUrl } = getApiUrls();
   const rid = window.activeAlertRuleId;
@@ -5385,7 +5370,18 @@ async function submitSaveRule() {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, rules_json: conditions, channel_ids, enabled: true, target_type, monitors_list, target_groups, target_groups_operator })
+      body: JSON.stringify({
+        name,
+        rules_json: conditions,
+        channel_ids,
+        enabled: true,
+        target_type: 'custom',
+        monitors_list,
+        target_groups: [],
+        target_groups_operator: 'any',
+        targets_list,
+        cooldown_interval
+      })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -6045,8 +6041,11 @@ async function loadHosts(forceFetch = false) {
       if (pluginsRes && pluginsRes.ok) {
         plugins = await pluginsRes.json();
       }
-      window.currentActivePluginsData = plugins.filter(p => p.enabled);
+      window.currentActivePluginsData = plugins;
+      console.log("loadHosts: fetched installed plugins from API. Installed plugins found:", window.currentActivePluginsData.map(p => p.id));
     }
+
+    console.log("loadHosts: current active plugins in cache:", window.currentActivePluginsData ? window.currentActivePluginsData.map(p => p.id) : null);
 
     // Read search term
     const searchInput = document.getElementById('host-search');
@@ -6062,6 +6061,7 @@ async function loadHosts(forceFetch = false) {
         p.id.toLowerCase().includes(searchVal) ||
         (p.description && p.description.toLowerCase().includes(searchVal));
     });
+    console.log("loadHosts: filtered active plugins count:", filteredActivePlugins.length);
 
     if (filteredHosts.length === 0 && filteredActivePlugins.length === 0) {
       container.innerHTML = `
@@ -6149,10 +6149,34 @@ async function loadHosts(forceFetch = false) {
         : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active entries reported</span>`;
 
       const pluginHostId = `'plugin-${p.id}'`;
+      const entityKeyStatus = `plugin-${p.id}-status`;
+      const entityVal = (cachedEntities && cachedEntities[entityKeyStatus]) ? cachedEntities[entityKeyStatus] : null;
+
+      let statusLabel = 'STOPPED';
+      let statusClass = 'default';
+
+      const runningStatus = entityVal ? (entityVal.attributes?.status || entityVal.value || 'stopped').toLowerCase() : (p.enabled ? 'running' : 'stopped');
+
+      if (runningStatus === 'running' || runningStatus === 'on') {
+        statusLabel = 'RUNNING';
+        statusClass = 'stable';
+      } else if (runningStatus === 'idle') {
+        statusLabel = 'IDLE';
+        statusClass = 'caution';
+      } else if (runningStatus === 'crashed') {
+        statusLabel = 'CRASHED';
+        statusClass = 'critical';
+      } else {
+        statusLabel = 'STOPPED';
+        statusClass = 'default';
+      }
+
+      const isStopped = (statusLabel === 'STOPPED' || statusLabel === 'CRASHED');
+      const opacityStyle = isStopped ? 'opacity: 0.6; filter: grayscale(40%);' : '';
 
       if (layout === 'grid') {
         return `
-          <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); cursor:pointer;" onclick="openHostDetail(${pluginHostId})">
+          <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); cursor:pointer; ${opacityStyle}" onclick="openHostDetail(${pluginHostId})">
             <div>
               <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
                 <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">Plugin: ${p.name}</h4>
@@ -6163,7 +6187,7 @@ async function loadHosts(forceFetch = false) {
                   <button class="btn-icon" onclick="event.stopPropagation(); killPlugin('${p.id}')" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="Force Kill">
                     <i data-lucide="power" style="width:14px; height:14px; color:#f43f5e;"></i>
                   </button>
-                  <span class="status-pill stable" style="font-size:0.6rem; padding: 2px 6px;">RUNNING</span>
+                  <span class="status-pill ${statusClass}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
                 </div>
               </div>
               <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">Local Daemon (v${p.version})</p>
@@ -6174,7 +6198,7 @@ async function loadHosts(forceFetch = false) {
           </div>`;
       } else {
         return `
-          <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); gap:12px; min-height:unset; cursor:pointer;" onclick="openHostDetail(${pluginHostId})">
+          <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); gap:12px; min-height:unset; cursor:pointer; ${opacityStyle}" onclick="openHostDetail(${pluginHostId})">
             <div style="display:flex; justify-content:space-between; align-items:center; width: 100%;">
               <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
                 <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">Plugin: ${p.name}</h4>
@@ -6189,7 +6213,7 @@ async function loadHosts(forceFetch = false) {
                     <i data-lucide="power" style="width:14px; height:14px; color:#f43f5e;"></i>
                   </button>
                 </div>
-                <span class="status-pill stable" style="font-size:0.6rem; padding: 2px 6px;">RUNNING</span>
+                <span class="status-pill ${statusClass}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
               </div>
             </div>
             <div style="border-top:1px dashed rgba(239, 108, 0, 0.25); padding-top:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; width: 100%;">
@@ -6514,11 +6538,74 @@ window.openHostDetail = async function (hostId) {
                 if (typeof val === 'number' && (keyLower.includes('bytes') || keyLower === 'size' || keyLower.includes('_size') || keyLower.includes('capacity') || keyLower.includes('bandwidth'))) {
                   val = formatBytes(val);
                 } else if (typeof val === 'object' && val !== null) {
-                  val = `<pre style="margin: 2px 0 0 0; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.65rem; color: #fff; background: rgba(0,0,0,0.22); padding: 5px; border-radius: 4px; line-height: 1.3;">${JSON.stringify(val, null, 2)}</pre>`;
+                  // Table rendering for arrays of objects
+                  if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object' && val[0] !== null) {
+                    const uniqueId = `table-${m.node_id}-${m.entity_key}-${attr}`.replace(/[^a-zA-Z0-9-]/g, '_');
+
+                    // Look up parent manifest to see if a schema matches
+                    let columns = [];
+                    const p = window.currentActivePluginsData ? window.currentActivePluginsData.find(pl => pl.id === m.node_id) : null;
+                    if (p && p.entities && p.entities[m.entity_key] && p.entities[m.entity_key].ui_schema && p.entities[m.entity_key].ui_schema.columns) {
+                      columns = p.entities[m.entity_key].ui_schema.columns;
+                    } else {
+                      columns = Object.keys(val[0]);
+                    }
+
+                    // Headers
+                    const headersHtml = columns.map(k => `<th style="text-align: left; padding: 6px; font-size: 0.7rem; text-transform: capitalize; border-bottom: 1px solid var(--border-soft); color: var(--text-secondary);">${k.replace(/_/g, ' ')}</th>`).join('');
+
+                    // Rows
+                    const rowsHtml = val.map(row => {
+                      const cellsHtml = columns.map(k => {
+                        let cellVal = row[k];
+                        if (cellVal === undefined || cellVal === null) cellVal = '-';
+                        if (typeof cellVal === 'object' && cellVal !== null) {
+                          if (cellVal.$date) {
+                            cellVal = new Date(cellVal.$date).toLocaleString();
+                          } else {
+                            cellVal = JSON.stringify(cellVal);
+                          }
+                        }
+                        if (typeof cellVal === 'number' && (k.toLowerCase().includes('bytes') || k.toLowerCase().includes('size'))) {
+                          cellVal = formatBytes(cellVal);
+                        }
+                        return `<td style="padding: 6px; font-size: 0.72rem; vertical-align: top; border-bottom: 1px dashed rgba(255,255,255,0.05); color: #e2e8f0; font-family: monospace;">${cellVal}</td>`;
+                      }).join('');
+                      return `<tr class="table-row" style="transition: background 0.15s;">${cellsHtml}</tr>`;
+                    }).join('');
+
+                    // Search input
+                    const searchInputHtml = val.length > 1 ? `
+                      <div style="margin-bottom: 8px;">
+                        <input id="search-input-${uniqueId}" type="text" placeholder="Query filtered ${attr}..." 
+                               style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; color: #fff; width: 100%; box-sizing: border-box;"
+                               onkeyup="window.filterEmbedTable('${uniqueId}')">
+                      </div>
+                    ` : '';
+
+                    val = `
+                      <div id="wrapper-${uniqueId}" style="margin-top: 6px; background: rgba(0,0,0,0.15); border: 1px solid var(--border-soft); border-radius: 6px; padding: 8px; width: 100%; box-sizing: border-box;">
+                        ${searchInputHtml}
+                        <div style="overflow-x: auto; width: 100%;">
+                          <table id="${uniqueId}" style="width: 100%; border-collapse: collapse; text-wrap: wrap;">
+                            <thead>
+                              <tr>${headersHtml}</tr>
+                            </thead>
+                            <tbody>
+                              ${rowsHtml}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    `;
+                  } else {
+                    val = `<pre style="margin: 2px 0 0 0; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.65rem; color: #fff; background: rgba(0,0,0,0.22); padding: 5px; border-radius: 4px; line-height: 1.3;">${JSON.stringify(val, null, 2)}</pre>`;
+                  }
                 } else {
                   val = `<span style="color:#fff; word-break: break-all;">${val}</span>`;
                 }
-                return `<div style="margin-top: 4px; line-height: 1.4;">${attr}: ${typeof val === 'string' && val.startsWith('<pre') ? val : val}</div>`;
+                const isEmbed = typeof val === 'string' && (val.includes('<pre') || val.includes('<div'));
+                return `<div style="margin-top: 6px; line-height: 1.4;">${attr}: ${isEmbed ? val : val}</div>`;
               })
               .join('');
           }
@@ -6869,12 +6956,28 @@ async function loadInstalledPlugins(forceFetch = false) {
         const field = schema[key];
         const val = config[key] !== undefined ? config[key] : (field.default !== undefined ? field.default : '');
         const label = field.label || key.replace('_', ' ').replace('-', ' ').title();
-        const inputType = field.secret ? 'password' : (field.type === 'integer' ? 'number' : 'text');
+        const isPassword = field.type === 'password' || field.secret;
+        const inputType = isPassword ? 'password' : (field.type === 'integer' ? 'number' : 'text');
+
+        if (isPassword) {
+          const uniqueInputId = `secret-${p.id}-${key}`.replace(/[^a-zA-Z0-9-]/g, '_');
+          return `
+            <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px; width: 100%;">
+              <label style="font-size:0.75rem; color:#fff; font-weight:600;">${label}</label>
+              <div style="position:relative; width: 100%; display:flex; align-items:center;">
+                <input id="${uniqueInputId}" type="password" class="settings-input plugin-config-input" data-plugin-id="${p.id}" data-key="${key}" value="${val}" style="padding: 8px 36px 8px 12px; font-size:0.8rem; width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.22); border: 1px solid var(--border-soft); border-radius: 4px; color:#fff;">
+                <button type="button" onclick="window.toggleSecretVisibility('${uniqueInputId}')" style="position:absolute; right:10px; background:none; border:none; cursor:pointer; padding:4px; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); outline:none;">
+                  <i id="eye-icon-${uniqueInputId}" data-lucide="eye" style="width:16px; height:16px; pointer-events:none;"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        }
 
         return `
           <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px; width: 100%;">
             <label style="font-size:0.75rem; color:#fff; font-weight:600;">${label}</label>
-            <input type="${inputType}" class="settings-input plugin-config-input" data-plugin-id="${p.id}" data-key="${key}" value="${val}" style="padding: 8px 12px; font-size:0.8rem;">
+            <input type="${inputType}" class="settings-input plugin-config-input" data-plugin-id="${p.id}" data-key="${key}" value="${val}" style="padding: 8px 12px; font-size:0.8rem; width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.22); border: 1px solid var(--border-soft); border-radius: 4px; color:#fff;">
           </div>
         `;
       }).join('');
@@ -7420,5 +7523,39 @@ function parseMarkdownToHTML(md) {
   html = lines.join('\n');
   return html;
 }
+
+window.filterEmbedTable = function (tableId) {
+  const input = document.getElementById(`search-input-${tableId}`);
+  if (!input) return;
+  const filter = input.value.toLowerCase().trim();
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  if (!tbody) return;
+  const rows = tbody.querySelectorAll('tr.table-row');
+
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(filter) ? '' : 'none';
+  });
+};
+
+window.toggleSecretVisibility = function (inputId) {
+  const input = document.getElementById(inputId);
+  const icon = document.getElementById(`eye-icon-${inputId}`);
+  if (!input || !icon) return;
+
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.setAttribute('data-lucide', 'eye-off');
+  } else {
+    input.type = 'password';
+    icon.setAttribute('data-lucide', 'eye');
+  }
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+};
 
 

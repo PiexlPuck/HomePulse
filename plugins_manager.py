@@ -680,21 +680,35 @@ async def gateway_post_state(payload: Dict[str, Any]):
     if not entity_key:
         raise HTTPException(status_code=400, detail="Missing key entity_key in payload.")
         
+    plugin_id = payload.get("node_id")
+    if entity_key == "status" and plugin_id:
+        entity_key = f"plugin-{plugin_id}-status"
+        # Translate ONLINE/OFFLINE to ON/OFF for binary_sensor compatibility
+        val = payload.get("value")
+        if val == "ONLINE":
+            payload["value"] = "ON"
+        elif val == "OFFLINE":
+            payload["value"] = "OFF"
+
     if entity_states is not None:
+        existing_ent = entity_states.get(entity_key, {})
+        existing_attrs = existing_ent.get("attributes", {}) if isinstance(existing_ent.get("attributes"), dict) else {}
+        new_attrs = payload.get("attributes", {})
+        merged_attrs = {**existing_attrs, **new_attrs}
+
         entity_states[entity_key] = {
             "node_id": payload.get("node_id", "plugins"),
             "entity_key": entity_key,
-            "name": payload.get("name", entity_key.replace("-", " ").title()),
+            "name": payload.get("name", entity_key.replace("-", " ").title()) if entity_key != f"plugin-{plugin_id}-status" else f"Plugin: {plugin_id.replace('-', ' ').title()}",
             "type": payload.get("type", "sensor"),
             "value": payload.get("value"),
             "value_type": payload.get("value_type", "string"),
-            "attributes": payload.get("attributes", {})
+            "attributes": merged_attrs
         }
         
-        plugin_id = payload.get("node_id")
         if db_pool and plugin_id:
             try:
-                attrs_json = json.dumps(payload.get("attributes", {}))
+                attrs_json = json.dumps(merged_attrs)
                 async with db_pool.acquire() as conn:
                     await conn.execute("""
                         INSERT INTO plugin_entity_states (entity_key, plugin_id, node_id, name, type, value, value_type, attributes, updated_at)
@@ -703,7 +717,7 @@ async def gateway_post_state(payload: Dict[str, Any]):
                             value = EXCLUDED.value,
                             attributes = EXCLUDED.attributes,
                             updated_at = NOW();
-                    """, entity_key, plugin_id, payload.get("node_id"), payload.get("name"), payload.get("type"), str(payload.get("value")), payload.get("value_type", "string"), attrs_json)
+                    """, entity_key, plugin_id, payload.get("node_id"), entity_states[entity_key]["name"], payload.get("type"), str(payload.get("value")), payload.get("value_type", "string"), attrs_json)
                     
                     # Autodetect historic telemetry: if value is numeric, insert it to telemetry_logs
                     val_str = str(payload.get("value"))
