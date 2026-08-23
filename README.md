@@ -1,100 +1,124 @@
 # HomePulse
 
-HomePulse is a community-focused, highly modular telemetry monitoring and dashboard platform inspired by Home Assistant's Lovelace design. It is designed to consume real-time telemetry from local hardware, servers, and microcontrollers and display it on a fast, modern responsive dashboard.
+HomePulse is a community-focused, highly modular framework for real-time telemetry monitoring and dashboard visualization. Inspired by Home Assistant's Lovelace design, it consumes telemetry streams from local nodes, custom servers, and microcontrollers, displaying them on a lightweight, highly responsive interface.
 
 ---
 
-## Architecture Overview
+## Technical Architecture Overview
 
 ```mermaid
-graph LR
+graph TD
     classDef client fill:#3b82f6,stroke:#1d4ed8,color:#fff;
     classDef api fill:#10b981,stroke:#047857,color:#fff;
     classDef db fill:#f59e0b,stroke:#d97706,color:#fff;
+    classDef bg fill:#8b5cf6,stroke:#6d28d9,color:#fff;
 
-    A[IoT Nodes / Servers] -->|HTTP POST / WS| B(FastAPI Server):::api
-    B -->|Serve Files| C[Dashboard UI]:::client
-    C -->|WS Stream| B
-    C -->|API / Controls| B
-    B -->|Logs & Config| D[(PostgreSQL DB)]:::db
+    A[mDNS Discovery Daemon (In Dev)]:::bg -->|Push Nodes| B(FastAPI Server Integration):::api
+    C[IoT Nodes / Prober Servers] -->|HTTP POST / WebSocket| B
+    B -->|Serve Files / Static Routing| D[Lovelace Frontend UI]:::client
+    D -->|WS Client Stream Connection| B
+    D -->|Settings & Panel API Requests| B
+    B -->|Write Telemetry & Configs| E[(PostgreSQL Storage Layer)]:::db
 ```
 
-- **Frontend**: A single-page application built on HTML5, Vanilla JavaScript (ES6), and beautiful custom CSS styling. There are no heavy UI frameworks or Tailwind compilation steps needed. Rendered icons are provided dynamically via [Lucide Icons](https://lucide.dev/).
-- **Backend**: A python-based `FastAPI` application serving static frontend files, establishing REST endpoint routers, running telemetry logging pipelines, and hosting WebSocket connections for live client synchronization.
-- **Database**: `PostgreSQL` is utilized as the persistent storage layer for storing device configurations, approved endpoints, security tokens, system audits, and a high-frequency telemetry history.
+*   **Frontend**: Built on HTML5, Vanilla JavaScript (ES6+), and tailored CSS themes. Page elements load dynamically via Lucide Icons, and telemetry charts utilize Chart.js.
+*   **Backend**: Managed by a Python `FastAPI` instance. It handles WebSocket notification streams, runs background network polling workers, processes incoming JSON telemetry logs, and hosts mDNS node discovery services (currently in development/inactive).
+*   **Database**: PostgreSQL serves as the relational and history logs data store. The database initializes schema and runs setup checks upon startup.
 
 ---
 
-## Advanced Lovelace YAML Dashboard
+## Core UI Modules & Capabilities
 
-HomePulse features a fully-customizable dashboard interface that mimics Home Assistant’s Lovelace engine. The layout is stored inside the local storage and database config and can be modified raw in the browser via a built-in YAML text editor.
+### 1. Advanced Lovelace YAML Layouts
+*   Configure widgets dynamically via in-browser YAML updates.
+*   Widgets include Semicircular Gauges, Glance Grids, and Entity lists.
+*   Supports a **Compact Room Layout** mode alongside standard grid views.
 
-### Key Card Types
-1. **Entities List**: A simple vertical list grouping multiple metrics or control switches.
-2. **Glance Grid**: High-density icon-focused grid displaying entity statuses side-by-side.
-3. **Semicircular Gauge**: A custom SVG-rendered gauge widget that visualizes numerical attributes relative to set minimum and maximum scales.
+### 2. Flexible Host Manager
+*   Configure and probe remote servers and network devices.
+*   Supports a persistent **Grid/List View** preference saved in the client's `localStorage` (`hp_hosts_layout`).
 
-### Modern Themes & Layout Modes
-HomePulse includes custom, HSL-designed CSS variables for three beautiful presets:
-- **Midnight (Default)**: Deep blue-black and vibrant neon accent lights.
-- **Cozy Amber**: Warm browns, dark wood colors, and glowing amber highlights.
-- **Cyberpunk**: Rich purples, neon cyan borders, and electric pink accents.
+### 3. Zabbix-Style Analytics
+*   Filter history telemetry through purely time-based intervals (1h, 3h, 12h, 24h, 7d, 30d) or input a **Custom Date-Time Range**.
+*   Shift query windows backward (`<`) and forward (`>`) by the timeframe increment.
+*   Calculates and renders a rose-dashed **Average Latency Guideline** overlay on history charts.
+*   Adapts chart x-axis ticks to include dates or weekday names for query ranges exceeding 24 hours.
 
-You can also toggle between the **Default Layout** (roomy grid cards) and a **Compact Grid Layout** (denser spacing, tighter card contents) for server room monitors and kiosks.
+### 4. Collapsible Hover Logs Table Drilldown
+*   Detailed history logs are nested within a collapsible `<details>` panel ("Advanced Telemetry Records").
+*   Hovering over any node on the line chart dynamically filters this log list to display only records within a ±2 minute window of the hovered point, highlighting the closest time match.
+
+### 5. Custom Promise Dialogs
+*   Removed blocking native browser alerts. All critical system warnings and delete calls use custom styles, non-blocking HTML promise modal overlays.
 
 ---
 
-## DB Schema Reference
+## Database Schema Directory
 
-HomePulse automatically sets up the database schema on start via the init scripts. Below is a reference of the key tables:
+Below is a reference of the key tables created during the database schema verification:
 
-| Table | Purpose | Main Columns |
+| Table | Purpose | Primary Specifications |
 | :--- | :--- | :--- |
-| `nodes` | Track approved network endpoints | `id` (PK), `name`, `status`, `approved_at` |
-| `entities` | Telemetry targets associated with a node | `id` (PK), `node_id` (FK), `entity_key`, `type` |
-| `telemetry_logs` | High-frequency telemetry log storage | `id`, `node_id`, `entity_key`, `value`, `timestamp` |
-| `system_audits` | Logging dashboard actions or errors | `id`, `type`, `message`, `timestamp` |
-| `system_settings` | Key-value store for global settings | `key` (PK), `value` (which includes theme, interval, timezone) |
+| `nodes` | Network endpoints tracked by discovery | `id` (PK), `name`, `status`, `version`, `hardware_model`, `mac_address`, `approved_at` |
+| `entities` | Telemetry channels associated with nodes | `id` (PK), `node_id` (FK), `entity_key`, `name`, `type` ('sensor'/'control'), `unit` |
+| `telemetry_logs` | High-frequency telemetry log entries | `id` (PK), `node_id`, `entity_key`, `value`, `timestamp` |
+| `system_settings` | Key-value settings registry | `key` (PK), `value` (polling interval, timezone, system theme, pincode key) |
+| `system_monitors` | Core service check target specifications | `id` (PK), `name`, `type`, `target`, `check_interval`, `timeout`, `last_status`, `enabled` |
+| `hosts` | User-managed remote host manager targets | `id` (PK), `name`, `target`, `ping_enabled`, `http_enabled`, `https_enabled` |
+| `dashboard_config` | Lovelace layout representation configurations | `key` (PK), `value` (raw YAML representation) |
+| `alert_rules` | User-defined alert thresholds | `id` (PK), `entity_key`, `rule_condition`, `warning_level`, `enabled` |
 
 ---
 
-## API Documentation
+## API Router Reference
 
-### 1. WebSockets
-- **Endpoint**: `/ws`
-- **Purpose**: Bi-directional live connection. Receives real-time telemetry updates and state events from the server.
+### 1. WebSocket Live Stream
+*   **Endpoint**: `GET /api/ws/client`
+*   **Description**: Establishes bi-directional communication to stream telemetry, system audits, and discovery queue updates live to client dashboards.
 
 ### 2. Device Controllers
-- **Endpoint**: `POST /api/control/{node_id}/{entity_id}`
-- **Request Body**: `{"value": <any>}`
-- **Purpose**: Overrides the state of controls (e.g., toggling a switch or setting a target value) and broadcasts updates to all active UI clients.
+*   **Endpoint**: `POST /api/control/{node_id}/{entity_key}`
+*   **Payload**: `{"value": <any>}`
+*   **Description**: Controls active IoT switches or sliders, broadcasting state changes to all connected clients.
 
-### 3. Queue & Node Approval
-- **Endpoint**: `GET /api/discovery` - Fetch pending nodes waiting to be provisioned.
-- **Endpoint**: `POST /api/approve/{node_id}`
-- **Request Body**: `{"preshared_key": "<key>"}`
-- **Purpose**: Activates a pending node and imports its sensor entities into the system.
+### 3. Node Discovery & Approvals (In Development)
+*   **Endpoint**: `GET /api/discovery` - Lists pending nodes cached during mDNS discovery (feature in development / placeholder queue).
+*   **Endpoint**: `POST /api/discovery/approve/{node_id}`
+*   **Payload**: `{"preshared_key": "<key>"}`
+*   **Description**: Validates the payload device authorization code PIN to register a node and map its entities (feature in development).
 
-### 4. Application Settings
-- **Endpoint**: `GET /api/settings` - Retrieve global settings (telemetry intervals, timezone, theme).
-- **Endpoint**: `POST /api/settings` - Save configuration edits.
+### 4. Telemetry History API
+*   **Endpoint**: `GET /api/monitors/logs/{entity_key}`
+*   **Parameters**:
+    *   `hours`: Number of hours offset.
+    *   `offset`: Zabbix-style backward time offset shift.
+    *   `start_time` / `end_time` *(Optional)*: Timezone-naive datetime-local filter bounds.
+*   **Description**: Returns sorted chronological telemetry log records for charts and collapsible detail tables.
 
 ---
 
-## Docker Deployment (Quick Start)
+## Maintenance & Administration CLI
 
-HomePulse is containerized using Docker and Docker Compose. To build and start the entire multi-container service stack locally:
+HomePulse includes a robust administrative script (`maintenance.sh` / `update.sh`) located in the root directory. To run:
 
 ```bash
-# Clone the repository and navigate to root
-cd HomePulse
-
-# Start containers in background mode
-docker-compose up --build -d
+chmod +x maintenance.sh
+./maintenance.sh
 ```
 
-### Environment Variables
-You can configure behavior by supplying environment variables in your environment or a `.env` file:
-* `DB_PASSWORD`: Password for the PostgreSQL container and connection string (Defaults to `hpsafe_dbpass123`).
-* `JWT_SECRET_KEY`: Security signing key for authentication (Defaults to `default_secret_key_834927`).
-* `DATABASE_URL`: Full PostgreSQL database URI.
+### CLI Command Options
+1.  **Backup System Database**: Creates gzipped schemas and SQL table backups, rotating archives to preserve only the 3 most recent backups.
+2.  **Restore Database**: Scans the backup archives directory, updates permissions, and imports selected configurations.
+3.  **Delete Backups Menu**: Provides an interactive terminal menu list to purge specific archives.
+4.  **Perform Fresh Installation**: Wipes existing configurations, databases, and logs, returning HomePulse to its initial clean-slate state.
+
+---
+
+## Local Development Deployment
+
+Start the development multi-container Docker compose service stack:
+
+```bash
+# Spin up configurations in background mode
+docker compose up -d --build
+```

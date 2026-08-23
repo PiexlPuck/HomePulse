@@ -729,10 +729,12 @@ async def gateway_post_state(payload: Dict[str, Any]):
                         pass
                         
                     if is_numeric:
-                        await conn.execute(
-                            "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
-                            payload.get("node_id"), entity_key, val_str
-                        )
+                        from main import save_telemetry_log
+                        await save_telemetry_log(payload.get("node_id"), entity_key, val_str)
+                        
+                    from main import app_settings, forward_telemetry_webhook
+                    if app_settings.get("gateway_mode") == "true":
+                        await forward_telemetry_webhook(entity_key, entity_states[entity_key])
             except Exception as dberr:
                 logger.error(f"Error saving plugin entity state to DB: {dberr}")
                 

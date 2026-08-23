@@ -11,9 +11,11 @@ import urllib.request
 import urllib.error
 from pydantic import BaseModel, model_validator
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Request
 from fastapi.responses import FileResponse, JSONResponse
 import smtplib
+import secrets
+import hashlib
 from email.mime.text import MIMEText
 from email.header import Header as EmailHeader
 from plugins_manager import plugins_router, init_plugins_manager
@@ -22,6 +24,45 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("homepulse-backend")
 
 app = FastAPI(title="HomePulse Backend")
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and not (
+        path.startswith("/api/settings/keys") or 
+        path == "/api/health" or 
+        path == "/api/settings"
+    ):
+        token = request.headers.get("X-API-Key")
+        if not token:
+            token = request.query_params.get("api_key")
+            
+        is_gateway = app_settings.get("gateway_mode") == "true"
+        if not is_gateway and not token:
+            return await call_next(request)
+            
+        if is_gateway and not token:
+            return JSONResponse(status_code=401, content={"detail": "X-API-Key header or api_key query parameter required in Gateway Mode."})
+            
+        db_enabled = app_settings.get("gateway_db_enabled", "true") == "true"
+        if not db_pool or not db_enabled:
+            psk = app_settings.get("preshared_key", "")
+            if token == psk:
+                return await call_next(request)
+            return JSONResponse(status_code=401, content={"detail": "Database disabled. Preshared key required as API Key token."})
+            
+        try:
+            h = hashlib.sha256(token.encode()).hexdigest()
+            async with db_pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT id FROM api_keys WHERE key_hash = $1;", h)
+                if not row:
+                    return JSONResponse(status_code=401, content={"detail": "Invalid API Key."})
+                await conn.execute("UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = $1;", row["id"])
+        except Exception as e:
+            logger.error(f"Error checking API key in middleware: {e}")
+            return JSONResponse(status_code=401, content={"detail": "Authentication verification failed."})
+
+    return await call_next(request)
 
 # DB Connection Pool
 db_pool = None
@@ -122,6 +163,48 @@ def dispatch_notification_sync(channel_type: str, config: dict, message: str, ti
             with urllib.request.urlopen(req, timeout=10) as response:
                 res_body = response.read().decode('utf-8')
                 logger.info(f"Pushover alert dispatched successfully: {res_body}")
+                
+        elif channel_type == "webhook":
+            url = config.get("url")
+            method = config.get("method", "POST").upper()
+            headers = config.get("headers") or {}
+            
+            # Format/parse HTTP custom headers
+            if isinstance(headers, str):
+                try:
+                    headers = json.loads(headers)
+                except Exception:
+                    headers = {}
+                    
+            payload_template = config.get("payload_template")
+            # Substitute variables
+            if payload_template:
+                body_str = payload_template.replace("{{message}}", message).replace("{{title}}", title)
+                try:
+                    payload = json.loads(body_str)
+                except Exception:
+                    payload = body_str
+            else:
+                payload = {"title": title, "message": message}
+                
+            data = None
+            if payload is not None:
+                if isinstance(payload, (dict, list)):
+                    data = json.dumps(payload).encode('utf-8')
+                    if 'Content-Type' not in headers:
+                        headers['Content-Type'] = 'application/json'
+                else:
+                    data = str(payload).encode('utf-8')
+                    
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers=headers,
+                method=method
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_body = response.read().decode('utf-8')
+                logger.info(f"Webhook alert dispatched successfully: {res_body}")
                 
     except Exception as e:
         logger.error(f"Error dispatching notification via {channel_type}: {e}")
@@ -287,6 +370,12 @@ class RulePayload(BaseModel):
     targets_list: Optional[List[str]] = []
     cooldown_interval: Optional[str] = "5m"
 
+class FlowPayload(BaseModel):
+    name: str
+    nodes_json: str
+    edges_json: str
+    enabled: bool = True
+
 # 1. DB Init Routine
 async def setup_database_schema(conn):
     logger.info("Verifying database schema...")
@@ -306,7 +395,11 @@ async def setup_database_schema(conn):
         ('preshared_key', 'device_pin_12345'),
         ('theme', 'midnight'),
         ('layout_compact', 'false'),
-        ('show_service_monitors', 'false')
+        ('show_service_monitors', 'false'),
+        ('gateway_mode', 'false'),
+        ('gateway_db_enabled', 'true'),
+        ('gateway_webhook_url', ''),
+        ('gateway_webhook_headers', '')
         ON CONFLICT (key) DO NOTHING;
     """)
     
@@ -432,7 +525,39 @@ async def setup_database_schema(conn):
                 PRIMARY KEY (rule_id, target_key, channel_id)
             );
         """)
-        logger.info("active_alerts, alert_cooldowns and monitor_groups/map schemas and migrations verified.")
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS alert_flows (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(128) UNIQUE NOT NULL,
+                enabled BOOLEAN DEFAULT TRUE,
+                nodes_json TEXT NOT NULL,
+                edges_json TEXT NOT NULL,
+                last_fired TIMESTAMP
+            );
+        """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS active_flow_alerts (
+                flow_id INT NOT NULL REFERENCES alert_flows(id) ON DELETE CASCADE,
+                action_node_id VARCHAR(64) NOT NULL,
+                target_key VARCHAR(255) NOT NULL,
+                fired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (flow_id, action_node_id, target_key)
+            );
+        """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(64) NOT NULL,
+                prefix VARCHAR(32) NOT NULL,
+                key_hash VARCHAR(255) NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_used TIMESTAMP
+            );
+        """)
+        logger.info("active_alerts, alert_cooldowns, alert_flows, active_flow_alerts and api_keys tables verified.")
     except Exception as mig_err:
         logger.warning(f"Error executing alarm router migrations: {mig_err}")
 
@@ -710,6 +835,8 @@ async def alerts_evaluator_task():
     
     while True:
         await asyncio.sleep(10)
+        if app_settings.get("gateway_mode") == "true":
+            continue
         if not db_pool:
             continue
             
@@ -956,9 +1083,219 @@ async def alerts_evaluator_task():
                             "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
                             audit_type, audit_msg
                         )
+
+                    # --- Flow Evaluation Router ---
+                    flows = await conn.fetch("SELECT id, name, enabled, nodes_json, edges_json FROM alert_flows WHERE enabled = TRUE;")
+                    for flow in flows:
+                        fid = flow["id"]
+                        fname = flow["name"]
                         
+                        try:
+                            nodes = json.loads(flow["nodes_json"]) if isinstance(flow["nodes_json"], str) else flow["nodes_json"]
+                            edges = json.loads(flow["edges_json"]) if isinstance(flow["edges_json"], str) else flow["edges_json"]
+                        except Exception as json_err:
+                            logger.error(f"Flow {fid} JSON parse error: {json_err}")
+                            continue
+
+                        # Build node map & adjacency lists
+                        nodes_by_id = {n["id"]: n for n in nodes}
+                        out_edges = {}
+                        for edge in edges:
+                            src = edge.get("source")
+                            tgt = edge.get("target")
+                            if src and tgt:
+                                out_edges.setdefault(src, []).append(tgt)
+
+                        # Evaluate triggers to find starting node states
+                        active_flows_firing = {} # action_node_id -> list of firing target_keys
+                        
+                        trigger_nodes = [n for n in nodes if n.get("type") in ("health_trigger", "sensor_trigger")]
+                        for tn in trigger_nodes:
+                            node_id = tn["id"]
+                            ncfg = tn.get("config") or {}
+                            tkey = ncfg.get("target_key")
+                            if not tkey:
+                                continue
+                                
+                            is_trigger_active = False
+                            trig_type = ncfg.get("trigger_type", "offline")
+                            if tn.get("type") == "health_trigger":
+                                mid_str = tkey.split("-")[1] if "-" in tkey else tkey
+                                try:
+                                    mid = int(mid_str)
+                                except ValueError:
+                                    continue
+                                if trig_type == "offline":
+                                    is_trigger_active = check_monitor_rule_firing(mid, [{"entity_key": "status", "operator": "!=", "value": "ONLINE"}])
+                                elif trig_type == "latency":
+                                    lval = str(ncfg.get("latency_ms", "100"))
+                                    is_trigger_active = check_monitor_rule_firing(mid, [{"entity_key": "latency", "operator": ">", "value": lval}])
+                                elif trig_type == "custom":
+                                    is_trigger_active = check_monitor_rule_firing(mid, [{"entity_key": "status", "operator": ncfg.get("op", "=="), "value": ncfg.get("val", "")}])
+                            else: # sensor_trigger
+                                if trig_type == "offline":
+                                    is_trigger_active = check_entity_rule_firing(tkey, [{"entity_key": "status", "operator": "!=", "value": "ONLINE"}])
+                                elif trig_type == "custom":
+                                    is_trigger_active = check_entity_rule_firing(tkey, [{"entity_key": "status", "operator": ncfg.get("op", "=="), "value": ncfg.get("val", "")}])
+
+                            if is_trigger_active:
+                                # DFS/BFS to trace active flow signal propagation
+                                queue = [(node_id, tkey)]
+                                visited = set()
+                                while queue:
+                                    curr_id, orig_tkey = queue.pop(0)
+                                    if curr_id in visited:
+                                        continue
+                                    visited.add(curr_id)
+                                    
+                                    curr_node = nodes_by_id.get(curr_id)
+                                    if not curr_node:
+                                        continue
+                                        
+                                    if curr_node.get("type") == "notify_action":
+                                        active_flows_firing.setdefault(curr_id, []).append(orig_tkey)
+                                        continue
+                                        
+                                    for child_id in out_edges.get(curr_id, []):
+                                        child_node = nodes_by_id.get(child_id)
+                                        if not child_node:
+                                            continue
+                                            
+                                        if child_node.get("type") == "compare_condition":
+                                            ccfg = child_node.get("config") or {}
+                                            prop = ccfg.get("property", "status")
+                                            op = ccfg.get("operator", "==")
+                                            val = ccfg.get("value", "")
+                                            
+                                            mapped_key = f"{orig_tkey}-{prop}" if orig_tkey.startswith("monitor-") else orig_tkey
+                                            current_val = entity_states.get(mapped_key, {}).get("value", "unknown")
+                                            
+                                            match = False
+                                            try:
+                                                if op == "==":
+                                                    match = (str(current_val).strip() == str(val).strip())
+                                                elif op == "!=":
+                                                    match = (str(current_val).strip() != str(val).strip())
+                                                elif op == "contains":
+                                                    match = (str(val).strip() in str(current_val).strip())
+                                                elif op == ">":
+                                                    match = (float(current_val) > float(val))
+                                                elif op == "<":
+                                                    match = (float(current_val) < float(val))
+                                            except Exception:
+                                                match = False
+                                                
+                                            if not match:
+                                                continue
+                                                
+                                        queue.append((child_id, orig_tkey))
+
+                        # Compare and trigger notifications
+                        action_nodes = [n for n in nodes if n.get("type") == "notify_action"]
+                        for an in action_nodes:
+                            an_id = an["id"]
+                            an_cfg = an.get("config") or {}
+                            try:
+                                cid = int(an_cfg.get("channel_id"))
+                            except (ValueError, TypeError):
+                                continue
+
+                            firing_tkeys = active_flows_firing.get(an_id, [])
+                            
+                            # Get existing firing flow configurations
+                            db_firing_rows = await conn.fetch("SELECT target_key FROM active_flow_alerts WHERE flow_id = $1 AND action_node_id = $2;", fid, an_id)
+                            db_firing_tkeys = [r["target_key"] for r in db_firing_rows]
+                            
+                            # New firing transitions
+                            for tk in firing_tkeys:
+                                if tk not in db_firing_tkeys:
+                                    await conn.execute("INSERT INTO active_flow_alerts (flow_id, action_node_id, target_key) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;", fid, an_id, tk)
+                                    
+                                    title = f"❗ Flow Alert [FIRING]: {fname}"
+                                    message = f"Advanced Automation Flow '{fname}' has triggered alert on target '{tk}'!\n\nFlow: {fname}\nAction Node: {an_id}\nTarget: {tk}\nStatus: FIRING\n"
+                                    
+                                    chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
+                                    if chan:
+                                        c_type = chan["type"]
+                                        c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
+                                        try:
+                                            await dispatch_notification(c_type, c_cfg, message, title)
+                                            await conn.execute("UPDATE alert_flows SET last_fired = NOW() WHERE id = $1;", fid)
+                                        except Exception as notify_err:
+                                            logger.error(f"Flow notify error via channel {cid}: {notify_err}")
+
+                            # Fired to recovered transitions
+                            for tk in db_firing_tkeys:
+                                if tk not in firing_tkeys:
+                                    await conn.execute("DELETE FROM active_flow_alerts WHERE flow_id = $1 AND action_node_id = $2 AND target_key = $3;", fid, an_id, tk)
+                                    
+                                    title = f"✅ Flow Alert [RESOLVED]: {fname}"
+                                    message = f"Advanced Automation Flow '{fname}' target '{tk}' alert has resolved to normal.\n\nFlow: {fname}\nAction Node: {an_id}\nTarget: {tk}\nStatus: NORMAL\n"
+                                    
+                                    chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
+                                    if chan:
+                                        c_type = chan["type"]
+                                        c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
+                                        try:
+                                            await dispatch_notification(c_type, c_cfg, message, title)
+                                        except Exception as notify_err:
+                                            logger.error(f"Flow resolution notify error: {notify_err}")
+                                            
         except Exception as eval_err:
             logger.error(f"Error in alerts_evaluator_task iteration: {eval_err}")
+
+async def forward_telemetry_webhook(entity_key: str, state: dict):
+    webhook_url = app_settings.get("gateway_webhook_url", "")
+    if app_settings.get("gateway_mode") != "true" or not webhook_url:
+        return
+        
+    headers_cfg = {}
+    headers_raw = app_settings.get("gateway_webhook_headers", "")
+    if headers_raw:
+        try:
+            headers_cfg = json.loads(headers_raw)
+        except Exception:
+            pass
+            
+    payload = {
+        "event": "telemetry_update",
+        "entity_key": entity_key,
+        "state": state
+    }
+    
+    def do_post():
+        try:
+            req = urllib.request.Request(
+                webhook_url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    **{k: str(v) for k, v in headers_cfg.items()}
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                resp.read()
+        except Exception as e:
+            logger.error(f"Error forwarding telemetry webhook: {e}")
+
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, do_post)
+
+async def save_telemetry_log(node_id: str, entity_key: str, value: Any):
+    # If gateway mode and database logging is disabled, bypass writing telemetry logs to DB
+    if app_settings.get("gateway_db_enabled", "true") == "false":
+        return
+        
+    if db_pool:
+        try:
+            async with db_pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
+                    node_id, entity_key, str(value)
+                )
+        except Exception as e:
+            logger.error(f"Error logging telemetry write: {e}")
 
 @app.on_event("startup")
 async def startup_event():
@@ -1043,22 +1380,23 @@ async def collect_system_statistics_task():
             entity_states["database-storage-pct"]["status_type"] = "optimal" if storage_pct < 80 else ("caution" if storage_pct < 90 else "alarm")
 
             # E. Write to Postgres telemetry logs and system audits if connected
+            await save_telemetry_log("core-mon", "cpu-utilization", cpu_val)
+            await save_telemetry_log("core-mon", "database-latency", db_latency)
+            await save_telemetry_log("core-mon", "database-storage-pct", storage_pct)
+            
+            # Forward telemetry states updated to webhook
+            if app_settings.get("gateway_mode") == "true":
+                await forward_telemetry_webhook("cpu-utilization", entity_states["cpu-utilization"])
+                await forward_telemetry_webhook("memory-saturation", entity_states["memory-saturation"])
+                await forward_telemetry_webhook("network-throughput", entity_states["network-throughput"])
+                await forward_telemetry_webhook("database-status", entity_states["database-status"])
+                await forward_telemetry_webhook("database-latency", entity_states["database-latency"])
+                await forward_telemetry_webhook("database-storage-pct", entity_states["database-storage-pct"])
+            
+            # Occasional systemic check audits
             if db_pool and db_status == "CONNECTED":
                 try:
                     async with db_pool.acquire() as conn:
-                        # Log high-frequency stats
-                        await conn.execute(
-                            "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
-                            "core-mon", "cpu-utilization", str(cpu_val)
-                        )
-                        await conn.execute(
-                            "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
-                            "core-mon", "database-latency", str(db_latency)
-                        )
-                        await conn.execute(
-                            "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
-                            "core-mon", "database-storage-pct", str(storage_pct)
-                        )
                         
                         # Occasional systemic check audits
                         if cpu_val > 90.0:
@@ -1318,16 +1656,16 @@ async def run_single_probe(monitor: dict):
                        WHERE id = $3;""",
                     status_str, latency, mon_id
                 )
-                await conn.execute(
-                    "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
-                    "monitors", f"monitor-{mon_id}-status", status_str
-                )
-                await conn.execute(
-                    "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
-                    "monitors", f"monitor-{mon_id}-latency", str(latency)
-                )
         except Exception as db_err:
             logger.error(f"Failed to record monitor {mon_id} results to DB: {db_err}")
+            
+    await save_telemetry_log("monitors", f"monitor-{mon_id}-status", status_str)
+    await save_telemetry_log("monitors", f"monitor-{mon_id}-latency", latency)
+    
+    # Forward to Gateway Webhook if in gateway mode
+    if app_settings.get("gateway_mode") == "true":
+        await forward_telemetry_webhook(f"monitor-{mon_id}-status", entity_states[f"monitor-{mon_id}-status"])
+        await forward_telemetry_webhook(f"monitor-{mon_id}-latency", entity_states[f"monitor-{mon_id}-latency"])
             
     await manager.broadcast({
         "event": "state_changed",
@@ -1355,6 +1693,9 @@ async def monitor_probers_task():
     
     while True:
         try:
+            if app_settings.get("gateway_mode") == "true":
+                await asyncio.sleep(5)
+                continue
             if not db_pool:
                 await asyncio.sleep(2)
                 continue
@@ -1452,15 +1793,17 @@ async def post_control(node_id: str, entity_id: str, payload: ControlPayload):
         try:
             async with db_pool.acquire() as conn:
                 await conn.execute(
-                    "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
-                    node_id, entity_id, str(payload.value)
-                )
-                await conn.execute(
                     "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
                     "info", f"User overridden control state: {node_id}/{entity_id} -> {payload.value}"
                 )
         except Exception as e:
             logger.error(f"Failed to log override state to DB: {e}")
+
+    await save_telemetry_log(node_id, entity_id, payload.value)
+    
+    # Forward state changes to webhook
+    if app_settings.get("gateway_mode") == "true":
+        await forward_telemetry_webhook(matched_key, entity_states[matched_key])
 
     # Broadcast state change client WS
     state = entity_states[matched_key]
@@ -1494,6 +1837,10 @@ class SettingsPayload(BaseModel):
     show_service_monitors: Optional[str] = "false"
     telemetry_interval: Optional[int] = None
     log_retention: Optional[int] = None
+    gateway_mode: Optional[str] = "false"
+    gateway_db_enabled: Optional[str] = "true"
+    gateway_webhook_url: Optional[str] = ""
+    gateway_webhook_headers: Optional[str] = ""
 
 @app.get("/api/settings")
 async def get_settings():
@@ -1512,6 +1859,14 @@ async def post_settings(payload: SettingsPayload):
     app_settings["layout_compact"] = payload.layout_compact
     if payload.show_service_monitors is not None:
         app_settings["show_service_monitors"] = payload.show_service_monitors
+    if payload.gateway_mode is not None:
+        app_settings["gateway_mode"] = payload.gateway_mode
+    if payload.gateway_db_enabled is not None:
+        app_settings["gateway_db_enabled"] = payload.gateway_db_enabled
+    if payload.gateway_webhook_url is not None:
+        app_settings["gateway_webhook_url"] = payload.gateway_webhook_url
+    if payload.gateway_webhook_headers is not None:
+        app_settings["gateway_webhook_headers"] = payload.gateway_webhook_headers
 
     # Save to Database
     if db_pool:
@@ -1537,6 +1892,60 @@ async def post_settings(payload: SettingsPayload):
         "type": "info",
         "message": "System settings dynamically updated by administrator."
     })
+
+class ApiKeyCreatePayload(BaseModel):
+    name: str
+
+@app.get("/api/settings/keys")
+async def get_api_keys():
+    if not db_pool:
+        return JSONResponse(content=[])
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, name, prefix, created_at, last_used FROM api_keys ORDER BY created_at DESC;")
+            return JSONResponse(content=[
+                {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "prefix": r["prefix"],
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "last_used": r["last_used"].isoformat() if r["last_used"] else None
+                } for r in rows
+            ])
+    except Exception as e:
+        logger.error(f"Failed to fetch API keys: {e}")
+        raise HTTPException(status_code=500, detail="Database fetch error")
+
+@app.post("/api/settings/keys")
+async def create_api_key(payload: ApiKeyCreatePayload):
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database off")
+    try:
+        raw_key = "hp_live_" + secrets.token_hex(20) # 40 hex char
+        prefix = raw_key[:12] # "hp_live_" + first 4 characters
+        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        
+        async with db_pool.acquire() as conn:
+            kid = await conn.fetchval(
+                "INSERT INTO api_keys (name, prefix, key_hash) VALUES ($1, $2, $3) RETURNING id;",
+                payload.name, prefix, key_hash
+            )
+            return JSONResponse(content={"id": kid, "name": payload.name, "prefix": prefix, "key": raw_key})
+    except Exception as e:
+        logger.error(f"Failed to generate API Key: {e}")
+        raise HTTPException(status_code=500, detail="Database write error")
+
+@app.delete("/api/settings/keys/{kid}")
+async def delete_api_key(kid: int):
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database off")
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("DELETE FROM api_keys WHERE id = $1;", kid)
+            return JSONResponse(content={"status": "deleted"})
+    except Exception as e:
+        logger.error(f"Failed to delete API Key: {e}")
+        raise HTTPException(status_code=500, detail="Database deletion failed")
     await manager.broadcast({
         "event": "settings_updated",
         "settings": app_settings
@@ -1781,6 +2190,80 @@ async def delete_rule(rid: int):
     except Exception as e:
         logger.error(f"Failed to delete rule: {e}")
         raise HTTPException(status_code=500, detail="Database delete error.")
+
+# --- Advanced Flows CRUD API ---
+@app.get("/api/alerts/flows")
+async def get_flows():
+    if not db_pool:
+        return JSONResponse(content=[])
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, name, enabled, nodes_json, edges_json, last_fired FROM alert_flows ORDER BY id ASC;")
+            res = []
+            for r in rows:
+                d = dict(r)
+                if d["last_fired"]:
+                    d["last_fired"] = d["last_fired"].isoformat()
+                res.append(d)
+            return JSONResponse(content=res)
+    except Exception as e:
+        logger.error(f"Failed to get flows: {e}")
+        raise HTTPException(status_code=500, detail="Database query error.")
+
+@app.post("/api/alerts/flows")
+async def add_flow(payload: FlowPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "INSERT INTO alert_flows (name, nodes_json, edges_json, enabled) VALUES ($1, $2, $3, $4) RETURNING id;",
+                payload.name, payload.nodes_json, payload.edges_json, payload.enabled
+            )
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "success", f"Created advanced flow '{payload.name}'."
+            )
+            return JSONResponse(content={"status": "success", "id": row["id"]})
+    except Exception as e:
+        logger.error(f"Failed to add flow: {e}")
+        raise HTTPException(status_code=500, detail="Database insert error.")
+
+@app.put("/api/alerts/flows/{fid}")
+async def update_flow(fid: int, payload: FlowPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE alert_flows SET name = $1, nodes_json = $2, edges_json = $3, enabled = $4 WHERE id = $5;",
+                payload.name, payload.nodes_json, payload.edges_json, payload.enabled, fid
+            )
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"Updated advanced flow '{payload.name}' (ID: {fid})."
+            )
+            return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error(f"Failed to update flow: {e}")
+        raise HTTPException(status_code=500, detail="Database update error.")
+
+@app.delete("/api/alerts/flows/{fid}")
+async def delete_flow(fid: int):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("DELETE FROM alert_flows WHERE id = $1;", fid)
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"Deleted advanced flow ID: {fid}."
+            )
+            return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error(f"Failed to delete flow: {e}")
+        raise HTTPException(status_code=500, detail="Database delete error.")
+
 
 class MonitorGroupPayload(BaseModel):
     name: str
