@@ -23,6 +23,84 @@ active_processes: Dict[str, subprocess.Popen] = {}
 # Watchdog task
 watchdog_task: Optional[asyncio.Task] = None
 
+# Encryption key and cipher cache
+cipher_suite = None
+cipher_lock = asyncio.Lock()
+
+async def init_encryption():
+    global cipher_suite
+    if cipher_suite is not None:
+        return
+    if not db_pool:
+        logger.warning("Database pool not available for encryption initialization.")
+        return
+        
+    async with cipher_lock:
+        if cipher_suite is not None:
+            return
+        try:
+            async with db_pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT value FROM system_settings WHERE key = $1;", "plugin_encryption_key")
+                if row:
+                    key_str = row["value"]
+                else:
+                    from cryptography.fernet import Fernet
+                    key_bytes = Fernet.generate_key()
+                    key_str = key_bytes.decode('utf-8')
+                    await conn.execute("INSERT INTO system_settings (key, value) VALUES ($1, $2);", "plugin_encryption_key", key_str)
+                
+                from cryptography.fernet import Fernet
+                cipher_suite = Fernet(key_str.encode('utf-8'))
+                logger.info("Plugin configuration encryption engine successfully initialized.")
+        except Exception as e:
+            logger.error(f"Failed to initialize plugin encryption key: {e}")
+
+async def get_cipher():
+    global cipher_suite
+    if cipher_suite is None:
+        await init_encryption()
+    return cipher_suite
+
+async def encrypt_config(config_dict: dict) -> str:
+    cipher = await get_cipher()
+    if not cipher:
+        return json.dumps(config_dict)
+    try:
+        plaintext = json.dumps(config_dict).encode("utf-8")
+        ciphertext = cipher.encrypt(plaintext).decode("utf-8")
+        return json.dumps({"encrypted": True, "ciphertext": ciphertext})
+    except Exception as e:
+        logger.error(f"Error encrypting config: {e}")
+        return json.dumps(config_dict)
+
+async def decrypt_config(config_val) -> dict:
+    if not config_val:
+        return {}
+    
+    if isinstance(config_val, str):
+        try:
+            data = json.loads(config_val)
+        except Exception:
+            return {}
+    else:
+        data = config_val
+        
+    if isinstance(data, dict) and data.get("encrypted") is True:
+        cipher = await get_cipher()
+        if not cipher:
+            return {}
+        try:
+            ciphertext = data.get("ciphertext", "")
+            plaintext = cipher.decrypt(ciphertext.encode("utf-8"))
+            return json.loads(plaintext.decode("utf-8"))
+        except Exception as e:
+            logger.error(f"Failed to decrypt plugin configuration: {e}")
+            return {}
+    else:
+        if isinstance(data, dict):
+            return data
+        return {}
+
 # APIRouter instance
 plugins_router = APIRouter(prefix="/api/plugins", tags=["Plugins"])
 
@@ -115,7 +193,8 @@ async def start_all_enabled_plugins():
         async with db_pool.acquire() as conn:
             rows = await conn.fetch("SELECT id, config FROM plugins WHERE enabled = TRUE;")
             for r in rows:
-                await start_plugin(r["id"], r["config"])
+                dec_conf = await decrypt_config(r["config"])
+                await start_plugin(r["id"], dec_conf)
     except Exception as e:
         logger.error(f"Error starting enabled plugins: {e}")
 
@@ -441,7 +520,8 @@ async def get_installed():
             async with db_pool.acquire() as conn:
                 rows = await conn.fetch("SELECT id, enabled, config FROM plugins;")
                 for r in rows:
-                    db_states[r["id"]] = {"enabled": r["enabled"], "config": json.loads(r["config"])}
+                    dec_conf = await decrypt_config(r["config"])
+                    db_states[r["id"]] = {"enabled": r["enabled"], "config": dec_conf}
         except Exception as e:
             logger.error(f"Error reading installed plugins DB state: {e}")
             
@@ -607,7 +687,7 @@ async def toggle_plugin(plugin_id: str):
             raise HTTPException(status_code=404, detail="Plugin not found in registry database.")
             
         new_state = not row["enabled"]
-        config = json.loads(row["config"])
+        config = await decrypt_config(row["config"])
         
         await conn.execute("UPDATE plugins SET enabled = $1 WHERE id = $2;", new_state, plugin_id)
         
@@ -629,13 +709,13 @@ async def save_config(plugin_id: str, payload: PluginConfigPayload):
     if not db_pool:
         raise HTTPException(status_code=500, detail="Database connection pool unavailable.")
         
-    config_json = json.dumps(payload.config)
+    encrypted_config = await encrypt_config(payload.config)
     async with db_pool.acquire() as conn:
         row = await conn.fetchrow("SELECT enabled FROM plugins WHERE id = $1;", plugin_id)
         if not row:
             raise HTTPException(status_code=404, detail="Plugin not found in registry database.")
             
-        await conn.execute("UPDATE plugins SET config = $1 WHERE id = $2;", config_json, plugin_id)
+        await conn.execute("UPDATE plugins SET config = $1 WHERE id = $2;", encrypted_config, plugin_id)
         is_enabled = row["enabled"]
         
     # Restart to apply new configs immediately if already running

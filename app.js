@@ -7177,6 +7177,42 @@ async function loadInstalledPlugins(forceFetch = false) {
   const listContainer = document.getElementById('installed-plugins-list');
   if (!listContainer) return;
 
+  // Track details open status and current input values before rendering
+  const openPluginDetails = new Set();
+  const currentInputValues = {};
+  let focusedInputSelector = null;
+  let selectionStart = null;
+  let selectionEnd = null;
+
+  // Query and save states from the existing DOM
+  listContainer.querySelectorAll('details').forEach(el => {
+    const input = el.querySelector('.plugin-config-input');
+    if (input && el.open) {
+      const pluginId = input.getAttribute('data-plugin-id');
+      if (pluginId) {
+        openPluginDetails.add(pluginId);
+      }
+    }
+  });
+
+  listContainer.querySelectorAll('.plugin-config-input').forEach(input => {
+    const pluginId = input.getAttribute('data-plugin-id');
+    const key = input.getAttribute('data-key');
+    if (pluginId && key) {
+      currentInputValues[`${pluginId}:${key}`] = input.value;
+    }
+  });
+
+  if (document.activeElement && document.activeElement.classList.contains('plugin-config-input')) {
+    const pluginId = document.activeElement.getAttribute('data-plugin-id');
+    const key = document.activeElement.getAttribute('data-key');
+    if (pluginId && key) {
+      focusedInputSelector = `.plugin-config-input[data-plugin-id="${pluginId}"][data-key="${key}"]`;
+      selectionStart = document.activeElement.selectionStart;
+      selectionEnd = document.activeElement.selectionEnd;
+    }
+  }
+
   const { httpUrl } = getApiUrls();
   if (forceFetch || !window.installedPluginsData || !window.marketplacePluginsData) {
     listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">Loading installed plugins...</p>`;
@@ -7257,7 +7293,8 @@ async function loadInstalledPlugins(forceFetch = false) {
     if (Object.keys(schema).length > 0) {
       configFieldsHTML = Object.keys(schema).map(key => {
         const field = schema[key];
-        const val = config[key] !== undefined ? config[key] : (field.default !== undefined ? field.default : '');
+        const savedVal = currentInputValues[`${p.id}:${key}`];
+        const val = savedVal !== undefined ? savedVal : (config[key] !== undefined ? config[key] : (field.default !== undefined ? field.default : ''));
         const label = field.label || key.replace('_', ' ').replace('-', ' ').title();
         const isPassword = field.type === 'password' || field.secret;
         const inputType = isPassword ? 'password' : (field.type === 'integer' ? 'number' : 'text');
@@ -7307,7 +7344,7 @@ async function loadInstalledPlugins(forceFetch = false) {
             </div>
           </div>
 
-          <details style="border-top:1px dashed var(--border-soft); padding-top:12px; margin-top:8px;">
+          <details ${openPluginDetails.has(p.id) ? 'open' : ''} style="border-top:1px dashed var(--border-soft); padding-top:12px; margin-top:8px;">
             <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600;">Configuration setup & credentials</summary>
             <div style="padding-top:12px; display:flex; flex-direction:column; gap:4px; max-width: 100%;">
               ${configFieldsHTML}
@@ -7336,7 +7373,7 @@ async function loadInstalledPlugins(forceFetch = false) {
               <input type="checkbox" ${p.enabled ? 'checked' : ''} onclick="toggleInstalledPlugin('${p.id}')">
               <span class="slider-checkbox round"></span>
             </label>
-            <details style="position:relative;">
+            <details ${openPluginDetails.has(p.id) ? 'open' : ''} style="position:relative;">
               <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600; list-style:none;">Config</summary>
               <div style="position:absolute; right:0; top:24px; background:#181614; border:1px solid var(--border-soft); border-radius:8px; padding:16px; min-width:320px; z-index:100; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
                 ${configFieldsHTML}
@@ -7355,6 +7392,21 @@ async function loadInstalledPlugins(forceFetch = false) {
       `;
     }
   }).join('');
+
+  // Restore focus and selection cursor range
+  if (focusedInputSelector) {
+    const restoreEl = listContainer.querySelector(focusedInputSelector);
+    if (restoreEl) {
+      restoreEl.focus();
+      try {
+        if (selectionStart !== null && selectionEnd !== null) {
+          restoreEl.setSelectionRange(selectionStart, selectionEnd);
+        }
+      } catch (e) {
+        // Safe fail for number inputs
+      }
+    }
+  }
 }
 
 async function loadMarketplacePlugins(forceFetch = false) {
@@ -8061,7 +8113,9 @@ window.renderFlowWorkspace = function () {
     // Event registrations
     el.addEventListener('mousedown', (e) => {
       if (e.target.classList.contains('node-port')) return; // handled separately
+      if (e.target.closest('[onclick*="deleteWorkspaceNode"]')) return;
       e.stopPropagation();
+      e.preventDefault();
       window.selectFlowWorkspaceNode(node.id);
 
       const canvasRect = canvas.getBoundingClientRect();
@@ -8072,6 +8126,10 @@ window.renderFlowWorkspace = function () {
         mouseStartX: e.clientX,
         mouseStartY: e.clientY
       };
+    });
+
+    el.addEventListener('dragstart', (e) => {
+      e.preventDefault();
     });
 
     canvas.appendChild(el);
@@ -8476,6 +8534,7 @@ window.initFlowWorkspaceListeners = function () {
   canvas.addEventListener('mousedown', (e) => {
     if (e.target.classList.contains('node-port') && e.target.classList.contains('output-port')) {
       e.stopPropagation();
+      e.preventDefault();
       const canvasRect = canvas.getBoundingClientRect();
       const portRect = e.target.getBoundingClientRect();
 
@@ -8485,6 +8544,10 @@ window.initFlowWorkspaceListeners = function () {
         y: portRect.top - canvasRect.top + portRect.height / 2
       };
     }
+  });
+
+  canvas.addEventListener('dragstart', (e) => {
+    e.preventDefault();
   });
 };
 
