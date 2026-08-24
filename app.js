@@ -1925,6 +1925,11 @@ async function loadSettings() {
     const compactEl = document.getElementById('setting-compact');
     if (compactEl) compactEl.checked = (data.layout_compact === 'true');
 
+    const monitorsToggleEl = document.getElementById('setting-show-service-monitors');
+    if (monitorsToggleEl && data.show_service_monitors !== undefined) {
+      monitorsToggleEl.checked = (data.show_service_monitors === 'true');
+    }
+
     // Bind Gateway Settings
     const gwModeEl = document.getElementById('setting-gateway-mode');
     if (gwModeEl) gwModeEl.checked = (data.gateway_mode === 'true');
@@ -2096,7 +2101,17 @@ window.updateGatewayUIVisibilities = function () {
   sidebarItemsToToggle.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      el.style.display = isGw ? 'none' : '';
+      if (isGw) {
+        el.style.display = 'none';
+      } else {
+        if (id === 'nav-probes') {
+          const isShowMonitors = window.currentSettingsData?.show_service_monitors === 'true' ||
+            (document.getElementById('setting-show-service-monitors')?.checked || false);
+          el.style.display = isShowMonitors ? '' : 'none';
+        } else {
+          el.style.display = '';
+        }
+      }
     }
   });
 
