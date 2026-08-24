@@ -6977,6 +6977,60 @@ window.openHostDetail = async function (hostId) {
 // PLUGINS MANAGEMENT INTEGRATION LOGIC
 // ─────────────────────────────────────────
 
+window.checkPluginsForUpdates = async function () {
+  const btn = document.getElementById('btn-plugins-check-updates');
+  let originalHTML = '';
+  if (btn) {
+    originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    btn.style.cursor = 'not-allowed';
+    btn.innerHTML = `
+      <svg class="chart-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="animation: spin-loader 0.85s linear infinite; margin: 0; display: inline-block; vertical-align: middle;">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" style="opacity:0.25;"></circle>
+        <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      Checking...
+    `;
+  }
+
+  showToast("Checking marketplace for plugin updates...", "info");
+
+  try {
+    await Promise.all([
+      loadInstalledPlugins(true),
+      loadMarketplacePlugins(true)
+    ]);
+
+    let updateCount = 0;
+    const updatePlugins = [];
+    if (window.installedPluginsData && window.marketplacePluginsData) {
+      window.installedPluginsData.forEach(p => {
+        const marketplacePlugin = window.marketplacePluginsData.find(m => m.id === p.id);
+        if (marketplacePlugin && marketplacePlugin.version !== p.version) {
+          updateCount++;
+          updatePlugins.push(p.name);
+        }
+      });
+    }
+
+    if (updateCount > 0) {
+      showToast(`Update available for ${updateCount} plugin(s): ${updatePlugins.join(', ')}`, 'success');
+    } else {
+      showToast("All plugins are up to date.", 'success');
+    }
+  } catch (err) {
+    showToast(`Failed to check for updates: ${err.message}`, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = 'pointer';
+      btn.innerHTML = originalHTML;
+    }
+  }
+};
+
 function showPluginsView() {
   const mainContent = document.getElementById('main-content');
   if (mainContent && mainContent.classList.contains('edit-mode')) {

@@ -1382,7 +1382,12 @@
               monitors, configure credentials API keys, and track daemon processes logs.</p>
           </div>
           <!-- Tab switcher -->
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="btn-plugins-check-updates" class="btn btn-secondary" onclick="checkPluginsForUpdates()"
+              style="font-size: 0.75rem; padding: 6px 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; background: rgba(255,255,255,0.05); border: 1px solid var(--border-soft); color: var(--text-primary); border-radius: 6px; margin-right: 12px;">
+              <i data-lucide="refresh-cw" style="width: 13px; height: 13px; color: var(--accent-orange);"></i> Check for
+              Updates
+            </button>
             <button id="plugin-tab-installed" class="tab-btn active" onclick="switchPluginTab('installed')"
               style="background:none; border:none; padding:8px 16px; color:var(--text-primary); cursor:pointer; font-weight:700; border-bottom: 2px solid var(--accent-orange); font-size:0.8rem; outline:none; transition: all 0.2s;">
               Installed

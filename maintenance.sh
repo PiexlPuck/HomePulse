@@ -329,6 +329,25 @@ perform_update() {
     fi
 }
 
+# Perform a first-time installation (Setup Env & Build Stack)
+first_install() {
+    echo -e "${YELLOW}Initiating first-time installation of HomePulse...${NC}"
+    check_dependencies
+    
+    # Initialize environment parameters (.env)
+    init_env_file
+    
+    # Spin up Docker containers
+    echo -e "${YELLOW}Building and starting HomePulse stack for the first time...${NC}"
+    docker compose up -d --build
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Success: HomePulse containers successfully built and started!${NC}"
+    else
+        echo -e "${RED}Error: Initial stack build failed.${NC}"
+        exit 1
+    fi
+}
+
 # Perform a fresh install (wipes database volume and rebuilds)
 fresh_install() {
     echo ""
@@ -365,27 +384,35 @@ show_menu() {
         echo -e "3) Delete a Manual Backup"
         echo -e "4) Force Rebuild and Restart Stack"
         echo -e "5) Check for Updates"
-        echo -e "6) Perform Fresh Install (Wipe Database & Rebuild)"
-        echo -e "7) Force Regenerate/Over-write Environment Credentials"
-        echo -e "8) Exit"
+        echo -e "6) Perform First-Time Installation (Setup Env & Build Stack)"
+        echo -e "7) Perform Fresh Install (Wipe Database & Rebuild)"
+        echo -e "8) Force Regenerate/Over-write Environment Credentials"
+        echo -e "9) Exit"
         echo -e "${BLUE}=========================================${NC}"
-        read -p "Select options (1-8): " opt
+        read -p "Select options (1-9): " opt
         case "$opt" in
             1) create_manual_backup ;;
             2) list_and_restore_backup ;;
             3) delete_manual_backup ;;
             4) rebuild_stack ;;
             5) check_version ;;
-            6) fresh_install ;;
-            7) force_regenerate_env ;;
-            8) echo -e "${BLUE}Exiting maintenance utility. Goodbye!${NC}"; exit 0 ;;
-            *) echo -e "${RED}Invalid option selected. Please specify (1-8).${NC}" ;;
+            6) first_install ;;
+            7) fresh_install ;;
+            8) force_regenerate_env ;;
+            9) echo -e "${BLUE}Exiting maintenance utility. Goodbye!${NC}"; exit 0 ;;
+            *) echo -e "${RED}Invalid option selected. Please specify (1-9).${NC}" ;;
         esac
     done
 }
 
 # Main entry point
 main() {
+    if [ "$1" = "--first-install" ] || [ "$1" = "first-install" ]; then
+        print_header
+        first_install
+        exit 0
+    fi
+
     print_header
     check_dependencies
     check_version
