@@ -475,6 +475,7 @@ function buildDashboardCards(entitiesMap) {
       cardEl.style.textAlign = 'center';
       cardEl.style.position = 'relative';
 
+      let deleteBtnHtml = '';
       if (typeof isEditMode !== 'undefined' && isEditMode) {
         cardEl.setAttribute('draggable', 'true');
         cardEl.addEventListener('dragstart', handleDragStart);
@@ -483,9 +484,16 @@ function buildDashboardCards(entitiesMap) {
         cardEl.addEventListener('drop', handleDrop);
         cardEl.addEventListener('dragend', handleDragEnd);
         cardEl.ondblclick = () => openCardEditor(widget.id);
+
+        deleteBtnHtml = `
+          <button class="card-action-btn delete-btn" onclick="event.stopPropagation(); deleteWidgetSettings('${widget.id}')" title="Delete Error Card" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.2); border:none; color:#000; border-radius:4px; width:24px; height:24px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+            <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
+          </button>
+        `;
       }
 
       cardEl.innerHTML = `
+        ${deleteBtnHtml}
         <i data-lucide="alert-triangle" style="width: 36px; height: 36px; color: #000; margin-bottom: 8px;"></i>
         <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">Configuration Error</div>
         <div style="font-size: 0.72rem; opacity: 0.85; margin-top: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${widget.options.error_message || 'YAML parsing exception'}">${widget.options.error_message || 'YAML format exception'}</div>
@@ -1635,6 +1643,7 @@ function hideAllViews() {
   const hostsView = document.getElementById('hosts-view');
   const hostDetailView = document.getElementById('host-detail-view');
   const pluginsView = document.getElementById('plugins-view');
+  const layoutView = document.getElementById('layout-view');
 
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
@@ -1647,6 +1656,7 @@ function hideAllViews() {
   if (hostsView) hostsView.classList.add('hide');
   if (hostDetailView) hostDetailView.classList.add('hide');
   if (pluginsView) pluginsView.classList.add('hide');
+  if (layoutView) layoutView.classList.add('hide');
 
   const tabBar = document.getElementById('tab-bar');
   if (tabBar) tabBar.style.display = 'none';
@@ -1840,6 +1850,14 @@ document.addEventListener('DOMContentLoaded', () => {
     navHosts.addEventListener('click', (e) => {
       e.preventDefault();
       showHostsView();
+    });
+  }
+
+  const navLayout = document.getElementById('nav-layout');
+  if (navLayout) {
+    navLayout.addEventListener('click', (e) => {
+      e.preventDefault();
+      showLayoutView();
     });
   }
 
@@ -2772,29 +2790,6 @@ function initializeWidgets() {
     options: { gridWidth: 3, gridHeight: 1 }
   });
 
-  // Demo Misconfigured Card
-  widgets.push({
-    id: "widget-hp-demo-error",
-    type: "error",
-    title: "Misconfigured Card",
-    tab: "main",
-    entities: [],
-    options: {
-      gridWidth: 1,
-      gridHeight: 1,
-      yaml_error_config: `id: widget-hp-demo-error
-type: sensor
-title: Improperly Configured Gauge
-tab: main
-entities:
-  - invalid-entity-node-reference
-options:
-  graphic: unmatched_graphic_type
-  color: invalid_color_structure`,
-      error_message: "YAML parsing failed: entities list must reference valid {nodeId, entityKey} objects."
-    }
-  });
-
   localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
   return widgets;
 }
@@ -3561,6 +3556,14 @@ function isProbeStatusOnline(status, type) {
   );
 }
 
+function getBaseHostName(name) {
+  if (!name) return 'Unknown Target';
+  let base = String(name).trim();
+  base = base.replace(/\s*\((Ping|HTTP|HTTPS|SSL|Port\s*\d*|DNS|WebSocket)\)\s*$/i, '');
+  base = base.replace(/\s*-\s*(Ping|HTTP|HTTPS|SSL|Port\s*\d*|DNS|WebSocket)\s*$/i, '');
+  return base.trim();
+}
+
 async function loadProbesLevel1() {
   const { httpUrl } = getApiUrls();
   const gridEl = document.getElementById('engines-grid');
@@ -3571,12 +3574,13 @@ async function loadProbesLevel1() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const monitors = await res.json();
 
-    const counts = { http: 0, websocket: 0, ping: 0, port: 0, dns: 0, ssl: 0 };
+    const counts = { all_grouped: monitors.length, http: 0, websocket: 0, ping: 0, port: 0, dns: 0, ssl: 0 };
     monitors.forEach(m => {
       if (counts[m.type] !== undefined) counts[m.type]++;
     });
 
     const engines = [
+      { type: 'all_grouped', name: 'Grouped Host & Service Probes', desc: 'All probes grouped by Host / Service', icon: 'layers', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.15)' },
       { type: 'http', name: 'HTTP/HTTPS Prober', desc: 'Web endpoints and REST APIs', icon: 'globe', color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
       { type: 'websocket', name: 'WebSocket Prober', desc: 'Active socket handshakes', icon: 'message-square', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
       { type: 'ping', name: 'ICMP Ping Prober', desc: 'Simple host reachability checks', icon: 'shield', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
@@ -3608,7 +3612,7 @@ async function loadProbesLevel1() {
       const countLabel = activeCount === 1 ? '1 active probe' : `${activeCount} active probes`;
 
       html += `
-        <div class="mon-picker-card" onclick="navigateProbesLevel(2, '${eng.type}')" style="display: flex; flex-direction: column; align-items: flex-start;">
+        <div class="mon-picker-card" onclick="navigateProbesLevel(2, '${eng.type}')" style="display: flex; flex-direction: column; align-items: flex-start; ${eng.type === 'all_grouped' ? 'border:1px solid rgba(96,165,250,0.4); background:rgba(30,58,138,0.15);' : ''}">
           <div style="display:flex; align-items:center; justify-content:center; background: ${eng.bg}; color: ${eng.color}; border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; width: 38px; height: 38px; margin-bottom: 12px; flex-shrink: 0;">
             <i data-lucide="${eng.icon}" style="width: 20px; height: 20px; color: ${eng.color}; margin-bottom: 0;"></i>
           </div>
@@ -3660,12 +3664,28 @@ window.toggleCategoryFolder = function (cat) {
   }
 };
 
+window.toggleHostProbeGroup = function (groupId) {
+  const content = document.getElementById(`host-group-content-${groupId}`);
+  const arrow = document.getElementById(`host-group-arrow-${groupId}`);
+  if (content && arrow) {
+    if (content.style.display === 'none') {
+      content.style.display = 'flex';
+      arrow.setAttribute('data-lucide', 'chevron-down');
+    } else {
+      content.style.display = 'none';
+      arrow.setAttribute('data-lucide', 'chevron-right');
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+};
+
 async function loadProbesLevel2(type) {
   const { httpUrl } = getApiUrls();
   const listEl = document.getElementById('probes-source-list');
   if (!listEl) return;
 
   const titles = {
+    all_grouped: { title: "Grouped Host & Service Probes", desc: "All system probes grouped together by Host and Service." },
     http: { title: "HTTP/HTTPS Prober Engine", desc: "Monitors HTTP/HTTPS website load status codes and latency." },
     websocket: { title: "WebSocket Connection Engine", desc: "Monitors WebSockets connectivity logs." },
     ping: { title: "ICMP Ping reachability Engine", desc: "Monitors response durations of network gateways." },
@@ -3683,171 +3703,132 @@ async function loadProbesLevel2(type) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const monitors = await res.json();
 
-    const filtered = monitors.filter(m => m.type === type);
+    const filtered = (type === 'all_grouped') ? monitors : monitors.filter(m => m.type === type);
 
     if (filtered.length === 0) {
       listEl.innerHTML = `
         <p style="font-size:0.8rem; color:var(--text-secondary); text-align:center; padding:24px; border:1px dashed var(--border-soft); border-radius:6px; margin:0;">
-          No active probes for this monitor engine. Click "+ Add Probe" to configure one.
+          No active probes for this monitor selection. Click "+ Configure New Probe" to add one.
         </p>`;
       return;
     }
 
-    let displayMonitors = [];
-    let handledIds = new Set();
-
-    if (type === 'http') {
-      filtered.forEach(m1 => {
-        if (handledIds.has(m1.id)) return;
-
-        let baseName = null;
-        let partnerName = null;
-        if (m1.name.endsWith(' (HTTP)')) {
-          baseName = m1.name.slice(0, -7);
-          partnerName = baseName + ' (HTTPS)';
-        } else if (m1.name.endsWith(' (HTTPS)')) {
-          baseName = m1.name.slice(0, -8);
-          partnerName = baseName + ' (HTTP)';
-        }
-
-        if (baseName) {
-          const m2 = filtered.find(m => m.name === partnerName);
-          if (m2 && !handledIds.has(m2.id)) {
-            displayMonitors.push({
-              isGrouped: true,
-              id: `${m1.id},${m2.id}`,
-              editMonId: m1.id,
-              name: baseName,
-              target: m1.target.replace(/^(https?:\/\/)+/i, ''),
-              type: 'http',
-              check_interval: m1.check_interval,
-              timeout: m1.timeout,
-              m1: m1,
-              m2: m2
-            });
-            handledIds.add(m1.id);
-            handledIds.add(m2.id);
-            return;
-          }
-        }
-      });
-
-      filtered.forEach(m => {
-        if (!handledIds.has(m.id)) {
-          displayMonitors.push({
-            isGrouped: false,
-            id: String(m.id),
-            name: m.name,
-            target: m.target,
-            type: m.type,
-            check_interval: m.check_interval,
-            timeout: m.timeout,
-            m1: m
-          });
-        }
-      });
-    } else {
-      filtered.forEach(m => {
-        displayMonitors.push({
-          isGrouped: false,
-          id: String(m.id),
-          name: m.name,
-          target: m.target,
-          type: m.type,
-          check_interval: m.check_interval,
-          timeout: m.timeout,
-          m1: m
-        });
-      });
-    }
-
-    // Group displayMonitors by category
-    const categories = {};
-    displayMonitors.forEach(mon => {
-      const cat = mon.m1.category || 'General';
-      if (!categories[cat]) categories[cat] = [];
-      categories[cat].push(mon);
+    // Group monitors by base host/service name
+    const serviceGroups = {};
+    filtered.forEach(m => {
+      const baseHost = getBaseHostName(m.name);
+      if (!serviceGroups[baseHost]) {
+        serviceGroups[baseHost] = [];
+      }
+      serviceGroups[baseHost].push(m);
     });
 
-    let html = '';
-    Object.keys(categories).sort().forEach(cat => {
-      const mons = categories[cat];
-      const catEscaped = cat.replace(/[^a-zA-Z0-9]/g, '_');
+    let html = '<div style="display:flex; flex-direction:column; gap:16px;">';
+
+    Object.keys(serviceGroups).sort().forEach((baseHost, idx) => {
+      const groupProbes = serviceGroups[baseHost];
+      const groupId = `grp_${idx}_${baseHost.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+      // Calculate status summary
+      let total = groupProbes.length;
+      let onlineCount = 0;
+      let offlineCount = 0;
+      let disabledCount = 0;
+      let totalLatency = 0;
+      let latencyCount = 0;
+
+      groupProbes.forEach(p => {
+        const enabled = p.enabled !== false;
+        if (!enabled) {
+          disabledCount++;
+        } else if (isProbeStatusOnline(p.last_status, p.type)) {
+          onlineCount++;
+        } else {
+          offlineCount++;
+        }
+        if (enabled && p.last_latency !== null && p.last_latency !== undefined) {
+          totalLatency += parseFloat(p.last_latency);
+          latencyCount++;
+        }
+      });
+
+      let statusBadgeColor = '#34d399';
+      let statusBadgeBg = 'rgba(52, 211, 153, 0.12)';
+      let statusBadgeText = 'ALL ONLINE';
+
+      if (offlineCount > 0 && onlineCount > 0) {
+        statusBadgeColor = '#f59e0b';
+        statusBadgeBg = 'rgba(245, 158, 11, 0.12)';
+        statusBadgeText = 'DEGRADED';
+      } else if (offlineCount > 0 && onlineCount === 0) {
+        statusBadgeColor = '#f43f5e';
+        statusBadgeBg = 'rgba(244, 63, 94, 0.12)';
+        statusBadgeText = 'OFFLINE';
+      } else if (disabledCount === total) {
+        statusBadgeColor = '#6b7280';
+        statusBadgeBg = 'rgba(107, 114, 128, 0.12)';
+        statusBadgeText = 'DISABLED';
+      }
+
+      const avgLat = latencyCount > 0 ? `${(totalLatency / latencyCount).toFixed(1)} ms avg` : '--';
 
       html += `
-        <div class="category-folder" style="margin-bottom: 20px;">
-          <div class="category-folder-header" style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1.5px solid rgba(200, 140, 60, 0.2); margin-bottom: 12px; cursor: pointer;" onclick="toggleCategoryFolder('${catEscaped}')">
-            <i data-lucide="folder-open" style="width: 16px; height: 16px; color: var(--accent-orange);"></i>
-            <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); text-transform: capitalize; letter-spacing: 0.03em;">${cat}</span>
-            <span style="font-size: 0.7rem; color: var(--text-secondary); margin-left:8px; background: rgba(200,140,60,0.1); padding: 2px 6px; border-radius:10px;">${mons.length}</span>
-            <i id="folder-arrow-${catEscaped}" data-lucide="chevron-down" style="width: 14px; height: 14px; color: var(--text-secondary); margin-left: auto; transition: transform 0.2s;"></i>
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; overflow:hidden;">
+          <!-- Host Group Header -->
+          <div onclick="toggleHostProbeGroup('${groupId}')" style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:rgba(0,0,0,0.25); cursor:pointer; user-select:none;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.3); padding:8px; border-radius:6px; display:flex; align-items:center; justify-content:center;">
+                <i data-lucide="server" style="width:18px; height:18px; color:#60a5fa;"></i>
+              </div>
+              <div>
+                <div style="font-weight:700; font-size:0.9rem; color:#fff;">${baseHost}</div>
+                <div style="font-size:0.72rem; color:var(--text-secondary);">${total} Grouped Probe${total > 1 ? 's' : ''}</div>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:16px;">
+              <span style="font-size:0.7rem; font-weight:700; color:${statusBadgeColor}; background:${statusBadgeBg}; padding:4px 10px; border-radius:4px; border:1px solid ${statusBadgeColor}40;">
+                ${statusBadgeText}
+              </span>
+              <span style="font-size:0.72rem; color:var(--text-secondary); font-family:monospace;">${avgLat}</span>
+              <i id="host-group-arrow-${groupId}" data-lucide="chevron-down" style="width:16px; height:16px; color:var(--text-secondary); transition:transform 0.2s;"></i>
+            </div>
           </div>
-          <div id="folder-content-${catEscaped}" style="display: flex; flex-direction: column; gap: 10px;">`;
 
-      mons.forEach(mon => {
-        let isEnabled = true;
-        let statusLabel = '';
-        let statusColor = '';
-        let latencyStr = '';
-        let m1Enabled = mon.m1.enabled !== false;
+          <!-- Grouped Probes Body -->
+          <div id="host-group-content-${groupId}" style="display:flex; flex-direction:column; gap:8px; padding:12px 16px; background:rgba(0,0,0,0.15); border-top:1px solid var(--border-soft);">
+      `;
 
-        if (mon.isGrouped) {
-          let m2Enabled = mon.m2.enabled !== false;
-          isEnabled = m1Enabled || m2Enabled;
-          const isUp1 = m1Enabled && isProbeStatusOnline(mon.m1.last_status, mon.m1.type);
-          const isUp2 = m2Enabled && isProbeStatusOnline(mon.m2.last_status, mon.m2.type);
+      groupProbes.forEach(mon => {
+        const isEnabled = mon.enabled !== false;
+        const isOnline = isEnabled && isProbeStatusOnline(mon.last_status, mon.type);
+        const monStatusColor = !isEnabled ? '#6b7280' : (isOnline ? 'var(--color-optimal)' : '#f43f5e');
+        const monStatusText = !isEnabled ? 'DISABLED' : (isOnline ? 'ONLINE' : 'OFFLINE');
+        const monLat = isEnabled && mon.last_latency !== null && mon.last_latency !== undefined ? `${mon.last_latency} ms` : '--';
 
-          if (!isEnabled) {
-            statusLabel = 'DISABLED';
-            statusColor = '#6b7280';
-            latencyStr = '--';
-          } else {
-            let lats = [];
-            if (m1Enabled && mon.m1.last_latency !== null) lats.push(parseFloat(mon.m1.last_latency));
-            if (m2Enabled && mon.m2.last_latency !== null) lats.push(parseFloat(mon.m2.last_latency));
-
-            if (lats.length > 0) {
-              const avgLat = (lats.reduce((a, b) => a + b, 0) / lats.length).toFixed(1);
-              latencyStr = `${avgLat} ms avg`;
-            } else {
-              latencyStr = '--';
-            }
-
-            if (isUp1 && isUp2) {
-              statusLabel = 'BOTH ONLINE';
-              statusColor = 'var(--color-optimal)';
-            } else if (isUp1) {
-              statusLabel = 'HTTP ONLINE';
-              statusColor = 'var(--accent-orange)';
-            } else if (isUp2) {
-              statusLabel = 'HTTPS ONLINE';
-              statusColor = 'var(--accent-orange)';
-            } else {
-              statusLabel = 'BOTH OFFLINE';
-              statusColor = '#f43f5e';
-            }
-          }
-        } else {
-          isEnabled = mon.m1.enabled !== false;
-          const isUp = isEnabled && isProbeStatusOnline(mon.m1.last_status, mon.m1.type);
-          statusColor = !isEnabled ? '#6b7280' : (isUp ? 'var(--color-optimal)' : '#f43f5e');
-          statusLabel = !isEnabled ? 'DISABLED' : (isUp ? (mon.m1.type === 'ssl' ? mon.m1.last_status : 'ONLINE') : (mon.m1.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE'));
-          latencyStr = isEnabled && mon.m1.last_latency !== null ? `${mon.m1.last_latency} ms` : '--';
-        }
+        let probeIcon = 'activity';
+        if (mon.type === 'ping') probeIcon = 'shield';
+        else if (mon.type === 'http') probeIcon = 'globe';
+        else if (mon.type === 'port') probeIcon = 'server';
+        else if (mon.type === 'ssl') probeIcon = 'lock';
+        else if (mon.type === 'dns') probeIcon = 'globe-2';
 
         html += `
-          <div style="background:#1d1b18; border:1px solid var(--border-soft); border-radius:6px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="goLvl3('${mon.id}', event)">
-            <div style="display:flex; flex-direction:column; gap:4px;">
-              <span style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">${mon.name}</span>
-              <span style="font-size:0.72rem; color:var(--text-secondary); font-family:monospace; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${mon.target}</span>
-            </div>
-            
-            <div style="display:flex; align-items:center; gap:16px;">
-              <div style="text-align:right; display:flex; flex-direction:column; gap:2px;">
-                <span style="font-size:0.75rem; font-weight:700; color:${statusColor};">${statusLabel}</span>
-                <span style="font-size:0.65rem; color:var(--text-secondary); font-family:monospace;">${latencyStr}</span>
+          <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); border-radius:6px; padding:10px 14px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <i data-lucide="${probeIcon}" style="width:15px; height:15px; color:${monStatusColor};"></i>
+              <div>
+                <div style="font-weight:600; font-size:0.82rem; color:var(--text-primary);">${mon.name}</div>
+                <div style="font-size:0.7rem; color:var(--text-secondary); font-family:monospace;">${mon.target} [${mon.type.toUpperCase()}]</div>
               </div>
-              
+            </div>
+
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div style="text-align:right;">
+                <div style="font-size:0.72rem; font-weight:700; color:${monStatusColor};">${monStatusText}</div>
+                <div style="font-size:0.65rem; color:var(--text-secondary); font-family:monospace;">${monLat}</div>
+              </div>
+
               <label class="switch" title="Enable/Disable Monitor" onclick="event.stopPropagation()">
                 <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMonitorEnabled('${mon.id}', this.checked, event)">
                 <span class="slider"></span>
@@ -3856,18 +3837,21 @@ async function loadProbesLevel2(type) {
               <button class="btn-icon" onclick="openEditMonitor('${mon.id}', event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Edit Monitor">
                 <i data-lucide="edit-3" style="width:14px; height:14px; color:var(--accent-orange);"></i>
               </button>
-              <button class="btn-icon" onclick="deleteMonitorSource(${mon.id.includes(',') ? `'${mon.id}'` : mon.id}, event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Delete Monitor">
+              <button class="btn-icon" onclick="deleteMonitorSource(${mon.id}, event)" style="background:none; border:none; padding:4px; cursor:pointer;" title="Delete Monitor">
                 <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
               </button>
             </div>
-          </div>`;
+          </div>
+        `;
       });
 
       html += `
           </div>
-        </div>`;
+        </div>
+      `;
     });
 
+    html += '</div>';
     listEl.innerHTML = html;
     if (window.lucide) window.lucide.createIcons();
   } catch (err) {
@@ -6261,6 +6245,316 @@ function showHostsView() {
   window.currentActivePluginsData = null;
   loadHosts();
 }
+
+window.showLayoutView = function () {
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (editToggleBtn) editToggleBtn.style.display = 'none';
+
+  hideAllViews();
+
+  const layoutView = document.getElementById('layout-view');
+  if (layoutView) layoutView.classList.remove('hide');
+
+  const navLayout = document.getElementById('nav-layout');
+  if (navLayout) navLayout.classList.add('active');
+
+  loadLayoutHierarchy();
+};
+
+async function loadLayoutHierarchy() {
+  const container = document.getElementById('layout-tree-container');
+  if (!container) return;
+
+  const { httpUrl } = getApiUrls();
+  container.innerHTML = `
+    <div style="text-align:center; padding:32px; color:var(--text-secondary);">
+      <i data-lucide="loader" class="spin" style="width:24px; height:24px; margin-bottom:8px;"></i>
+      <p>Loading infrastructure hierarchy...</p>
+    </div>
+  `;
+
+  try {
+    const [depsRes, hostsRes, monRes] = await Promise.all([
+      fetch(`${httpUrl}/api/dependencies`),
+      fetch(`${httpUrl}/api/hosts`),
+      fetch(`${httpUrl}/api/monitors`)
+    ]);
+
+    const deps = depsRes.ok ? await depsRes.json() : [];
+    const hosts = hostsRes.ok ? await hostsRes.json() : [];
+    const monitors = monRes.ok ? await monRes.json() : [];
+
+    // Maps for lookups
+    const targetMap = {};
+    const hostMonitorsMap = {};
+
+    hosts.forEach(h => {
+      targetMap[`host-${h.id}`] = { id: h.id, name: h.name, type: 'Host', target: h.target, icon: 'server' };
+      hostMonitorsMap[h.id] = [];
+    });
+
+    monitors.forEach(m => {
+      targetMap[`monitor-${m.id}`] = { id: m.id, name: m.name, type: m.type.toUpperCase(), target: m.target, icon: 'activity', host_id: m.host_id };
+      if (m.host_id && hostMonitorsMap[m.host_id]) {
+        hostMonitorsMap[m.host_id].push(m);
+      }
+    });
+
+    if (deps.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center; padding:40px; color:var(--text-secondary); border: 1px dashed var(--border-soft); border-radius: 8px;">
+          <i data-lucide="git-branch" style="width:36px; height:36px; opacity:0.5; margin-bottom:12px; color:var(--accent-blue);"></i>
+          <h4 style="font-weight:600; color:var(--text-primary); margin-bottom:4px;">No Dependencies Configured</h4>
+          <p style="font-size:0.8rem; max-width:400px; margin:0 auto 16px auto;">
+            Link network gateways, hypervisor hosts, and child services to organize your infrastructure into a dependency tree.
+          </p>
+          <button class="btn btn-primary" onclick="openAddDependencyModal()" style="font-size:0.75rem; padding:8px 16px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+            <i data-lucide="plus" style="width:14px; height:14px;"></i> Create First Dependency Link
+          </button>
+        </div>
+      `;
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
+
+    // Group dependencies by parent target key
+    const parentGroups = {};
+    deps.forEach(dep => {
+      if (!parentGroups[dep.parent_target]) {
+        parentGroups[dep.parent_target] = [];
+      }
+      parentGroups[dep.parent_target].push(dep);
+    });
+
+    let html = `<div style="display:flex; flex-direction:column; gap:20px;">`;
+
+    Object.keys(parentGroups).forEach(parentKey => {
+      const parentObj = targetMap[parentKey] || { name: parentKey, type: 'Node', icon: 'hard-drive' };
+      const childDeps = parentGroups[parentKey];
+
+      html += `
+        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:10px; padding:16px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+          <!-- Parent Target Header -->
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--border-soft);">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div style="background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.3); padding:8px; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+                <i data-lucide="${parentObj.icon}" style="width:20px; height:20px; color:#60a5fa;"></i>
+              </div>
+              <div>
+                <div style="font-weight:700; font-size:0.95rem; color:#fff;">${parentObj.name}</div>
+                <div style="font-size:0.72rem; color:var(--accent-blue); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Parent Node (${parentObj.type})</div>
+              </div>
+            </div>
+            <span style="font-size:0.7rem; background:rgba(59,130,246,0.1); color:var(--accent-blue); padding:3px 8px; border-radius:4px; font-weight:600;">
+              ${childDeps.length} Dependent Target${childDeps.length > 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <!-- Nested Child Nodes Tree -->
+          <div style="display:flex; flex-direction:column; gap:10px; padding-left:12px; border-left:2px solid rgba(59,130,246,0.2); margin-left:14px;">
+      `;
+
+      childDeps.forEach(dep => {
+        const childObj = targetMap[dep.child_target] || { name: dep.child_target, type: 'Node', icon: 'cpu' };
+        const isHost = dep.child_target.startswith ? dep.child_target.startswith('host-') : dep.child_target.indexOf('host-') === 0;
+        const hostId = isHost ? parseInt(dep.child_target.split('-')[1]) : null;
+        const probes = hostId && hostMonitorsMap[hostId] ? hostMonitorsMap[hostId] : [];
+
+        html += `
+          <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border-soft); border-radius:8px; padding:12px 14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <i data-lucide="${childObj.icon}" style="width:16px; height:16px; color:${isHost ? '#34d399' : '#a7f3d0'};"></i>
+                <div>
+                  <div style="font-weight:600; font-size:0.85rem; color:#f3f4f6;">${childObj.name}</div>
+                  <div style="font-size:0.7rem; color:#9ca3af;">${childObj.type} ${childObj.target ? `(${childObj.target})` : ''}</div>
+                </div>
+              </div>
+              <button onclick="deleteDependencyLink(${dep.id})" title="Remove Dependency Link" style="background:none; border:none; color:var(--semantic-red); opacity:0.8; cursor:pointer; padding:6px; border-radius:4px; display:flex; align-items:center;">
+                <i data-lucide="trash-2" style="width:15px; height:15px;"></i>
+              </button>
+            </div>
+        `;
+
+        // Render associated probes grouped under host
+        if (isHost && probes.length > 0) {
+          html += `
+            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border-soft); display:flex; flex-direction:column; gap:6px; padding-left:12px;">
+              <div style="font-size:0.68rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:4px;">
+                <i data-lucide="zap" style="width:12px; height:12px; color:var(--accent-orange);"></i> Grouped Associated Probes (${probes.length})
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          `;
+          probes.forEach(p => {
+            html += `
+              <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); padding:4px 8px; border-radius:4px; font-size:0.72rem; color:#e5e7eb;">
+                <i data-lucide="activity" style="width:12px; height:12px; color:var(--accent-blue);"></i>
+                <span>${p.name}</span>
+                <span style="font-size:0.65rem; color:var(--text-secondary); text-transform:uppercase;">[${p.type}]</span>
+              </div>
+            `;
+          });
+          html += `
+              </div>
+            </div>
+          `;
+        }
+
+        html += `</div>`;
+      });
+
+      html += `
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+    container.innerHTML = html;
+    if (window.lucide) window.lucide.createIcons();
+
+  } catch (err) {
+    console.error("Failed to load layout hierarchy:", err);
+    container.innerHTML = `<p style="color:var(--semantic-red); text-align:center; padding:16px;">Error loading infrastructure hierarchy: ${err.message}</p>`;
+  }
+}
+
+window.openAddDependencyModal = async function () {
+  const { httpUrl } = getApiUrls();
+  const parentSel = document.getElementById('dep-modal-parent-select');
+  const childSel = document.getElementById('dep-modal-child-select');
+  if (!parentSel || !childSel) return;
+
+  parentSel.innerHTML = '<option value="">Loading targets...</option>';
+  childSel.innerHTML = '<option value="">Loading targets...</option>';
+  openModal('modal-add-dependency');
+
+  try {
+    const [hostsRes, monRes] = await Promise.all([
+      fetch(`${httpUrl}/api/hosts`),
+      fetch(`${httpUrl}/api/monitors`)
+    ]);
+
+    const hosts = hostsRes.ok ? await hostsRes.json() : [];
+    const monitors = monRes.ok ? await monRes.json() : [];
+
+    let parentOptions = '<option value="">-- Select Parent Target --</option>';
+    let childOptions = '<option value="">-- Select Dependent Child Target --</option>';
+
+    // 1. Grouped Hosts & Hypervisors
+    let hostsOptGroup = '';
+    const hostNamesSet = new Set(hosts.map(h => h.name.toLowerCase().trim()));
+
+    if (hosts.length > 0) {
+      hostsOptGroup += '<optgroup label="Hosts & Hypervisors (Includes all associated probes)">';
+      hosts.forEach(h => {
+        hostsOptGroup += `<option value="host-${h.id}">🖥️ ${h.name} (${h.target})</option>`;
+      });
+      hostsOptGroup += '</optgroup>';
+    }
+
+    // Categorize monitors into Host-bound sub-groups vs Standalone probes
+    const hostProbesMap = {};
+    const standaloneProbes = [];
+
+    monitors.forEach(m => {
+      const baseName = getBaseHostName(m.name);
+      let matchedHost = hosts.find(h => h.id === m.host_id || h.name.toLowerCase().trim() === baseName.toLowerCase());
+
+      if (matchedHost) {
+        if (!hostProbesMap[matchedHost.name]) {
+          hostProbesMap[matchedHost.name] = [];
+        }
+        hostProbesMap[matchedHost.name].push(m);
+      } else {
+        standaloneProbes.push(m);
+      }
+    });
+
+    // 2. Standalone Probes (not bound to any host)
+    let standaloneOptGroup = '';
+    if (standaloneProbes.length > 0) {
+      standaloneOptGroup += '<optgroup label="Standalone Service Probes">';
+      standaloneProbes.forEach(m => {
+        standaloneOptGroup += `<option value="monitor-${m.id}">⚡ ${m.name} [${m.type.toUpperCase()}]</option>`;
+      });
+      standaloneOptGroup += '</optgroup>';
+    }
+
+    // 3. Host-specific Probe Sub-groups (if user specifically wants an individual probe under a host)
+    let hostSubOptGroups = '';
+    Object.keys(hostProbesMap).sort().forEach(hName => {
+      const probes = hostProbesMap[hName];
+      hostSubOptGroups += `<optgroup label="⚡ ${hName} - Specific Probes">`;
+      probes.forEach(m => {
+        hostSubOptGroups += `<option value="monitor-${m.id}">↳ ${m.name} [${m.type.toUpperCase()}]</option>`;
+      });
+      hostSubOptGroups += '</optgroup>';
+    });
+
+    const fullOptionsHtml = parentOptions + hostsOptGroup + standaloneOptGroup + hostSubOptGroups;
+    parentSel.innerHTML = fullOptionsHtml;
+    childSel.innerHTML = childOptions + hostsOptGroup + standaloneOptGroup + hostSubOptGroups;
+  } catch (e) {
+    console.error("Failed to populate dependency modal:", e);
+    parentSel.innerHTML = '<option value="">Error loading targets</option>';
+    childSel.innerHTML = '<option value="">Error loading targets</option>';
+  }
+};
+
+window.saveDependencyLinkFromModal = async function () {
+  const { httpUrl } = getApiUrls();
+  const parentVal = document.getElementById('dep-modal-parent-select')?.value;
+  const childVal = document.getElementById('dep-modal-child-select')?.value;
+
+  if (!parentVal || !childVal) {
+    alert("Please select both a Parent Target and a Child Target.");
+    return;
+  }
+
+  if (parentVal === childVal) {
+    alert("A target cannot be assigned as its own parent.");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${httpUrl}/api/dependencies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        parent_target: parentVal,
+        child_target: childVal
+      })
+    });
+
+    if (res.ok) {
+      closeModal('modal-add-dependency');
+      showToast("Infrastructure dependency established", "success");
+      loadLayoutHierarchy();
+    } else {
+      const err = await res.json();
+      alert(`Failed to establish dependency: ${err.detail || 'Error'}`);
+    }
+  } catch (e) {
+    alert(`Error creating dependency link: ${e.message}`);
+  }
+};
+
+window.deleteDependencyLink = async function (depId) {
+  if (!await showConfirm("Are you sure you want to remove this dependency link?", "Remove Link")) return;
+  const { httpUrl } = getApiUrls();
+  try {
+    const res = await fetch(`${httpUrl}/api/dependencies/${depId}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast("Dependency link removed", "success");
+      loadLayoutHierarchy();
+    } else {
+      alert("Failed to remove dependency link.");
+    }
+  } catch (e) {
+    alert(`Error removing dependency link: ${e.message}`);
+  }
+};
 
 window.currentHostsData = null;
 window.currentActivePluginsData = null;

@@ -23,6 +23,8 @@ from plugins_manager import plugins_router, init_plugins_manager
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("homepulse-backend")
 
+APP_VERSION = "0.0.1"
+
 app = FastAPI(title="HomePulse Backend")
 
 @app.middleware("http")
@@ -31,7 +33,8 @@ async def api_key_middleware(request: Request, call_next):
     if path.startswith("/api/") and not (
         path.startswith("/api/settings/keys") or 
         path == "/api/health" or 
-        path == "/api/settings"
+        path == "/api/settings" or
+        path == "/api/version"
     ):
         token = request.headers.get("X-API-Key")
         if not token:
@@ -580,9 +583,18 @@ async def setup_database_schema(conn):
         """)
         await conn.execute("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS polling_interval INT DEFAULT 3;")
         await conn.execute("ALTER TABLE system_monitors ADD COLUMN IF NOT EXISTS host_id INT REFERENCES hosts(id) ON DELETE CASCADE;")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS node_dependencies (
+                id SERIAL PRIMARY KEY,
+                parent_target VARCHAR(255) NOT NULL,
+                child_target VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_node_dependency UNIQUE (parent_target, child_target)
+            );
+        """)
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs (timestamp);")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_system_audits_timestamp ON system_audits (timestamp);")
-        logger.info("hosts database schema, indexes, and relationships verified.")
+        logger.info("hosts and node_dependencies database schema, indexes, and relationships verified.")
     except Exception as hosts_err:
         logger.warning(f"Error establishing hosts and schemas: {hosts_err}")
 
@@ -829,6 +841,70 @@ def check_monitor_rule_firing(m_id: int, conditions: list) -> bool:
             result = result or val
     return result
 
+async def is_ancestor_parent_down(conn, target_key: str, visited=None):
+    if visited is None:
+        visited = set()
+    if target_key in visited:
+        return False, ""
+    visited.add(target_key)
+
+    # If target_key is a monitor, check if its host target is linked as a child dependency
+    if target_key.startswith("monitor-"):
+        try:
+            mid = int(target_key.split("-")[1])
+            m_host_id = await conn.fetchval("SELECT host_id FROM system_monitors WHERE id = $1;", mid)
+            if m_host_id:
+                host_key = f"host-{m_host_id}"
+                host_down, host_parent_name = await is_ancestor_parent_down(conn, host_key, visited)
+                if host_down:
+                    return True, host_parent_name
+        except Exception:
+            pass
+
+    try:
+        rows = await conn.fetch("SELECT parent_target FROM node_dependencies WHERE child_target = $1;", target_key)
+        for r in rows:
+            ptarget = r["parent_target"]
+            is_down = False
+            parent_name = ptarget
+            
+            if ptarget.startswith("monitor-"):
+                try:
+                    mid = int(ptarget.split("-")[1])
+                    m_row = await conn.fetchrow("SELECT name, last_status FROM system_monitors WHERE id = $1;", mid)
+                    if m_row:
+                        parent_name = m_row["name"]
+                        if m_row["last_status"] in ("OFFLINE", "DOWN", "CRITICAL", "500", "502", "503", "404", "TIMEOUT"):
+                            is_down = True
+                except Exception:
+                    pass
+            elif ptarget.startswith("host-"):
+                try:
+                    hid = int(ptarget.split("-")[1])
+                    h_row = await conn.fetchrow("SELECT name FROM hosts WHERE id = $1;", hid)
+                    if h_row:
+                        parent_name = h_row["name"]
+                    active = await conn.fetchval("SELECT COUNT(*) FROM system_monitors WHERE host_id = $1 AND last_status IN ('OFFLINE', 'DOWN', 'CRITICAL', 'TIMEOUT');", hid)
+                    if active and active > 0:
+                        is_down = True
+                except Exception:
+                    pass
+            else:
+                e_val = str(entity_states.get(ptarget, {}).get("value", "")).upper()
+                if e_val in ("OFFLINE", "DOWN", "CRITICAL", "FAILED", "FALSE", "0"):
+                    is_down = True
+                    
+            if is_down:
+                return True, parent_name
+                
+            anc_down, anc_name = await is_ancestor_parent_down(conn, ptarget, visited)
+            if anc_down:
+                return True, anc_name
+    except Exception as e:
+        logger.error(f"Error checking node_dependencies: {e}")
+        
+    return False, ""
+
 async def alerts_evaluator_task():
     global db_pool
     logger.info("Starting Alert Router background rules evaluator task...")
@@ -1015,6 +1091,17 @@ async def alerts_evaluator_task():
                                     if elapsed < interval_secs:
                                         should_notify = False
                                         logger.info(f"Skipping dispatch for rule {rid}, target {tk}, channel {cid} (cooldown active: {elapsed:.1f}s < {interval_secs}s)")
+                                        
+                                # Smart Alert Suppression Check
+                                if should_notify:
+                                    is_parent_down, parent_label = await is_ancestor_parent_down(conn, tk)
+                                    if is_parent_down:
+                                        should_notify = False
+                                        logger.info(f"Smart Alert Suppression: Skipping notification dispatch for target '{tk}' because parent '{parent_label}' is DOWN.")
+                                        await conn.execute(
+                                            "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                                            "warning", f"Alert dispatch for target '{info.get('name', tk)}' suppressed: Parent node '{parent_label}' is down."
+                                        )
                                         
                                 if should_notify:
                                     chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
@@ -1842,6 +1929,10 @@ class SettingsPayload(BaseModel):
     gateway_webhook_url: Optional[str] = ""
     gateway_webhook_headers: Optional[str] = ""
 
+@app.get("/api/version")
+async def get_app_version():
+    return JSONResponse(content={"version": APP_VERSION, "app": "HomePulse"})
+
 @app.get("/api/settings")
 async def get_settings():
     return JSONResponse(content=app_settings)
@@ -1895,6 +1986,70 @@ async def post_settings(payload: SettingsPayload):
 
 class ApiKeyCreatePayload(BaseModel):
     name: str
+
+class DependencyPayload(BaseModel):
+    parent_target: str
+    child_target: str
+
+@app.get("/api/dependencies")
+async def get_node_dependencies():
+    if not db_pool:
+        return JSONResponse(content=[])
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, parent_target, child_target, created_at FROM node_dependencies ORDER BY id ASC;")
+            res = []
+            for r in rows:
+                res.append({
+                    "id": r["id"],
+                    "parent_target": r["parent_target"],
+                    "child_target": r["child_target"],
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None
+                })
+            return JSONResponse(content=res)
+    except Exception as e:
+        logger.error(f"Error fetching dependencies: {e}")
+        return JSONResponse(content=[])
+
+@app.post("/api/dependencies")
+async def create_node_dependency(payload: DependencyPayload):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    if payload.parent_target == payload.child_target:
+        raise HTTPException(status_code=400, detail="Cannot assign a node as its own parent.")
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO node_dependencies (parent_target, child_target)
+                VALUES ($1, $2)
+                ON CONFLICT (parent_target, child_target) DO NOTHING;
+            """, payload.parent_target, payload.child_target)
+            
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "info", f"Dependency established: Parent '{payload.parent_target}' -> Child '{payload.child_target}'"
+            )
+        return JSONResponse(content={"status": "created"})
+    except Exception as e:
+        logger.error(f"Failed to create dependency: {e}")
+        raise HTTPException(status_code=500, detail="Database error creating dependency.")
+
+@app.delete("/api/dependencies/{dep_id}")
+async def delete_node_dependency(dep_id: int):
+    if not db_pool:
+        raise HTTPException(status_code=503, detail="Database connection not available")
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("DELETE FROM node_dependencies WHERE id = $1;", dep_id)
+            await conn.execute(
+                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                "warning", f"Dependency node link #{dep_id} removed by operator."
+            )
+        return JSONResponse(content={"status": "deleted"})
+    except Exception as e:
+        logger.error(f"Failed to delete dependency: {e}")
+        raise HTTPException(status_code=500, detail="Database error removing dependency.")
+
 
 @app.get("/api/settings/keys")
 async def get_api_keys():
