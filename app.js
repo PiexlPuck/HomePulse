@@ -6443,58 +6443,33 @@ window.openAddDependencyModal = async function () {
 
     // 1. Grouped Hosts & Hypervisors
     let hostsOptGroup = '';
-    const hostNamesSet = new Set(hosts.map(h => h.name.toLowerCase().trim()));
-
     if (hosts.length > 0) {
-      hostsOptGroup += '<optgroup label="Hosts & Hypervisors (Includes all associated probes)">';
+      hostsOptGroup += '<optgroup label="Hosts & Hypervisors (Grouped VMs)">';
       hosts.forEach(h => {
         hostsOptGroup += `<option value="host-${h.id}">🖥️ ${h.name} (${h.target})</option>`;
       });
       hostsOptGroup += '</optgroup>';
     }
 
-    // Categorize monitors into Host-bound sub-groups vs Standalone probes
-    const hostProbesMap = {};
-    const standaloneProbes = [];
-
-    monitors.forEach(m => {
+    // 2. Standalone Unbound Probes (Only probes not associated with any host)
+    let standaloneOptGroup = '';
+    const standaloneProbes = monitors.filter(m => {
+      if (m.host_id) return false;
       const baseName = getBaseHostName(m.name);
-      let matchedHost = hosts.find(h => h.id === m.host_id || h.name.toLowerCase().trim() === baseName.toLowerCase());
-
-      if (matchedHost) {
-        if (!hostProbesMap[matchedHost.name]) {
-          hostProbesMap[matchedHost.name] = [];
-        }
-        hostProbesMap[matchedHost.name].push(m);
-      } else {
-        standaloneProbes.push(m);
-      }
+      return !hosts.some(h => h.name.toLowerCase().trim() === baseName.toLowerCase());
     });
 
-    // 2. Standalone Probes (not bound to any host)
-    let standaloneOptGroup = '';
     if (standaloneProbes.length > 0) {
-      standaloneOptGroup += '<optgroup label="Standalone Service Probes">';
+      standaloneOptGroup += '<optgroup label="Standalone Unbound Probes">';
       standaloneProbes.forEach(m => {
         standaloneOptGroup += `<option value="monitor-${m.id}">⚡ ${m.name} [${m.type.toUpperCase()}]</option>`;
       });
       standaloneOptGroup += '</optgroup>';
     }
 
-    // 3. Host-specific Probe Sub-groups (if user specifically wants an individual probe under a host)
-    let hostSubOptGroups = '';
-    Object.keys(hostProbesMap).sort().forEach(hName => {
-      const probes = hostProbesMap[hName];
-      hostSubOptGroups += `<optgroup label="⚡ ${hName} - Specific Probes">`;
-      probes.forEach(m => {
-        hostSubOptGroups += `<option value="monitor-${m.id}">↳ ${m.name} [${m.type.toUpperCase()}]</option>`;
-      });
-      hostSubOptGroups += '</optgroup>';
-    });
-
-    const fullOptionsHtml = parentOptions + hostsOptGroup + standaloneOptGroup + hostSubOptGroups;
+    const fullOptionsHtml = parentOptions + hostsOptGroup + standaloneOptGroup;
     parentSel.innerHTML = fullOptionsHtml;
-    childSel.innerHTML = childOptions + hostsOptGroup + standaloneOptGroup + hostSubOptGroups;
+    childSel.innerHTML = childOptions + fullOptionsHtml;
   } catch (e) {
     console.error("Failed to populate dependency modal:", e);
     parentSel.innerHTML = '<option value="">Error loading targets</option>';
