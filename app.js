@@ -1632,6 +1632,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function hideAllViews() {
+  const dashContent = document.querySelector('.dashboard-content');
   const dashGrid = document.getElementById('dashboard-grid');
   const bottomSection = document.querySelector('.bottom-section');
   const settingsView = document.getElementById('settings-view');
@@ -1645,6 +1646,7 @@ function hideAllViews() {
   const pluginsView = document.getElementById('plugins-view');
   const layoutView = document.getElementById('layout-view');
 
+  if (dashContent) dashContent.style.display = 'none';
   if (dashGrid) dashGrid.style.display = 'none';
   if (bottomSection) bottomSection.style.display = 'none';
   if (settingsView) settingsView.classList.add('hide');
@@ -1691,8 +1693,10 @@ function showDashboardView() {
 
   hideAllViews();
 
+  const dashContent = document.querySelector('.dashboard-content');
   const dashGrid = document.getElementById('dashboard-grid');
   const bottomSection = document.querySelector('.bottom-section');
+  if (dashContent) dashContent.style.display = '';
   if (dashGrid) dashGrid.style.display = '';
   if (bottomSection) bottomSection.style.display = '';
 
@@ -1948,6 +1952,13 @@ async function loadSettings() {
       monitorsToggleEl.checked = (data.show_service_monitors === 'true');
     }
 
+    // Bind Telemetry Interval
+    const telemetryIntervalEl = document.getElementById('setting-telemetry-interval');
+    const telemetryIntervalBadge = document.getElementById('setting-telemetry-interval-val');
+    const currentInterval = (data.telemetry_interval !== undefined && data.telemetry_interval !== null) ? parseInt(data.telemetry_interval) : 3;
+    if (telemetryIntervalEl) telemetryIntervalEl.value = currentInterval;
+    if (telemetryIntervalBadge) telemetryIntervalBadge.textContent = `${currentInterval}s`;
+
     // Bind Gateway Settings
     const gwModeEl = document.getElementById('setting-gateway-mode');
     if (gwModeEl) gwModeEl.checked = (data.gateway_mode === 'true');
@@ -2027,6 +2038,7 @@ function initSettingsControls() {
         theme: document.querySelector('.theme-btn.active')?.getAttribute('data-theme') || 'midnight',
         layout_compact: String(document.getElementById('setting-compact')?.checked || false),
         show_service_monitors: String(document.getElementById('setting-show-service-monitors')?.checked || false),
+        telemetry_interval: parseInt(document.getElementById('setting-telemetry-interval')?.value || '3'),
         // Gateway settings
         gateway_mode: String(document.getElementById('setting-gateway-mode')?.checked || false),
         gateway_db_enabled: String(document.getElementById('setting-gateway-db-enabled')?.checked || false),
@@ -3559,6 +3571,7 @@ function isProbeStatusOnline(status, type) {
 function getBaseHostName(name) {
   if (!name) return 'Unknown Target';
   let base = String(name).trim();
+  base = base.replace(/\s*\[(Internal|External)\s+[^\]]+\]\s*$/i, '');
   base = base.replace(/\s*\((Ping|HTTP|HTTPS|SSL|Port\s*\d*|DNS|WebSocket)\)\s*$/i, '');
   base = base.replace(/\s*-\s*(Ping|HTTP|HTTPS|SSL|Port\s*\d*|DNS|WebSocket)\s*$/i, '');
   return base.trim();
@@ -6419,15 +6432,64 @@ async function loadLayoutHierarchy() {
   }
 }
 
+// State for custom dependency dropdowns
+window.depModalState = {
+  targets: [],
+  parent: null,
+  child: null
+};
+
 window.openAddDependencyModal = async function () {
   const { httpUrl } = getApiUrls();
-  const parentSel = document.getElementById('dep-modal-parent-select');
-  const childSel = document.getElementById('dep-modal-child-select');
-  if (!parentSel || !childSel) return;
-
-  parentSel.innerHTML = '<option value="">Loading targets...</option>';
-  childSel.innerHTML = '<option value="">Loading targets...</option>';
+  
+  // Reset state
+  window.depModalState.parent = null;
+  window.depModalState.child = null;
+  
+  const parentInput = document.getElementById('dep-modal-parent-select');
+  const childInput = document.getElementById('dep-modal-child-select');
+  if (parentInput) parentInput.value = '';
+  if (childInput) childInput.value = '';
+  
+  // Reset trigger displays
+  const parentDisplay = document.getElementById('dep-parent-selected-display');
+  const childDisplay = document.getElementById('dep-child-selected-display');
+  if (parentDisplay) {
+    parentDisplay.innerHTML = `
+      <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px; display:flex; align-items:center; justify-content:center;">
+        <i data-lucide="server" style="width:15px; height:15px; color:var(--text-secondary);"></i>
+      </div>
+      <div style="display:flex; flex-direction:column;">
+        <span style="font-size:0.84rem; font-weight:600; color:#94a3b8;">Choose parent node...</span>
+        <span style="font-size:0.7rem; color:#64748b;">Hypervisor or Gateway Host</span>
+      </div>`;
+  }
+  if (childDisplay) {
+    childDisplay.innerHTML = `
+      <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px; display:flex; align-items:center; justify-content:center;">
+        <i data-lucide="cpu" style="width:15px; height:15px; color:var(--text-secondary);"></i>
+      </div>
+      <div style="display:flex; flex-direction:column;">
+        <span style="font-size:0.84rem; font-weight:600; color:#94a3b8;">Choose dependent child node...</span>
+        <span style="font-size:0.7rem; color:#64748b;">VM or Managed Host</span>
+      </div>`;
+  }
+  
+  document.getElementById('dep-parent-trigger')?.classList.remove('active');
+  document.getElementById('dep-child-trigger')?.classList.remove('active');
+  const livePreview = document.getElementById('dep-topology-live-preview');
+  if (livePreview) livePreview.style.display = 'none';
+  
+  // Close any open popovers
+  document.getElementById('dep-parent-dropdown-menu')?.classList.remove('open');
+  document.getElementById('dep-child-dropdown-menu')?.classList.remove('open');
+  
   openModal('modal-add-dependency');
+
+  const parentList = document.getElementById('dep-parent-items-list');
+  const childList = document.getElementById('dep-child-items-list');
+  if (parentList) parentList.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:0.78rem;">Loading targets...</div>';
+  if (childList) childList.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:0.78rem;">Loading targets...</div>';
 
   try {
     const [hostsRes, monRes] = await Promise.all([
@@ -6438,44 +6500,235 @@ window.openAddDependencyModal = async function () {
     const hosts = hostsRes.ok ? await hostsRes.json() : [];
     const monitors = monRes.ok ? await monRes.json() : [];
 
-    let parentOptions = '<option value="">-- Select Parent Target --</option>';
-    let childOptions = '<option value="">-- Select Dependent Child Target --</option>';
-
-    // 1. Grouped Hosts & Hypervisors
-    let hostsOptGroup = '';
-    if (hosts.length > 0) {
-      hostsOptGroup += '<optgroup label="Hosts & Hypervisors (Grouped VMs)">';
-      hosts.forEach(h => {
-        hostsOptGroup += `<option value="host-${h.id}">🖥️ ${h.name} (${h.target})</option>`;
-      });
-      hostsOptGroup += '</optgroup>';
-    }
-
-    // 2. Standalone Unbound Probes (Only probes not associated with any host)
-    let standaloneOptGroup = '';
+    // Filter standalone probes only
     const standaloneProbes = monitors.filter(m => {
       if (m.host_id) return false;
-      const baseName = getBaseHostName(m.name);
-      return !hosts.some(h => h.name.toLowerCase().trim() === baseName.toLowerCase());
+      const baseName = typeof getBaseHostName === 'function' ? getBaseHostName(m.name) : m.name;
+      return !hosts.some(h => h.name.toLowerCase().trim() === baseName.toLowerCase().trim());
     });
 
-    if (standaloneProbes.length > 0) {
-      standaloneOptGroup += '<optgroup label="Standalone Unbound Probes">';
-      standaloneProbes.forEach(m => {
-        standaloneOptGroup += `<option value="monitor-${m.id}">⚡ ${m.name} [${m.type.toUpperCase()}]</option>`;
+    // Compile list of available targets
+    const availableTargets = [];
+    hosts.forEach(h => {
+      availableTargets.push({
+        id: `host-${h.id}`,
+        name: h.name,
+        target: h.target,
+        type: 'host',
+        category: 'Hosts & Hypervisors (Grouped VMs)',
+        icon: 'server',
+        badge: 'VM / Host'
       });
-      standaloneOptGroup += '</optgroup>';
-    }
+    });
 
-    const fullOptionsHtml = parentOptions + hostsOptGroup + standaloneOptGroup;
-    parentSel.innerHTML = fullOptionsHtml;
-    childSel.innerHTML = childOptions + fullOptionsHtml;
+    standaloneProbes.forEach(m => {
+      availableTargets.push({
+        id: `monitor-${m.id}`,
+        name: m.name,
+        target: m.target || m.type.toUpperCase(),
+        type: 'monitor',
+        category: 'Standalone Unbound Probes',
+        icon: 'activity',
+        badge: m.type.toUpperCase()
+      });
+    });
+
+    window.depModalState.targets = availableTargets;
+
+    // Render options for parent and child
+    renderDepDropdownItems('parent', availableTargets);
+    renderDepDropdownItems('child', availableTargets);
+
   } catch (e) {
     console.error("Failed to populate dependency modal:", e);
-    parentSel.innerHTML = '<option value="">Error loading targets</option>';
-    childSel.innerHTML = '<option value="">Error loading targets</option>';
+    if (parentList) parentList.innerHTML = `<div style="padding:12px; text-align:center; color:var(--semantic-red); font-size:0.78rem;">Failed to load targets: ${e.message}</div>`;
+    if (childList) childList.innerHTML = `<div style="padding:12px; text-align:center; color:var(--semantic-red); font-size:0.78rem;">Failed to load targets: ${e.message}</div>`;
   }
 };
+
+function renderDepDropdownItems(type, targets, filter = '') {
+  const container = document.getElementById(`dep-${type}-items-list`);
+  if (!container) return;
+
+  const currentVal = document.getElementById(`dep-modal-${type}-select`)?.value;
+  const q = (filter || '').toLowerCase().trim();
+
+  const filtered = (targets || []).filter(t => {
+    if (!q) return true;
+    return (t.name && t.name.toLowerCase().includes(q)) || 
+           (t.target && t.target.toLowerCase().includes(q)) || 
+           (t.category && t.category.toLowerCase().includes(q));
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div style="padding:16px; text-align:center; color:#64748b; font-size:0.75rem;">No matching targets found</div>';
+    return;
+  }
+
+  // Group by category
+  const groups = {};
+  filtered.forEach(t => {
+    if (!groups[t.category]) groups[t.category] = [];
+    groups[t.category].push(t);
+  });
+
+  let html = '';
+  Object.keys(groups).forEach(cat => {
+    html += `
+      <div class="custom-dep-group-header">
+        <i data-lucide="${cat.includes('Host') ? 'server' : 'radio'}" style="width:12px; height:12px; color:#60a5fa;"></i>
+        <span>${cat}</span>
+      </div>`;
+    
+    groups[cat].forEach(t => {
+      const isSelected = t.id === currentVal;
+      const safeName = (t.name || '').replace(/'/g, "\\'");
+      const safeTarget = (t.target || '').replace(/'/g, "\\'");
+      
+      html += `
+        <div class="custom-dep-option ${isSelected ? 'selected' : ''}" onclick="selectCustomDepTarget('${type}', '${t.id}', '${safeName}', '${safeTarget}', '${t.icon}', '${t.badge}')">
+          <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
+            <div style="background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.25); border-radius:6px; padding:6px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <i data-lucide="${t.icon}" style="width:15px; height:15px; color:#60a5fa;"></i>
+            </div>
+            <div style="display:flex; flex-direction:column; overflow:hidden;">
+              <span class="target-name" style="text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${t.name}</span>
+              <span style="font-size:0.68rem; color:#64748b; font-family:monospace; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${t.target}</span>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+            <span class="target-addr">${t.badge}</span>
+            ${isSelected ? '<i data-lucide="check" style="width:14px; height:14px; color:#3b82f6;"></i>' : ''}
+          </div>
+        </div>`;
+    });
+  });
+
+  container.innerHTML = html;
+  if (window.lucide) window.lucide.createIcons();
+}
+
+window.toggleDepDropdown = function (type, event) {
+  if (event) event.stopPropagation();
+  const menu = document.getElementById(`dep-${type}-dropdown-menu`);
+  const chevron = document.getElementById(`dep-${type}-chevron`);
+  const trigger = document.getElementById(`dep-${type}-trigger`);
+  if (!menu) return;
+
+  const isOpen = menu.classList.contains('open');
+
+  // Close all
+  document.querySelectorAll('.custom-dep-popover').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.custom-dep-trigger').forEach(t => t.classList.remove('active'));
+  const pChev = document.getElementById('dep-parent-chevron');
+  const cChev = document.getElementById('dep-child-chevron');
+  if (pChev) pChev.style.transform = 'rotate(0deg)';
+  if (cChev) cChev.style.transform = 'rotate(0deg)';
+
+  if (!isOpen) {
+    menu.classList.add('open');
+    if (trigger) trigger.classList.add('active');
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+    
+    // Focus search input
+    const searchInput = menu.querySelector('input');
+    if (searchInput) {
+      searchInput.value = '';
+      setTimeout(() => searchInput.focus(), 50);
+      renderDepDropdownItems(type, window.depModalState.targets || []);
+    }
+  }
+};
+
+window.filterDepDropdown = function (type, query) {
+  renderDepDropdownItems(type, window.depModalState.targets || [], query);
+};
+
+window.selectCustomDepTarget = function (type, id, name, target, icon, badge) {
+  const hiddenInput = document.getElementById(`dep-modal-${type}-select`);
+  if (hiddenInput) hiddenInput.value = id;
+
+  window.depModalState[type] = { id, name, target, icon, badge };
+
+  const displayEl = document.getElementById(`dep-${type}-selected-display`);
+  if (displayEl) {
+    displayEl.innerHTML = `
+      <div style="background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.3); border-radius:6px; padding:6px; display:flex; align-items:center; justify-content:center;">
+        <i data-lucide="${icon}" style="width:16px; height:16px; color:#60a5fa;"></i>
+      </div>
+      <div style="display:flex; flex-direction:column; overflow:hidden;">
+        <span style="font-size:0.86rem; font-weight:700; color:#fff; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${name}</span>
+        <span style="font-size:0.7rem; color:#94a3b8; font-family:monospace;">${target || badge}</span>
+      </div>`;
+  }
+
+  // Close dropdown
+  document.getElementById(`dep-${type}-dropdown-menu`)?.classList.remove('open');
+  document.getElementById(`dep-${type}-trigger`)?.classList.remove('active');
+  const chev = document.getElementById(`dep-${type}-chevron`);
+  if (chev) chev.style.transform = 'rotate(0deg)';
+
+  updateDepLivePreview();
+  if (window.lucide) window.lucide.createIcons();
+};
+
+function updateDepLivePreview() {
+  const previewCard = document.getElementById('dep-topology-live-preview');
+  const parentObj = window.depModalState.parent;
+  const childObj = window.depModalState.child;
+
+  if (!previewCard) return;
+
+  if (!parentObj || !childObj) {
+    previewCard.style.display = 'none';
+    return;
+  }
+
+  previewCard.style.display = 'flex';
+
+  const previewParent = document.getElementById('preview-parent-text');
+  const previewChild = document.getElementById('preview-child-text');
+  const previewBadge = document.getElementById('preview-status-badge');
+  const previewDesc = document.getElementById('preview-explanation-text');
+
+  if (parentObj.id === childObj.id) {
+    if (previewParent) previewParent.innerHTML = `<i data-lucide="server" style="width:14px; height:14px;"></i> ${parentObj.name}`;
+    if (previewChild) previewChild.innerHTML = `<i data-lucide="server" style="width:14px; height:14px;"></i> ${childObj.name}`;
+    if (previewBadge) {
+      previewBadge.textContent = 'Invalid Selection';
+      previewBadge.style.color = '#f87171';
+      previewBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+      previewBadge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+    }
+    if (previewDesc) {
+      previewDesc.innerHTML = `<span style="color:#f87171;">⚠️ A node cannot be configured as its own parent.</span>`;
+    }
+  } else {
+    if (previewParent) previewParent.innerHTML = `<i data-lucide="server" style="width:14px; height:14px;"></i> ${parentObj.name}`;
+    if (previewChild) previewChild.innerHTML = `<i data-lucide="server" style="width:14px; height:14px;"></i> ${childObj.name}`;
+    if (previewBadge) {
+      previewBadge.textContent = 'Ready to Link';
+      previewBadge.style.color = '#4ade80';
+      previewBadge.style.background = 'rgba(34, 197, 94, 0.15)';
+      previewBadge.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+    }
+    if (previewDesc) {
+      previewDesc.innerHTML = `When <strong>${parentObj.name}</strong> goes offline, alerts for <strong>${childObj.name}</strong> and its child services will be held.`;
+    }
+  }
+}
+
+// Close custom dropdowns when clicking outside
+window.addEventListener('click', function (e) {
+  if (!e.target.closest('.custom-dep-select-wrapper')) {
+    document.querySelectorAll('.custom-dep-popover').forEach(p => p.classList.remove('open'));
+    document.querySelectorAll('.custom-dep-trigger').forEach(t => t.classList.remove('active'));
+    const pChev = document.getElementById('dep-parent-chevron');
+    const cChev = document.getElementById('dep-child-chevron');
+    if (pChev) pChev.style.transform = 'rotate(0deg)';
+    if (cChev) cChev.style.transform = 'rotate(0deg)';
+  }
+});
 
 window.saveDependencyLinkFromModal = async function () {
   const { httpUrl } = getApiUrls();
@@ -6546,9 +6799,10 @@ async function loadHosts(forceFetch = false) {
   try {
     if (forceFetch || !window.currentHostsData || !window.currentActivePluginsData) {
       container.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:32px; color:var(--text-secondary);">Loading hosts and plugins...</p>`;
-      const [hostsRes, pluginsRes] = await Promise.all([
+      const [hostsRes, pluginsRes, monitorsRes] = await Promise.all([
         fetch(`${httpUrl}/api/hosts`),
-        fetch(`${httpUrl}/api/plugins/installed`).catch(e => { console.error(e); return { ok: false }; })
+        fetch(`${httpUrl}/api/plugins/installed`).catch(e => { console.error(e); return { ok: false }; }),
+        fetch(`${httpUrl}/api/monitors`).catch(e => { console.error(e); return { ok: false }; })
       ]);
 
       if (!hostsRes.ok) throw new Error(`HTTP ${hostsRes.status}`);
@@ -6561,6 +6815,12 @@ async function loadHosts(forceFetch = false) {
       }
       window.currentActivePluginsData = plugins;
       console.log("loadHosts: fetched installed plugins from API. Installed plugins found:", window.currentActivePluginsData.map(p => p.id));
+
+      let monitors = [];
+      if (monitorsRes && monitorsRes.ok) {
+        monitors = await monitorsRes.json();
+      }
+      window.currentMonitorsData = monitors;
     }
 
     console.log("loadHosts: current active plugins in cache:", window.currentActivePluginsData ? window.currentActivePluginsData.map(p => p.id) : null);
@@ -6570,8 +6830,10 @@ async function loadHosts(forceFetch = false) {
     const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
     const filteredHosts = window.currentHostsData.filter(host => {
+      const intTgt = (host.target_internal || host.target || '').toLowerCase();
+      const extTgt = (host.target_external || '').toLowerCase();
       return host.name.toLowerCase().includes(searchVal) ||
-        host.target.toLowerCase().includes(searchVal);
+        intTgt.includes(searchVal) || extTgt.includes(searchVal);
     });
 
     const filteredActivePlugins = window.currentActivePluginsData.filter(p => {
@@ -6605,22 +6867,88 @@ async function loadHosts(forceFetch = false) {
         ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
         : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
 
+      // Smart status evaluation (Internal vs External)
+      const hostMonitors = (window.currentMonitorsData || []).filter(m => m.host_id === host.id);
+      const internalMonitors = hostMonitors.filter(m => !m.name.includes('[External') && !m.name.includes('(SSL)'));
+      const externalMonitors = hostMonitors.filter(m => m.name.includes('[External') || m.name.includes('(SSL)'));
+
+      function isProbeOnline(m) {
+        const ent = (cachedEntities && cachedEntities[`monitor-${m.id}-status`]) ? cachedEntities[`monitor-${m.id}-status`].value : m.last_status;
+        const s = String(ent || '').toLowerCase();
+        return (s === 'up' || s === 'online' || s === 'healthy' || s === 'stable');
+      }
+
+      const internalUp = internalMonitors.length > 0 ? internalMonitors.every(isProbeOnline) : null;
+      const externalUp = (host.target_external && externalMonitors.length > 0) ? externalMonitors.every(isProbeOnline) : null;
+
+      let statusPillHtml = '';
+      if (host.target_external) {
+        if (internalUp === true && externalUp === true) {
+          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">🟢 ALL ONLINE</span>`;
+        } else if (internalUp === true && externalUp === false) {
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="LAN is online, but external domain is failing">🟡 EXTERNAL DOWN</span>`;
+        } else if (internalUp === false && externalUp === true) {
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="External domain responding, but internal LAN IP is unreachable">🟡 INTERNAL DOWN</span>`;
+        } else if (internalUp === false && externalUp === false) {
+          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">🔴 OFFLINE</span>`;
+        } else {
+          statusPillHtml = `<span class="status-pill default" style="font-size:0.6rem; padding:2px 7px;">INITIALIZING</span>`;
+        }
+      } else {
+        if (internalUp === true) {
+          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">ONLINE</span>`;
+        } else if (internalUp === false) {
+          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">OFFLINE</span>`;
+        } else {
+          statusPillHtml = `<span class="status-pill default" style="font-size:0.6rem; padding:2px 7px;">STANDBY</span>`;
+        }
+      }
+
+      const internalTarget = host.target_internal || host.target || '';
+      const externalTarget = host.target_external || '';
+
+      const outageBannerHtml = (host.target_external && internalUp === true && externalUp === false) ? `
+        <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:4px 8px; margin-bottom:8px; font-size:0.68rem; color:#fde047; display:flex; align-items:center; gap:6px;">
+          <i data-lucide="alert-triangle" style="width:13px; height:13px; color:#fbbf24; flex-shrink:0;"></i>
+          <span>External WAN domain unreachable. Internal LAN is operational.</span>
+        </div>` : (host.target_external && internalUp === false && externalUp === true) ? `
+        <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:4px 8px; margin-bottom:8px; font-size:0.68rem; color:#fde047; display:flex; align-items:center; gap:6px;">
+          <i data-lucide="alert-triangle" style="width:13px; height:13px; color:#fbbf24; flex-shrink:0;"></i>
+          <span>Internal LAN IP unreachable. External proxy is responding.</span>
+        </div>` : '';
+
+      const targetsDisplayHtml = `
+        <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:10px;">
+          <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:#e2e8f0; font-family:monospace;">
+            <span style="font-size:0.62rem; background:rgba(59,130,246,0.15); color:var(--accent-blue); padding:1px 5px; border-radius:3px; font-weight:700; font-family:sans-serif; letter-spacing:0.5px;">LAN</span>
+            <span>${internalTarget}</span>
+          </div>
+          ${externalTarget ? `
+          <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:#94a3b8; font-family:monospace;">
+            <span style="font-size:0.62rem; background:rgba(16,185,129,0.15); color:#34d399; padding:1px 5px; border-radius:3px; font-weight:700; font-family:sans-serif; letter-spacing:0.5px;">WAN</span>
+            <span>${externalTarget}</span>
+          </div>` : ''}
+        </div>
+      `;
+
       if (layout === 'grid') {
         return `
-        <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft); cursor:pointer;" onclick="openHostDetail(${host.id})">
+        <div class="host-card-item" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.02); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft); cursor:pointer; box-sizing:border-box;" onclick="openHostDetail(${host.id})">
           <div>
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
               <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
-              <div style="display:flex; gap:6px;">
-                <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
+              <div style="display:flex; gap:6px; align-items:center;">
+                ${statusPillHtml}
+                <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="Edit Host">
                   <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
                 </button>
-                <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
+                <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="Delete Host">
                   <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
                 </button>
               </div>
             </div>
-            <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">${host.target}</p>
+            ${targetsDisplayHtml}
+            ${outageBannerHtml}
           </div>
           <div style="border-top:1px solid var(--border-soft); padding-top:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
             ${checkersHtml}
@@ -6628,18 +6956,20 @@ async function loadHosts(forceFetch = false) {
         </div>`;
       } else {
         return `
-        <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(255,255,255,0.01); display:flex; flex-direction:column; border-radius:8px; border:1px solid var(--border-soft); gap:12px; min-height:unset; cursor:pointer;" onclick="openHostDetail(${host.id})">
-          <div style="display:flex; justify-content:space-between; align-items:center; width: 100%;">
+        <div class="host-card-item" style="padding: 14px 18px; margin: 0; background:rgba(255,255,255,0.02); display:flex; flex-direction:column; border-radius:8px; border:1px solid var(--border-soft); gap:10px; min-height:unset; cursor:pointer; box-sizing:border-box;" onclick="openHostDetail(${host.id})">
+          <div style="display:flex; justify-content:space-between; align-items:center; width: 100%; flex-wrap:wrap; gap:10px;">
             <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
               <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${host.name}</h4>
-              <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">${host.target}</p>
+              ${targetsDisplayHtml}
+              ${outageBannerHtml}
             </div>
-            <div style="display:flex; align-items:center; gap:20px;">
+            <div style="display:flex; align-items:center; gap:16px;">
+              ${statusPillHtml}
               <div style="display:flex; gap:6px; border-left:1px solid var(--border-soft); padding-left:16px;">
-                <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8;" title="Edit Host">
+                <button class="btn-icon" onclick="event.stopPropagation(); openEditHostModal(${host.id})" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="Edit Host">
                   <i data-lucide="edit-3" style="width:14px; height:14px; color:#94a3b8;"></i>
                 </button>
-                <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8;" title="Delete Host">
+                <button class="btn-icon" onclick="event.stopPropagation(); deleteHost(${host.id})" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="Delete Host">
                   <i data-lucide="trash-2" style="width:14px; height:14px; color:#f43f5e;"></i>
                 </button>
               </div>
@@ -6694,7 +7024,7 @@ async function loadHosts(forceFetch = false) {
 
       if (layout === 'grid') {
         return `
-          <div class="settings-card" style="padding: 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); cursor:pointer; ${opacityStyle}" onclick="openHostDetail(${pluginHostId})">
+          <div class="host-card-item" style="padding: 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); cursor:pointer; box-sizing:border-box; ${opacityStyle}" onclick="openHostDetail(${pluginHostId})">
             <div>
               <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
                 <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">Plugin: ${p.name}</h4>
@@ -6716,13 +7046,13 @@ async function loadHosts(forceFetch = false) {
           </div>`;
       } else {
         return `
-          <div class="settings-card" style="padding: 12px 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); gap:12px; min-height:unset; cursor:pointer; ${opacityStyle}" onclick="openHostDetail(${pluginHostId})">
-            <div style="display:flex; justify-content:space-between; align-items:center; width: 100%;">
+          <div class="host-card-item" style="padding: 14px 18px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); gap:10px; min-height:unset; cursor:pointer; box-sizing:border-box; ${opacityStyle}" onclick="openHostDetail(${pluginHostId})">
+            <div style="display:flex; justify-content:space-between; align-items:center; width: 100%; flex-wrap:wrap; gap:10px;">
               <div style="display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1;">
                 <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">Plugin: ${p.name}</h4>
                 <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">Local Daemon (v${p.version})</p>
               </div>
-              <div style="display:flex; align-items:center; gap:20px;">
+              <div style="display:flex; align-items:center; gap:16px;">
                 <div style="display:flex; gap:6.5px; border-left:1px solid var(--border-soft); padding-left:16px; align-items:center;">
                   <button class="btn-icon" onclick="event.stopPropagation(); showPluginLogs('${p.id}', '${p.name}')" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="View Logs">
                     <i data-lucide="terminal" style="width:14px; height:14px; color:#94a3b8;"></i>
@@ -6757,11 +7087,45 @@ async function loadHosts(forceFetch = false) {
 }
 
 window.showHostsView = showHostsView;
+window.toggleHostPollingInterval = function (useDefault) {
+  const slider = document.getElementById('host-polling-interval');
+  const badge = document.getElementById('host-polling-interval-val');
+  const desc = document.getElementById('host-polling-interval-desc');
+  const defaultVal = (window.currentSettingsData && window.currentSettingsData.telemetry_interval !== undefined)
+    ? parseInt(window.currentSettingsData.telemetry_interval)
+    : 3;
+
+  if (slider) {
+    slider.disabled = useDefault;
+    slider.style.opacity = useDefault ? '0.5' : '1';
+    if (useDefault) {
+      slider.value = defaultVal;
+      if (badge) badge.textContent = `${defaultVal}s`;
+    }
+  }
+  if (desc) {
+    desc.textContent = useDefault
+      ? 'Currently adopting the global baseline telemetry interval configured in Settings.'
+      : 'Custom manual stats collection frequency for this specific host device.';
+  }
+};
+
 window.openAddHostModal = function () {
+  const defaultVal = (window.currentSettingsData && window.currentSettingsData.telemetry_interval !== undefined)
+    ? parseInt(window.currentSettingsData.telemetry_interval)
+    : 3;
+
   document.getElementById('host-modal-title').textContent = 'Configure New Host';
   document.getElementById('host-modal-id').value = '';
   document.getElementById('host-name').value = '';
   document.getElementById('host-target').value = '';
+  const intInput = document.getElementById('host-target-internal');
+  if (intInput) intInput.value = '';
+  const extInput = document.getElementById('host-target-external');
+  if (extInput) extInput.value = '';
+  const legInput = document.getElementById('host-target');
+  if (legInput) legInput.value = '';
+
   document.getElementById('host-check-ping').checked = false;
   document.getElementById('host-check-http').checked = false;
   document.getElementById('host-check-https').checked = false;
@@ -6775,6 +7139,13 @@ window.openAddHostModal = function () {
     intervalEl.value = 3;
     document.getElementById('host-polling-interval-val').textContent = '3s';
   }
+  const defaultCheckbox = document.getElementById('host-use-default-interval');
+  if (defaultCheckbox) defaultCheckbox.checked = true;
+
+  const defaultLabel = document.getElementById('host-system-default-label');
+  if (defaultLabel) defaultLabel.textContent = `${defaultVal}s`;
+
+  toggleHostPollingInterval(true);
 
   window.openModal('host-modal');
 };
@@ -6783,10 +7154,24 @@ window.openEditHostModal = function (hostId) {
   const host = (window.currentHosts || []).find(h => h.id === hostId);
   if (!host) return;
 
+  const defaultVal = (window.currentSettingsData && window.currentSettingsData.telemetry_interval !== undefined)
+    ? parseInt(window.currentSettingsData.telemetry_interval)
+    : 3;
+
   document.getElementById('host-modal-title').textContent = 'Modify Host Device';
   document.getElementById('host-modal-id').value = host.id;
   document.getElementById('host-name').value = host.name;
   document.getElementById('host-target').value = host.target;
+  
+  const intTarget = host.target_internal || host.target || '';
+  const extTarget = host.target_external || '';
+  const intInput = document.getElementById('host-target-internal');
+  if (intInput) intInput.value = intTarget;
+  const extInput = document.getElementById('host-target-external');
+  if (extInput) extInput.value = extTarget;
+  const legInput = document.getElementById('host-target');
+  if (legInput) legInput.value = intTarget;
+
   document.getElementById('host-check-ping').checked = host.ping_enabled;
   document.getElementById('host-check-http').checked = host.http_enabled;
   document.getElementById('host-check-https').checked = host.https_enabled;
@@ -6795,11 +7180,22 @@ window.openEditHostModal = function (hostId) {
   document.getElementById('host-port-number').value = host.port_number || '';
   document.getElementById('host-port-number').disabled = !host.port_enabled;
 
+  const isDefault = (!host.polling_interval || host.polling_interval === defaultVal);
+  const defaultCheckbox = document.getElementById('host-use-default-interval');
+  if (defaultCheckbox) defaultCheckbox.checked = isDefault;
+
+  const defaultLabel = document.getElementById('host-system-default-label');
+  if (defaultLabel) defaultLabel.textContent = `${defaultVal}s`;
+
   const intervalEl = document.getElementById('host-polling-interval');
   if (intervalEl) {
     intervalEl.value = host.polling_interval || 3;
     document.getElementById('host-polling-interval-val').textContent = (host.polling_interval || 3) + 's';
+    intervalEl.value = host.polling_interval || defaultVal;
+    document.getElementById('host-polling-interval-val').textContent = (host.polling_interval || defaultVal) + 's';
   }
+
+  toggleHostPollingInterval(isDefault);
 
   window.openModal('host-modal');
 };
@@ -6809,15 +7205,27 @@ window.submitSaveHost = async function () {
   const id = document.getElementById('host-modal-id').value;
   const name = document.getElementById('host-name').value.trim();
   const target = document.getElementById('host-target').value.trim();
+  const targetInternal = (document.getElementById('host-target-internal')?.value || document.getElementById('host-target')?.value || '').trim();
+  const targetExternal = (document.getElementById('host-target-external')?.value || '').trim() || null;
 
-  if (!name || !target) {
-    alert("Name and Target fields must not be empty.");
+  if (!name || !targetInternal) {
+    alert("Host Name and Internal Target address are required.");
     return;
   }
 
+  const useDefault = document.getElementById('host-use-default-interval')?.checked ?? false;
+  const defaultVal = (window.currentSettingsData && window.currentSettingsData.telemetry_interval !== undefined)
+    ? parseInt(window.currentSettingsData.telemetry_interval)
+    : 3;
+  const pollingInterval = useDefault ? defaultVal : parseInt(document.getElementById('host-polling-interval')?.value || defaultVal);
+
   const payload = {
     name: name,
-    target: target,
+    target: targetInternal,
+    target_internal: targetInternal,
+    target_external: targetExternal,
+    use_default_interval: useDefault,
+    polling_interval: pollingInterval,
     ping_enabled: document.getElementById('host-check-ping').checked,
     http_enabled: document.getElementById('host-check-http').checked,
     https_enabled: document.getElementById('host-check-https').checked,
@@ -6825,8 +7233,7 @@ window.submitSaveHost = async function () {
     port_enabled: document.getElementById('host-check-port').checked,
     port_number: document.getElementById('host-check-port').checked
       ? parseInt(document.getElementById('host-port-number').value) || null
-      : null,
-    polling_interval: parseInt(document.getElementById('host-polling-interval')?.value || '3')
+      : null
   };
 
   try {
@@ -6852,7 +7259,10 @@ window.submitSaveHost = async function () {
 
     closeModal('host-modal');
     window.currentHostsData = null;
-    loadHosts();
+    loadHosts(true);
+    if (typeof showToast === 'function') {
+      showToast(id ? "Host configuration updated" : "New host added successfully", "success");
+    }
   } catch (err) {
     alert(`Failed to save host details: ${err.message}`);
   }
@@ -7166,6 +7576,9 @@ window.openHostDetail = async function (hostId) {
 
   document.getElementById('host-detail-title-full').textContent = host.name;
   document.getElementById('host-detail-target-full').textContent = host.target;
+  const intTgt = host.target_internal || host.target || '';
+  const extTgt = host.target_external ? ` • External: ${host.target_external}` : '';
+  document.getElementById('host-detail-target-full').textContent = `LAN: ${intTgt}${extTgt}`;
 
   // Show system telemetry stats if Core Monitor Host (127.0.0.1)
   const isCore = host.target === '127.0.0.1' || host.name.includes("Core Monitor");
