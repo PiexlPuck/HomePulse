@@ -1093,16 +1093,6 @@ main.edit-mode .card-placeholder {
   box-sizing: border-box;
 }
 
-.host-card-item {
-  transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.host-card-item:hover {
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  background-color: rgba(255, 255, 255, 0.04) !important;
-  transform: translateY(-1px);
-}
-
 .settings-header {
   margin-bottom: 28px;
   padding-bottom: 20px;

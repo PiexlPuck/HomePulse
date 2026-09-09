@@ -2729,11 +2729,11 @@ async def get_hosts():
         raise HTTPException(status_code=503, detail="Database connection not available")
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT id, name, target, target_internal, target_external, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval FROM hosts ORDER BY id DESC;"
-            )
+            rows = await conn.fetch("SELECT id, name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval FROM hosts ORDER BY id DESC;")
+            rows = await conn.fetch("SELECT id, name, target, target_internal, target_external, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval FROM hosts ORDER BY id DESC;")
             res = []
             for r in rows:
+                res.append(dict(r))
                 d = dict(r)
                 if not d.get("target_internal"):
                     d["target_internal"] = d.get("target") or ""
