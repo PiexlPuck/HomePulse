@@ -2187,6 +2187,7 @@ class MonitorPayload(BaseModel):
 
 class HostPayload(BaseModel):
     name: str
+    target: str
     target: Optional[str] = ""
     target_internal: Optional[str] = ""
     target_external: Optional[str] = None
@@ -2739,6 +2740,8 @@ async def get_hosts():
         raise HTTPException(status_code=503, detail="Database connection not available")
     try:
         async with db_pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval FROM hosts ORDER BY id DESC;")
+            rows = await conn.fetch("SELECT id, name, target, target_internal, target_external, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval FROM hosts ORDER BY id DESC;")
             rows = await conn.fetch("""
                 SELECT id, name, target, target_internal, target_external, 
                        ping_enabled, ping_target, http_enabled, http_target, 
@@ -2748,7 +2751,9 @@ async def get_hosts():
             """)
             res = []
             for r in rows:
+                res.append(dict(r))
                 d = dict(r)
+                if not d.get("target_internal"):
                 if not d.get("target_internal") and d.get("target"):
                     d["target_internal"] = d.get("target") or ""
                 res.append(d)
@@ -2762,9 +2767,12 @@ async def add_host(payload: HostPayload):
     if not db_pool:
         raise HTTPException(status_code=503, detail="Database connection not available")
     
+    target_internal = (payload.target_internal or payload.target or "").strip()
     target_internal = (payload.target_internal or "").strip()
     target_external = (payload.target_external or "").strip() or None
     
+    if not payload.name.strip() or not target_internal:
+        raise HTTPException(status_code=400, detail="Host name and internal target address are required.")
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="Host name is required.")
     if not target_internal and not target_external:
@@ -2780,6 +2788,11 @@ async def add_host(payload: HostPayload):
             async with conn.transaction():
                 # 1. Insert Host
                 host_id = await conn.fetchval(
+                    """INSERT INTO hosts (name, target, target_internal, target_external, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval) 
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id;""",
+                    payload.name.strip(), target_internal, target_internal, target_external,
+                    payload.ping_enabled, payload.http_enabled, payload.https_enabled, payload.ssl_enabled,
+                    payload.port_enabled, payload.port_number, interval
                     """INSERT INTO hosts (name, target, target_internal, target_external, 
                                           ping_enabled, ping_target, http_enabled, http_target, 
                                           https_enabled, https_target, ssl_enabled, ssl_target, 
@@ -2807,9 +2820,12 @@ async def update_host(host_id: int, payload: HostPayload):
     if not db_pool:
         raise HTTPException(status_code=503, detail="Database connection not available")
     
+    target_internal = (payload.target_internal or payload.target or "").strip()
     target_internal = (payload.target_internal or "").strip()
     target_external = (payload.target_external or "").strip() or None
     
+    if not payload.name.strip() or not target_internal:
+        raise HTTPException(status_code=400, detail="Host name and internal target address are required.")
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="Host name is required.")
     if not target_internal and not target_external:
@@ -2837,6 +2853,11 @@ async def update_host(host_id: int, payload: HostPayload):
 
                 # 3. Update Host
                 await conn.execute(
+                    """UPDATE hosts SET name=$1, target=$2, target_internal=$3, target_external=$4, ping_enabled=$5, http_enabled=$6, 
+                       https_enabled=$7, ssl_enabled=$8, port_enabled=$9, port_number=$10, polling_interval=$11 WHERE id=$12;""",
+                    payload.name.strip(), target_internal, target_internal, target_external,
+                    payload.ping_enabled, payload.http_enabled, payload.https_enabled, payload.ssl_enabled,
+                    payload.port_enabled, payload.port_number, interval, host_id
                     """UPDATE hosts SET name=$1, target=$2, target_internal=$3, target_external=$4, 
                                        ping_enabled=$5, ping_target=$6, http_enabled=$7, http_target=$8, 
                                        https_enabled=$9, https_target=$10, ssl_enabled=$11, ssl_target=$12, 
@@ -3144,6 +3165,9 @@ async def prune_database_logs(payload: PruneRequest):
 
 async def sync_host_probers(conn, host_id: int, payload: HostPayload):
     host_name = payload.name.strip()
+    target = payload.target.strip()
+    target_internal = (payload.target_internal or payload.target or "").strip()
+    target_external = (payload.target_external or "").strip() or None
     target_internal = (payload.target_internal or "").strip()
     target_external = (payload.target_external or "").strip()
     interval = payload.polling_interval
@@ -3153,6 +3177,9 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
 
     has_internal = bool(target_internal)
     has_external = bool(target_external)
+    int_prefix = f"{host_name} [Internal " if has_external else f"{host_name} ("
+    ext_prefix = f"{host_name} [External "
+    closing = "]" if has_external else ")"
 
     def should_probe(checker_enabled: bool, target_mode: str):
         if not checker_enabled:
@@ -3169,14 +3196,18 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
         return do_int, do_ext
 
     # 1. PING Check
+    if payload.ping_enabled:
+        # Internal Ping
     do_int, do_ext = should_probe(payload.ping_enabled, getattr(payload, "ping_target", "both"))
     if do_int:
         name = f"{host_name} [Internal Ping]" if (has_external and do_ext) else f"{host_name} (Ping)"
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
                VALUES ($1, 'ping', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+            f"{int_prefix}Ping{closing}", target_internal, interval, host_id
             name, target_internal, interval, host_id
         )
+        register_memory_states(mid, f"{int_prefix}Ping{closing}")
         register_memory_states(mid, name)
     if do_ext:
         name = f"{host_name} [External Ping]" if (has_internal and do_int) else f"{host_name} (Ping)"
@@ -3187,7 +3218,19 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
         )
         register_memory_states(mid, name)
 
+        # External Ping (if external target provided)
+        if has_external:
+            mid = await conn.fetchval(
+                """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
+                   VALUES ($1, 'ping', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+                f"{ext_prefix}Ping]", target_external, interval, host_id
+            )
+            register_memory_states(mid, f"{ext_prefix}Ping]")
+
     # 2. HTTP Check
+    if payload.http_enabled:
+        # Internal HTTP
+        int_http = target_internal if (target_internal.startswith("http://") or target_internal.startswith("https://")) else f"http://{target_internal}"
     do_int, do_ext = should_probe(payload.http_enabled, getattr(payload, "http_target", "both"))
     if do_int:
         int_http = target_internal if target_internal.startswith(("http://", "https://")) else f"http://{target_internal}"
@@ -3195,8 +3238,10 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
                VALUES ($1, 'http', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+            f"{int_prefix}HTTP{closing}", int_http, interval, host_id
             name, int_http, interval, host_id
         )
+        register_memory_states(mid, f"{int_prefix}HTTP{closing}")
         register_memory_states(mid, name)
     if do_ext:
         ext_http = target_external if target_external.startswith(("http://", "https://")) else f"http://{target_external}"
@@ -3208,7 +3253,20 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
         )
         register_memory_states(mid, name)
 
+        # External HTTP
+        if has_external:
+            ext_http = target_external if (target_external.startswith("http://") or target_external.startswith("https://")) else f"http://{target_external}"
+            mid = await conn.fetchval(
+                """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
+                   VALUES ($1, 'http', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+                f"{ext_prefix}HTTP]", ext_http, interval, host_id
+            )
+            register_memory_states(mid, f"{ext_prefix}HTTP]")
+
     # 3. HTTPS Check
+    if payload.https_enabled:
+        # Internal HTTPS
+        int_https = target_internal if (target_internal.startswith("http://") or target_internal.startswith("https://")) else f"https://{target_internal}"
     do_int, do_ext = should_probe(payload.https_enabled, getattr(payload, "https_target", "both"))
     if do_int:
         int_https = target_internal if target_internal.startswith(("http://", "https://")) else f"https://{target_internal}"
@@ -3216,8 +3274,10 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
                VALUES ($1, 'http', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+            f"{int_prefix}HTTPS{closing}", int_https, interval, host_id
             name, int_https, interval, host_id
         )
+        register_memory_states(mid, f"{int_prefix}HTTPS{closing}")
         register_memory_states(mid, name)
     if do_ext:
         ext_https = target_external if target_external.startswith(("http://", "https://")) else f"https://{target_external}"
@@ -3229,6 +3289,20 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
         )
         register_memory_states(mid, name)
 
+        # External HTTPS
+        if has_external:
+            ext_https = target_external if (target_external.startswith("http://") or target_external.startswith("https://")) else f"https://{target_external}"
+            mid = await conn.fetchval(
+                """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
+                   VALUES ($1, 'http', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+                f"{ext_prefix}HTTPS]", ext_https, interval, host_id
+            )
+            register_memory_states(mid, f"{ext_prefix}HTTPS]")
+
+    # 4. SSL Expiry Check (Checks TLS certificate validity - on external domain if provided, else internal)
+    if payload.ssl_enabled:
+        ssl_target = target_external if has_external else target_internal
+        ssl_name = f"{ext_prefix}SSL]" if has_external else f"{host_name} (SSL)"
     # 4. SSL Expiry Check
     do_int, do_ext = should_probe(payload.ssl_enabled, getattr(payload, "ssl_target", "external"))
     if do_int:
@@ -3236,18 +3310,29 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
                VALUES ($1, 'ssl', $2, 7200, 5, 'unknown', true, $3) RETURNING id;""",
+            ssl_name, ssl_target, host_id
             name, target_internal, host_id
         )
+        register_memory_states(mid, ssl_name)
+
+    # 5. TCP Port Check
+    if payload.port_enabled and payload.port_number:
+        # Internal Port
         register_memory_states(mid, name)
     if do_ext:
         name = f"{host_name} [External SSL]" if (has_internal and do_int) else f"{host_name} (SSL)"
         mid = await conn.fetchval(
             """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
+               VALUES ($1, 'port', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+            f"{int_prefix}Port{closing}", f"{target_internal}:{payload.port_number}", interval, host_id
                VALUES ($1, 'ssl', $2, 7200, 5, 'unknown', true, $3) RETURNING id;""",
             name, target_external, host_id
         )
+        register_memory_states(mid, f"{int_prefix}Port{closing}")
         register_memory_states(mid, name)
 
+        # External Port (if external target provided)
+        if has_external:
     # 5. TCP Port Check
     if payload.port_enabled and payload.port_number:
         do_int, do_ext = should_probe(payload.port_enabled, getattr(payload, "port_target", "internal"))
@@ -3256,8 +3341,10 @@ async def sync_host_probers(conn, host_id: int, payload: HostPayload):
             mid = await conn.fetchval(
                 """INSERT INTO system_monitors (name, type, target, check_interval, timeout, last_status, enabled, host_id) 
                    VALUES ($1, 'port', $2, $3, 5, 'unknown', true, $4) RETURNING id;""",
+                f"{ext_prefix}Port]", f"{target_external}:{payload.port_number}", interval, host_id
                 name, f"{target_internal}:{payload.port_number}", interval, host_id
             )
+            register_memory_states(mid, f"{ext_prefix}Port]")
             register_memory_states(mid, name)
         if do_ext:
             name = f"{host_name} [External Port]" if (has_internal and do_int) else f"{host_name} (Port)"
