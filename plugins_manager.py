@@ -173,6 +173,19 @@ async def db_migration_and_startup():
                             except Exception as parse_err:
                                 logger.error(f"Error parsing entity state attributes for {r['entity_key']}: {parse_err}")
                     logger.info(f"Restored {len(rows)} plugin entity states from DB.")
+
+                    # Seed initial telemetry log baseline for plugin entities without history
+                    try:
+                        await conn.execute("""
+                            INSERT INTO telemetry_logs (node_id, entity_key, value, timestamp)
+                            SELECT p.node_id, p.entity_key, p.value, COALESCE(p.updated_at, NOW())
+                            FROM plugin_entity_states p
+                            WHERE NOT EXISTS (
+                                SELECT 1 FROM telemetry_logs t WHERE t.entity_key = p.entity_key
+                            );
+                        """)
+                    except Exception as seed_err:
+                        logger.warning(f"Note on seeding plugin telemetry: {seed_err}")
                 
                 # Start all enabled plugins
                 await start_all_enabled_plugins()
@@ -799,18 +812,10 @@ async def gateway_post_state(payload: Dict[str, Any]):
                             updated_at = NOW();
                     """, entity_key, plugin_id, payload.get("node_id"), entity_states[entity_key]["name"], payload.get("type"), str(payload.get("value")), payload.get("value_type", "string"), attrs_json)
                     
-                    # Autodetect historic telemetry: if value is numeric, insert it to telemetry_logs
+                    # Log historic telemetry for sensors and binary sensors
                     val_str = str(payload.get("value"))
-                    is_numeric = False
-                    try:
-                        float(val_str)
-                        is_numeric = True
-                    except ValueError:
-                        pass
-                        
-                    if is_numeric:
-                        from main import save_telemetry_log
-                        await save_telemetry_log(payload.get("node_id"), entity_key, val_str)
+                    from main import save_telemetry_log
+                    await save_telemetry_log(payload.get("node_id", "plugins"), entity_key, val_str)
                         
                     from main import app_settings, forward_telemetry_webhook
                     if app_settings.get("gateway_mode") == "true":

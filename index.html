@@ -1128,17 +1128,16 @@
         <div class="settings-header"
           style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
-            <h3>Uptime History &amp; Analytics</h3>
-            <p>Visualize latency charts and uptime timelines for configured health checkers.</p>
+            <h3>Telemetry &amp; Sensor History</h3>
+            <p>Visualize latency charts, sensor telemetry, and uptime timelines for monitors and plugins.</p>
           </div>
           <!-- Filters -->
           <div style="display: flex; gap: 10px; align-items: center;">
             <div style="display: flex; flex-direction: column; gap: 2px;">
-              <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Monitor
-                Source</label>
+              <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Metric / Sensor Source</label>
               <select id="history-monitor-select" onchange="loadHistoryAnalytics()"
-                style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 180px;">
-                <!-- Dynamically populated with monitors -->
+                style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 220px;">
+                <!-- Dynamically populated with monitors & plugin sensors -->
               </select>
             </div>
             <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -1188,7 +1187,7 @@
             style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; margin-bottom: 24px;">
             <div
               style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
-              <small
+              <small id="history-stat-1-label"
                 style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Uptime
                 Ratio</small>
               <h4 id="history-stat-uptime"
@@ -1196,21 +1195,21 @@
             </div>
             <div
               style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
-              <small
+              <small id="history-stat-2-label"
                 style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Average
                 Response</small>
               <h4 id="history-stat-avg-latency" style="font-size:1.3rem; font-weight:700; margin:0;">-- ms</h4>
             </div>
             <div
               style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
-              <small
+              <small id="history-stat-3-label"
                 style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Peak
                 Latency</small>
               <h4 id="history-stat-max-latency" style="font-size:1.3rem; font-weight:700; margin:0;">-- ms</h4>
             </div>
             <div
               style="background: rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; padding:14px; text-align:center;">
-              <small
+              <small id="history-stat-4-label"
                 style="color:var(--text-secondary); display:block; margin-bottom:4px; font-size:0.65rem; font-weight:600; text-transform:uppercase;">Outages
                 Detected</small>
               <h4 id="history-stat-outages" style="font-size:1.3rem; font-weight:700; margin:0; color:#f43f5e;">--
@@ -1218,10 +1217,10 @@
             </div>
           </div>
 
-          <!-- Interactive Latency Graph Container -->
+          <!-- Interactive Latency / Sensor Graph Container -->
           <div
             style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-soft); border-radius: 8px; padding: 16px; margin-bottom: 24px; position: relative;">
-            <small
+            <small id="history-chart-unit-label"
               style="position: absolute; top: 12px; right: 16px; font-size: 0.65rem; color: var(--text-secondary); font-family: monospace;">LATENCY
               (MS) OVER TIME</small>
             <div id="analytics-chart-loader"
@@ -1250,15 +1249,15 @@
                   <tr
                     style="background:rgba(255,255,255,0.01); border-bottom:1px solid var(--border-soft); color:var(--text-secondary);">
                     <th style="padding:10px 14px;">Timestamp</th>
-                    <th style="padding:10px 14px;">Event Status</th>
-                    <th style="padding:10px 14px;">Response latency</th>
+                    <th id="history-table-header-2" style="padding:10px 14px;">Event Status</th>
+                    <th id="history-table-header-3" style="padding:10px 14px;">Response latency</th>
                   </tr>
                 </thead>
                 <tbody id="history-logs-table-body">
                   <tr>
                     <td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Please
                       select
-                      a monitor to view detailed results.</td>
+                      a source to view detailed results.</td>
                   </tr>
                 </tbody>
               </table>
@@ -1323,10 +1322,10 @@
                 <i data-lucide="list" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
               </button>
             </div>
-            <button id="btn-install-custom-monitors-hosts" class="btn btn-secondary" onclick="openMarketplaceModal()"
+            <button id="btn-install-custom-monitors-hosts" class="btn btn-secondary" onclick="navigateToPluginStore()"
               style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
               <i data-lucide="shopping-bag" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
-              Install Custom Monitors
+              Plugin Store
             </button>
             <button class="btn btn-primary" onclick="openAddHostModal()"
               style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
@@ -2550,24 +2549,24 @@
                 <input type="text" class="modal-input" id="host-name" placeholder="e.g. Rack NAS Storage">
               </div>
 
-              <!-- Internal Target (Required) -->
+              <!-- Internal Target (LAN) -->
               <div class="modal-group">
                 <label for="host-target-internal" style="display:flex; justify-content:space-between; align-items:center;">
-                  <span>Internal Target (LAN IP or Local Hostname) <strong style="color:var(--semantic-red);">*</strong></span>
-                  <span style="font-size:0.68rem; color:var(--accent-blue); background:rgba(59,130,246,0.1); padding:1px 6px; border-radius:3px;">Required</span>
+                  <span>Internal Target (LAN IP or Local Hostname)</span>
+                  <span style="font-size:0.68rem; color:var(--accent-blue); background:rgba(59,130,246,0.1); padding:1px 6px; border-radius:3px;">LAN / Local</span>
                 </label>
                 <input type="text" class="modal-input" id="host-target-internal" placeholder="e.g. 192.168.1.15 or nas.local">
                 <small style="font-size:0.68rem; color:var(--text-secondary); margin-top:2px;">Local network address for internal LAN telemetry and probes.</small>
               </div>
 
-              <!-- External Target (Optional) -->
+              <!-- External Target (WAN) -->
               <div class="modal-group">
                 <label for="host-target-external" style="display:flex; justify-content:space-between; align-items:center;">
                   <span>External Target (Domain or Public FQDN)</span>
-                  <span style="font-size:0.68rem; color:var(--text-secondary); background:rgba(255,255,255,0.06); padding:1px 6px; border-radius:3px;">Optional</span>
+                  <span style="font-size:0.68rem; color:var(--text-secondary); background:rgba(255,255,255,0.06); padding:1px 6px; border-radius:3px;">WAN / Public</span>
                 </label>
                 <input type="text" class="modal-input" id="host-target-external" placeholder="e.g. plex.homepulse.com or nas.mydomain.com">
-                <small style="font-size:0.68rem; color:var(--text-secondary); margin-top:2px;">Public domain or reverse proxy address for external WAN reachability and SSL checks.</small>
+                <small style="font-size:0.68rem; color:var(--text-secondary); margin-top:2px;">Public domain or reverse proxy address. Provide Internal, External, or both.</small>
               </div>
 
               <!-- Hidden legacy target field -->
@@ -2595,34 +2594,67 @@
               </div>
 
               <div class="modal-group">
-                <label style="margin-bottom: 8px; display: block;">Enable Health Diagnostic Checkers</label>
+                <label style="margin-bottom: 8px; display: block;">Enable Health Diagnostic Checkers & Routing</label>
                 <div
                   style="display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border-soft); padding: 12px; border-radius: 6px; background: rgba(0,0,0,0.15);">
 
-                  <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
-                    <input type="checkbox" id="host-check-ping">
-                    <span>Ping (ICMP Status latency checks)</span>
-                  </label>
+                  <!-- Ping Check -->
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                    <label
+                      style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0; flex: 1; min-width: 220px;">
+                      <input type="checkbox" id="host-check-ping">
+                      <span>Ping (ICMP Status latency checks)</span>
+                    </label>
+                    <select id="host-check-ping-target" style="background:#221d16; color:#e0e0e0; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-size:0.75rem; cursor:pointer;">
+                      <option value="both">Both (LAN & WAN)</option>
+                      <option value="internal">Internal Only (LAN)</option>
+                      <option value="external">External Only (WAN)</option>
+                    </select>
+                  </div>
 
-                  <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
-                    <input type="checkbox" id="host-check-http">
-                    <span>HTTP (Port 80 basic connectivity check)</span>
-                  </label>
+                  <!-- HTTP Check -->
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                    <label
+                      style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0; flex: 1; min-width: 220px;">
+                      <input type="checkbox" id="host-check-http">
+                      <span>HTTP (Port 80 basic connectivity check)</span>
+                    </label>
+                    <select id="host-check-http-target" style="background:#221d16; color:#e0e0e0; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-size:0.75rem; cursor:pointer;">
+                      <option value="both">Both (LAN & WAN)</option>
+                      <option value="internal">Internal Only (LAN)</option>
+                      <option value="external">External Only (WAN)</option>
+                    </select>
+                  </div>
 
-                  <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
-                    <input type="checkbox" id="host-check-https">
-                    <span>HTTPS (Port 443 secure TLS web check)</span>
-                  </label>
+                  <!-- HTTPS Check -->
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                    <label
+                      style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0; flex: 1; min-width: 220px;">
+                      <input type="checkbox" id="host-check-https">
+                      <span>HTTPS (Port 443 secure TLS web check)</span>
+                    </label>
+                    <select id="host-check-https-target" style="background:#221d16; color:#e0e0e0; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-size:0.75rem; cursor:pointer;">
+                      <option value="both">Both (LAN & WAN)</option>
+                      <option value="internal">Internal Only (LAN)</option>
+                      <option value="external">External Only (WAN)</option>
+                    </select>
+                  </div>
 
-                  <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
-                    <input type="checkbox" id="host-check-ssl">
-                    <span>SSL Certificate Expiration (Track TLS expiry alerts)</span>
-                  </label>
+                  <!-- SSL Check -->
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                    <label
+                      style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0; flex: 1; min-width: 220px;">
+                      <input type="checkbox" id="host-check-ssl">
+                      <span>SSL Certificate Expiration (TLS alerts)</span>
+                    </label>
+                    <select id="host-check-ssl-target" style="background:#221d16; color:#e0e0e0; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-size:0.75rem; cursor:pointer;">
+                      <option value="external">External Only (WAN)</option>
+                      <option value="internal">Internal Only (LAN)</option>
+                      <option value="both">Both (LAN & WAN)</option>
+                    </select>
+                  </div>
 
+                  <!-- Port Check -->
                   <div
                     style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border-soft); padding-top: 8px; margin-top: 4px;">
                     <label
@@ -2631,10 +2663,17 @@
                         onchange="document.getElementById('host-port-number').disabled = !this.checked">
                       <span>TCP Port Monitor</span>
                     </label>
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                      <label style="font-size: 0.72rem; margin: 0; color: var(--text-secondary);">Port:</label>
-                      <input type="number" id="host-port-number" disabled placeholder="e.g. 22"
-                        style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 8px; font-size:0.75rem; width: 80px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <label style="font-size: 0.72rem; margin: 0; color: var(--text-secondary);">Port:</label>
+                        <input type="number" id="host-port-number" disabled placeholder="e.g. 22"
+                          style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 6px; font-size:0.75rem; width: 68px;">
+                      </div>
+                      <select id="host-check-port-target" style="background:#221d16; color:#e0e0e0; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-size:0.75rem; cursor:pointer;">
+                        <option value="internal">Internal Only (LAN)</option>
+                        <option value="external">External Only (WAN)</option>
+                        <option value="both">Both (LAN & WAN)</option>
+                      </select>
                     </div>
                   </div>
 

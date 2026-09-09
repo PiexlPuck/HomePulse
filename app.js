@@ -3554,17 +3554,20 @@ function navigateProbesLevel(level, param) {
 function isProbeStatusOnline(status, type) {
   if (!status) return false;
   const s = String(status).trim().toUpperCase();
+  const num = parseInt(s, 10);
+  if (!isNaN(num) && num >= 200 && num < 400) return true;
   return (
     s === 'UP' ||
     s === 'ONLINE' ||
+    s === 'HEALTHY' ||
+    s === 'STABLE' ||
     s === 'SSL_OK' ||
     s === 'DNS_OK' ||
     s === 'PORT_OK' ||
     s === 'ICMP_OK' ||
     s === '101' ||
     s.includes('REMAINING') ||
-    s.includes('DAYS') ||
-    (type === 'http' && !isNaN(s) && parseInt(s) < 400)
+    s.includes('DAYS')
   );
 }
 
@@ -5716,27 +5719,118 @@ async function populateHistoryMonitorsDropdown() {
   const select = document.getElementById('history-monitor-select');
   if (!select) return;
 
+  const previousSelected = select.value;
   const { httpUrl } = getApiUrls();
+
   try {
-    const res = await fetch(`${httpUrl}/api/monitors`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const monitors = await res.json();
+    // 1. Fetch configured prober monitors
+    const monitorsRes = await fetch(`${httpUrl}/api/monitors`);
+    const monitors = monitorsRes.ok ? await monitorsRes.json() : [];
+
+    // 2. Fetch active entities (plugins and core telemetry)
+    let entities = {};
+    try {
+      const entitiesRes = await fetch(`${httpUrl}/api/entities`);
+      if (entitiesRes.ok) {
+        entities = await entitiesRes.json();
+      }
+    } catch (e) {
+      entities = window.cachedEntities || {};
+    }
 
     let optionsHtml = '';
-    monitors.forEach(mon => {
-      optionsHtml += `<option value="${mon.id}" data-type="${mon.type}">${mon.name} (${mon.type.toUpperCase()})</option>`;
+
+    // A. Probers & Monitors group
+    if (monitors.length > 0) {
+      optionsHtml += `<optgroup label="📡 Probers & Monitors">`;
+      monitors.forEach(mon => {
+        const typeStr = (mon.type || 'ping').toUpperCase();
+        optionsHtml += `<option value="mon-${mon.id}" data-source="monitor" data-id="${mon.id}" data-type="${mon.type}">${mon.name} (${typeStr})</option>`;
+      });
+      optionsHtml += `</optgroup>`;
+    }
+
+    // B. Plugin Sensors grouped by plugin
+    const pluginGroups = {};
+    const coreTelemetry = [];
+
+    Object.values(entities || {}).forEach(ent => {
+      const key = ent.entity_key || '';
+      const nodeId = ent.node_id || '';
+
+      // Skip internal monitor status keys already shown in probers
+      if (key.startsWith('monitor-') && (key.endsWith('-status') || key.endsWith('-latency'))) {
+        return;
+      }
+
+      // Check for core system metrics
+      if (nodeId === 'core-mon' || ['cpu-utilization', 'database-latency', 'database-storage-pct'].includes(key)) {
+        coreTelemetry.push(ent);
+        return;
+      }
+
+      // Plugin entities
+      if (nodeId !== 'core-mon' && nodeId !== 'monitors') {
+        let pName = nodeId;
+        if (pName.toLowerCase().includes('proxmox') || key.startsWith('pbs-')) {
+          pName = 'Proxmox Backup';
+        } else if (pName.toLowerCase().includes('truenas') || key.startsWith('truenas-')) {
+          pName = 'TrueNAS';
+        } else {
+          pName = pName.replace(/^plugin-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        if (!pluginGroups[pName]) {
+          pluginGroups[pName] = [];
+        }
+        pluginGroups[pName].push(ent);
+      }
     });
 
-    if (monitors.length === 0) {
-      select.innerHTML = '<option value="">No monitors defined</option>';
+    // Render Plugin Sensors groups
+    Object.keys(pluginGroups).sort().forEach(pName => {
+      const pEntities = pluginGroups[pName].sort((a, b) => (a.name || a.entity_key).localeCompare(b.name || b.entity_key));
+      optionsHtml += `<optgroup label="🔌 Plugin: ${pName}">`;
+      pEntities.forEach(ent => {
+        const unit = (ent.attributes && ent.attributes.unit) || ent.unit || '';
+        const displayName = ent.name || ent.entity_key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const labelWithUnit = unit ? `${displayName} (${unit})` : displayName;
+        optionsHtml += `<option value="ent-${ent.entity_key}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}">${labelWithUnit}</option>`;
+      });
+      optionsHtml += `</optgroup>`;
+    });
+
+    // C. Core System Telemetry
+    if (coreTelemetry.length > 0) {
+      optionsHtml += `<optgroup label="💻 Core System Telemetry">`;
+      coreTelemetry.sort((a, b) => (a.name || a.entity_key).localeCompare(b.name || b.entity_key)).forEach(ent => {
+        const unit = (ent.attributes && ent.attributes.unit) || ent.unit || '';
+        const displayName = ent.name || ent.entity_key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const labelWithUnit = unit ? `${displayName} (${unit})` : displayName;
+        optionsHtml += `<option value="ent-${ent.entity_key}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}">${labelWithUnit}</option>`;
+      });
+      optionsHtml += `</optgroup>`;
+    }
+
+    if (!optionsHtml) {
+      select.innerHTML = '<option value="">No monitors or sensors defined</option>';
       return;
     }
 
     select.innerHTML = optionsHtml;
+
+    // Restore previously selected item if valid
+    if (previousSelected) {
+      const matching = Array.from(select.options).find(o => o.value === previousSelected);
+      if (matching) {
+        select.value = previousSelected;
+      }
+    }
+
     // Trigger initial load
     loadHistoryAnalytics();
   } catch (err) {
-    console.error('Failed to populate history monitors list:', err);
+    console.error('Failed to populate history sources list:', err);
   }
 }
 
@@ -5792,16 +5886,35 @@ function updateShiftButtonsState() {
   }
 }
 
+function formatMetricValue(num, unit) {
+  if (typeof num !== 'number' || isNaN(num)) return '--';
+  let formatted = '';
+  if (Math.abs(num) >= 100) {
+    formatted = num.toFixed(1);
+  } else if (num % 1 === 0) {
+    formatted = num.toFixed(0);
+  } else {
+    formatted = num.toFixed(2);
+  }
+  return unit ? `${formatted} ${unit}` : formatted;
+}
+
+function isSensorStatusHealthy(val) {
+  if (val === null || val === undefined) return false;
+  const s = String(val).toLowerCase().trim();
+  return ['online', 'ok', 'healthy', 'active', 'running', 'optimal', 'up', 'true', '1', 'on'].includes(s);
+}
+
 async function loadHistoryAnalytics() {
   const select = document.getElementById('history-monitor-select');
   const rangeEl = document.getElementById('history-timeframe-select');
   const tableBody = document.getElementById('history-logs-table-body');
   if (!select || !select.value || !tableBody) return;
 
-  const monId = select.value;
   const selectedOpt = select.options[select.selectedIndex];
-  const type = selectedOpt.getAttribute('data-type') || 'ping';
+  if (!selectedOpt) return;
 
+  const source = selectedOpt.getAttribute('data-source') || (select.value.startsWith('mon-') ? 'monitor' : 'entity');
   const rangeVal = rangeEl ? rangeEl.value : 'hours-1';
 
   let queryParams = '';
@@ -5839,146 +5952,342 @@ async function loadHistoryAnalytics() {
   const loaderEl = document.getElementById('analytics-chart-loader');
   if (loaderEl) loaderEl.style.display = 'flex';
 
-  // Brief yield to paint the loader DOM
   await new Promise(resolve => setTimeout(resolve, 30));
 
   const { httpUrl } = getApiUrls();
+
+  // Reference dynamic UI label elements
+  const lblCard1 = document.getElementById('history-stat-1-label');
+  const lblCard2 = document.getElementById('history-stat-2-label');
+  const lblCard3 = document.getElementById('history-stat-3-label');
+  const lblCard4 = document.getElementById('history-stat-4-label');
+  const chartUnitLbl = document.getElementById('history-chart-unit-label');
+  const tblHeader2 = document.getElementById('history-table-header-2');
+  const tblHeader3 = document.getElementById('history-table-header-3');
+
   try {
-    const statusKey = `monitor-${monId}-status`;
-    const latencyKey = `monitor-${monId}-latency`;
+    if (source === 'monitor') {
+      // ═════════════════════════════════════════════
+      // CASE 1: PROBERS & HEALTH MONITORS
+      // ═════════════════════════════════════════════
+      const monId = selectedOpt.getAttribute('data-id') || select.value.replace(/^mon-/, '');
+      const type = selectedOpt.getAttribute('data-type') || 'ping';
 
-    const resStatus = await fetch(`${httpUrl}/api/monitors/logs/${statusKey}${queryParams}`);
-    const statusLogs = resStatus.ok ? await resStatus.json() : [];
+      // Reset standard labels
+      if (lblCard1) lblCard1.textContent = 'Uptime Ratio';
+      if (lblCard2) lblCard2.textContent = 'Average Response';
+      if (lblCard3) lblCard3.textContent = 'Peak Latency';
+      if (lblCard4) lblCard4.textContent = 'Outages Detected';
+      if (chartUnitLbl) chartUnitLbl.textContent = 'LATENCY (MS) OVER TIME';
+      if (tblHeader2) tblHeader2.textContent = 'Event Status';
+      if (tblHeader3) tblHeader3.textContent = 'Response Latency';
 
-    const resLatency = await fetch(`${httpUrl}/api/monitors/logs/${latencyKey}${queryParams}`);
-    const latencyLogs = resLatency.ok ? await resLatency.json() : [];
+      const statusKey = `monitor-${monId}-status`;
+      const latencyKey = `monitor-${monId}-latency`;
 
-    if (statusLogs.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No logs items found for this prober range.</td></tr>`;
-      updateHistoryStats(0, 0, 0, 100);
-      drawHistoryChart([], [], [], 0, []);
-      if (loaderEl) loaderEl.style.display = 'none';
-      return;
-    }
+      const resStatus = await fetch(`${httpUrl}/api/monitors/logs/${statusKey}${queryParams}`);
+      const statusLogs = resStatus.ok ? await resStatus.json() : [];
 
-    // Zip and calculate stats in a non-blocking asynchronous block
-    await new Promise(resolve => setTimeout(resolve, 5));
+      const resLatency = await fetch(`${httpUrl}/api/monitors/logs/${latencyKey}${queryParams}`);
+      const latencyLogs = resLatency.ok ? await resLatency.json() : [];
 
-    let totalLatency = 0;
-    let maxLatency = 0;
-    let healthyCount = 0;
-    let outages = 0;
-    let prevUp = true;
-
-    let tableRows = '';
-
-    const sortedStatus = [...statusLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    const sortedLatency = [...latencyLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-    const chronologicalDetails = [];
-
-    // Pre-calculate latency time numbers to speed up zipping matching in O(N+M)
-    const latencyTimes = sortedLatency.map(log => ({
-      time: new Date(log.timestamp).getTime(),
-      value: log.value
-    }));
-
-    let latIdx = 0;
-    sortedStatus.forEach(statusLog => {
-      const statusTime = new Date(statusLog.timestamp).getTime();
-
-      // Advance latIdx using O(N + M) two-pointer matching on sorted arrays
-      while (latIdx < latencyTimes.length - 1) {
-        const thisDiff = Math.abs(latencyTimes[latIdx].time - statusTime);
-        const nextDiff = Math.abs(latencyTimes[latIdx + 1].time - statusTime);
-        if (nextDiff < thisDiff) {
-          latIdx++;
-        } else {
-          break;
-        }
+      if (statusLogs.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No log records found for this prober in the selected range.</td></tr>`;
+        updateHistoryStats(0, 0, 0, 100);
+        drawHistoryChart([], [], [], 0, [], { mode: 'latency', label: 'Ping Response Latency', unit: 'ms' });
+        if (loaderEl) loaderEl.style.display = 'none';
+        return;
       }
 
-      const closestLat = latencyTimes[latIdx];
-      const minDiff = closestLat ? Math.abs(closestLat.time - statusTime) : Infinity;
+      await new Promise(resolve => setTimeout(resolve, 5));
 
-      const latVal = (closestLat && minDiff < 5000) ? parseFloat(closestLat.value) : 0.0;
-      const isUpVal = isProbeStatusOnline(statusLog.value, type);
+      let totalLatency = 0;
+      let maxLatency = 0;
+      let healthyCount = 0;
+      let outages = 0;
+      let prevUp = true;
 
-      chronologicalDetails.push({
-        timestamp: statusLog.timestamp,
-        status: statusLog.value,
-        latency: latVal,
-        isUp: isUpVal
+      const sortedStatus = [...statusLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const sortedLatency = [...latencyLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      const chronologicalDetails = [];
+      const latencyTimes = sortedLatency.map(log => ({
+        time: new Date(log.timestamp).getTime(),
+        value: log.value
+      }));
+
+      let latIdx = 0;
+      sortedStatus.forEach(statusLog => {
+        const statusTime = new Date(statusLog.timestamp).getTime();
+        while (latIdx < latencyTimes.length - 1) {
+          const thisDiff = Math.abs(latencyTimes[latIdx].time - statusTime);
+          const nextDiff = Math.abs(latencyTimes[latIdx + 1].time - statusTime);
+          if (nextDiff < thisDiff) {
+            latIdx++;
+          } else {
+            break;
+          }
+        }
+
+        const closestLat = latencyTimes[latIdx];
+        const minDiff = closestLat ? Math.abs(closestLat.time - statusTime) : Infinity;
+        const latVal = (closestLat && minDiff < 5000) ? parseFloat(closestLat.value) : 0.0;
+        const isUpVal = isProbeStatusOnline(statusLog.value, type);
+
+        chronologicalDetails.push({
+          timestamp: statusLog.timestamp,
+          status: statusLog.value,
+          latency: latVal,
+          isUp: isUpVal
+        });
       });
-    });
 
-    chronologicalDetails.forEach((log, idx) => {
-      totalLatency += log.latency;
-      if (log.latency > maxLatency) maxLatency = log.latency;
-      if (log.isUp) {
-        healthyCount++;
-        prevUp = true;
-      } else {
-        if (prevUp && idx > 0) {
-          outages++;
+      chronologicalDetails.forEach((log, idx) => {
+        totalLatency += log.latency;
+        if (log.latency > maxLatency) maxLatency = log.latency;
+        if (log.isUp) {
+          healthyCount++;
+          prevUp = true;
+        } else {
+          if (prevUp && idx > 0) {
+            outages++;
+          }
+          prevUp = false;
         }
-        prevUp = false;
+      });
+
+      const avgLatency = chronologicalDetails.length > 0 ? (totalLatency / chronologicalDetails.length) : 0;
+      const uptimePct = chronologicalDetails.length > 0 ? (healthyCount / chronologicalDetails.length) * 100 : 100.0;
+
+      updateHistoryStats(avgLatency, maxLatency, outages, uptimePct);
+
+      let tableRows = '';
+      const reversedDetails = [...chronologicalDetails].reverse();
+      reversedDetails.forEach(log => {
+        const dt = new Date(log.timestamp).toLocaleString();
+        let statusStr = log.status;
+        if (statusStr === 'up' || statusStr === 'UP' || statusStr === 'ONLINE') {
+          statusStr = 'ONLINE';
+        } else if (statusStr === 'down' || statusStr === 'DOWN' || statusStr === 'OFFLINE') {
+          statusStr = 'OFFLINE';
+        } else {
+          const numCode = parseInt(statusStr);
+          if (!isNaN(numCode)) statusStr = `HTTP ${statusStr}`;
+        }
+        const isUp = log.isUp;
+        const color = isUp ? 'var(--color-optimal)' : '#f43f5e';
+
+        tableRows += `
+          <tr style="border-bottom:1px solid var(--border-soft);">
+            <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
+            <td style="padding:10px 14px; font-weight:700; color:${color};">${statusStr}</td>
+            <td style="padding:10px 14px; font-family:monospace;">${log.latency.toFixed(2)} ms</td>
+          </tr>`;
+      });
+      tableBody.innerHTML = tableRows;
+
+      const includeDate = hoursCount >= 24;
+      const labels = chronologicalDetails.map(log => {
+        const d = new Date(log.timestamp);
+        if (includeDate) {
+          const month = d.toLocaleDateString([], { month: 'short' });
+          const day = d.toLocaleDateString([], { day: 'numeric' });
+          const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+          return `${month} ${day} ${timeStr}`;
+        } else {
+          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        }
+      });
+      const latencies = chronologicalDetails.map(log => log.latency);
+      const healthBooleans = chronologicalDetails.map(log => log.isUp);
+
+      drawHistoryChart(labels, latencies, healthBooleans, avgLatency, chronologicalDetails, {
+        mode: 'latency',
+        label: `${selectedOpt.text} Latency`,
+        unit: 'ms'
+      });
+
+    } else {
+      // ═════════════════════════════════════════════
+      // CASE 2: PLUGIN SENSORS & TELEMETRY ENTITIES
+      // ═════════════════════════════════════════════
+      const entityKey = selectedOpt.getAttribute('data-key') || select.value.replace(/^ent-/, '');
+      const metricName = selectedOpt.getAttribute('data-name') || selectedOpt.text;
+      const unit = selectedOpt.getAttribute('data-unit') || '';
+
+      const res = await fetch(`${httpUrl}/api/monitors/logs/${entityKey}${queryParams}`);
+      const logs = res.ok ? await res.json() : [];
+
+      if (logs.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No telemetry records found for <strong>${metricName}</strong> in the selected range.</td></tr>`;
+        const uptimeEl = document.getElementById('history-stat-uptime');
+        const avgEl = document.getElementById('history-stat-avg-latency');
+        const maxEl = document.getElementById('history-stat-max-latency');
+        const outagesEl = document.getElementById('history-stat-outages');
+        if (uptimeEl) { uptimeEl.textContent = '--'; uptimeEl.style.color = 'var(--text-secondary)'; }
+        if (avgEl) avgEl.textContent = '--';
+        if (maxEl) maxEl.textContent = '--';
+        if (outagesEl) { outagesEl.textContent = '--'; outagesEl.style.color = 'var(--text-secondary)'; }
+        drawHistoryChart([], [], [], 0, [], { mode: 'numeric', label: metricName, unit });
+        if (loaderEl) loaderEl.style.display = 'none';
+        return;
       }
-    });
 
-    const avgLatency = chronologicalDetails.length > 0 ? (totalLatency / chronologicalDetails.length) : 0;
-    const uptimePct = chronologicalDetails.length > 0 ? (healthyCount / chronologicalDetails.length) * 100 : 100.0;
+      await new Promise(resolve => setTimeout(resolve, 5));
 
-    // Yield before table row building and stat renders to keep UI responsive
-    await new Promise(resolve => setTimeout(resolve, 5));
+      // Determine whether this sensor is numeric or binary/status
+      const numericCount = logs.filter(l => !isNaN(parseFloat(l.value))).length;
+      const isNumeric = numericCount >= (logs.length * 0.5);
 
-    // Render stats
-    updateHistoryStats(avgLatency, maxLatency, outages, uptimePct);
+      const sortedLogs = [...logs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const includeDate = hoursCount >= 24;
+      const labels = sortedLogs.map(log => {
+        const d = new Date(log.timestamp);
+        if (includeDate) {
+          const month = d.toLocaleDateString([], { month: 'short' });
+          const day = d.toLocaleDateString([], { day: 'numeric' });
+          const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+          return `${month} ${day} ${timeStr}`;
+        } else {
+          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        }
+      });
 
-    // Build logs display (reverse chronological for table)
-    const reversedDetails = [...chronologicalDetails].reverse();
-    reversedDetails.forEach(log => {
-      const dt = new Date(log.timestamp).toLocaleString();
-      let statusStr = log.status;
-      if (statusStr === 'up' || statusStr === 'UP' || statusStr === 'ONLINE') {
-        statusStr = 'ONLINE';
-      } else if (statusStr === 'down' || statusStr === 'DOWN' || statusStr === 'OFFLINE') {
-        statusStr = 'OFFLINE';
+      if (isNumeric) {
+        // ─────────────────────────────────────────
+        // SUBCASE 2A: NUMERIC TELEMETRY SENSOR
+        // ─────────────────────────────────────────
+        if (lblCard1) lblCard1.textContent = 'Current Reading';
+        if (lblCard2) lblCard2.textContent = 'Average Value';
+        if (lblCard3) lblCard3.textContent = 'Peak / Maximum';
+        if (lblCard4) lblCard4.textContent = 'Minimum / Samples';
+        if (chartUnitLbl) chartUnitLbl.textContent = `${(unit || 'METRIC VALUE').toUpperCase()} OVER TIME`;
+        if (tblHeader2) tblHeader2.textContent = 'Recorded Value';
+        if (tblHeader3) tblHeader3.textContent = 'Metric Source';
+
+        const numericVals = sortedLogs.map(l => parseFloat(l.value) || 0);
+        const latestVal = numericVals[numericVals.length - 1];
+        const sumVal = numericVals.reduce((acc, v) => acc + v, 0);
+        const avgVal = numericVals.length > 0 ? (sumVal / numericVals.length) : 0;
+        const maxVal = Math.max(...numericVals);
+        const minVal = Math.min(...numericVals);
+
+        const uptimeEl = document.getElementById('history-stat-uptime');
+        const avgEl = document.getElementById('history-stat-avg-latency');
+        const maxEl = document.getElementById('history-stat-max-latency');
+        const outagesEl = document.getElementById('history-stat-outages');
+
+        if (uptimeEl) {
+          uptimeEl.textContent = formatMetricValue(latestVal, unit);
+          uptimeEl.style.color = 'var(--color-optimal)';
+        }
+        if (avgEl) avgEl.textContent = formatMetricValue(avgVal, unit);
+        if (maxEl) maxEl.textContent = formatMetricValue(maxVal, unit);
+        if (outagesEl) {
+          outagesEl.textContent = `${formatMetricValue(minVal, unit)} (${numericVals.length} pts)`;
+          outagesEl.style.color = '#38bdf8';
+        }
+
+        let tableRows = '';
+        const reversedLogs = [...sortedLogs].reverse();
+        reversedLogs.forEach(log => {
+          const dt = new Date(log.timestamp).toLocaleString();
+          const numV = parseFloat(log.value) || 0;
+          const dev = numV - avgVal;
+          const devSign = dev > 0 ? '+' : '';
+          const devStr = Math.abs(dev) > 0.01 ? `${devSign}${dev.toFixed(2)}${unit ? ' ' + unit : ''}` : 'Avg Baseline';
+
+          tableRows += `
+            <tr style="border-bottom:1px solid var(--border-soft);">
+              <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
+              <td style="padding:10px 14px; font-weight:700; color:#fff; font-family:monospace;">${formatMetricValue(numV, unit)}</td>
+              <td style="padding:10px 14px; color:var(--text-secondary); font-size:0.75rem;">${metricName} <span style="opacity:0.6; font-size:0.7rem;">(${devStr})</span></td>
+            </tr>`;
+        });
+        tableBody.innerHTML = tableRows;
+
+        const healthBooleans = sortedLogs.map(() => true);
+
+        drawHistoryChart(labels, numericVals, healthBooleans, avgVal, sortedLogs, {
+          mode: 'numeric',
+          label: `${metricName}${unit ? ' (' + unit + ')' : ''}`,
+          unit: unit
+        });
+
       } else {
-        const numCode = parseInt(statusStr);
-        if (!isNaN(numCode)) statusStr = `HTTP ${statusStr}`;
+        // ─────────────────────────────────────────
+        // SUBCASE 2B: BINARY / STATUS SENSOR
+        // ─────────────────────────────────────────
+        if (lblCard1) lblCard1.textContent = 'Current State';
+        if (lblCard2) lblCard2.textContent = 'Optimal Ratio';
+        if (lblCard3) lblCard3.textContent = 'State Transitions';
+        if (lblCard4) lblCard4.textContent = 'Alert Incidents';
+        if (chartUnitLbl) chartUnitLbl.textContent = 'STATE TIMELINE (1=ONLINE/OK, 0=ALERT)';
+        if (tblHeader2) tblHeader2.textContent = 'Reported State';
+        if (tblHeader3) tblHeader3.textContent = 'Assessment';
+
+        let transitions = 0;
+        let prevVal = null;
+        let healthyCount = 0;
+
+        sortedLogs.forEach((l, idx) => {
+          const isH = isSensorStatusHealthy(l.value);
+          if (isH) healthyCount++;
+          if (idx > 0 && String(l.value) !== String(prevVal)) {
+            transitions++;
+          }
+          prevVal = l.value;
+        });
+
+        const latestState = sortedLogs[sortedLogs.length - 1].value;
+        const isLatestHealthy = isSensorStatusHealthy(latestState);
+        const optimalRatio = sortedLogs.length > 0 ? (healthyCount / sortedLogs.length) * 100 : 100.0;
+        const alertIncidents = sortedLogs.length - healthyCount;
+
+        const uptimeEl = document.getElementById('history-stat-uptime');
+        const avgEl = document.getElementById('history-stat-avg-latency');
+        const maxEl = document.getElementById('history-stat-max-latency');
+        const outagesEl = document.getElementById('history-stat-outages');
+
+        if (uptimeEl) {
+          uptimeEl.textContent = String(latestState).toUpperCase();
+          uptimeEl.style.color = isLatestHealthy ? 'var(--color-optimal)' : '#f43f5e';
+        }
+        if (avgEl) avgEl.textContent = `${optimalRatio.toFixed(1)}%`;
+        if (maxEl) maxEl.textContent = String(transitions);
+        if (outagesEl) {
+          outagesEl.textContent = String(alertIncidents);
+          outagesEl.style.color = alertIncidents > 0 ? '#f43f5e' : 'var(--color-optimal)';
+        }
+
+        let tableRows = '';
+        const reversedLogs = [...sortedLogs].reverse();
+        reversedLogs.forEach(log => {
+          const dt = new Date(log.timestamp).toLocaleString();
+          const isH = isSensorStatusHealthy(log.value);
+          const color = isH ? 'var(--color-optimal)' : '#f43f5e';
+          const badgeText = String(log.value).toUpperCase();
+          const noteText = isH ? 'Healthy / Normal' : 'Alert / Degraded State';
+
+          tableRows += `
+            <tr style="border-bottom:1px solid var(--border-soft);">
+              <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
+              <td style="padding:10px 14px; font-weight:700; color:${color};">${badgeText}</td>
+              <td style="padding:10px 14px; color:var(--text-secondary); font-size:0.75rem;">${noteText}</td>
+            </tr>`;
+        });
+        tableBody.innerHTML = tableRows;
+
+        const binaryVals = sortedLogs.map(l => isSensorStatusHealthy(l.value) ? 1 : 0);
+        const healthBooleans = binaryVals.map(v => v === 1);
+
+        drawHistoryChart(labels, binaryVals, healthBooleans, null, sortedLogs, {
+          mode: 'status',
+          label: `${metricName} State`,
+          unit: 'State'
+        });
       }
-      const isUp = log.isUp;
-      const color = isUp ? 'var(--color-optimal)' : '#f43f5e';
-
-      tableRows += `
-        <tr style="border-bottom:1px solid var(--border-soft);">
-          <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
-          <td style="padding:10px 14px; font-weight:700; color:${color};">${statusStr}</td>
-          <td style="padding:10px 14px; font-family:monospace;">${log.latency.toFixed(2)} ms</td>
-        </tr>`;
-    });
-    tableBody.innerHTML = tableRows;
-
-    // Render chart using compact 24h labels or multi-day labels
-    const includeDate = hoursCount >= 24;
-    const labels = chronologicalDetails.map(log => {
-      const d = new Date(log.timestamp);
-      if (includeDate) {
-        const month = d.toLocaleDateString([], { month: 'short' });
-        const day = d.toLocaleDateString([], { day: 'numeric' });
-        const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-        return `${month} ${day} ${timeStr}`;
-      } else {
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-      }
-    });
-    const latencies = chronologicalDetails.map(log => log.latency);
-    const healthBooleans = chronologicalDetails.map(log => log.isUp);
-
-    // Yield final draw call to event loop to draw chart asynchronously
-    await new Promise(resolve => setTimeout(resolve, 10));
-    drawHistoryChart(labels, latencies, healthBooleans, avgLatency, chronologicalDetails);
+    }
 
     if (loaderEl) loaderEl.style.display = 'none';
   } catch (err) {
@@ -6043,7 +6352,7 @@ window.clearLogsTableFilter = function () {
   });
 };
 
-function drawHistoryChart(labels, values, healths, avgLatency, chronologicalDetails) {
+function drawHistoryChart(labels, values, healths, avgValue, chronologicalDetails, options = {}) {
   const canvas = document.getElementById('analytics-chart-canvas');
   if (!canvas) return;
 
@@ -6056,38 +6365,82 @@ function drawHistoryChart(labels, values, healths, avgLatency, chronologicalDeta
     historyChartInstance.destroy();
   }
 
+  const mode = options.mode || 'latency';
+  const label = options.label || 'Metric Value';
+  const unit = options.unit || '';
+
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-  gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
-  gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+
+  let borderColor = '#3b82f6';
+  if (mode === 'numeric') {
+    borderColor = '#06b6d4';
+    gradient.addColorStop(0, 'rgba(6, 182, 212, 0.35)');
+    gradient.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
+  } else if (mode === 'status') {
+    borderColor = '#10b981';
+    gradient.addColorStop(0, 'rgba(16, 185, 129, 0.35)');
+    gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+  } else {
+    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+  }
 
   const pointColors = healths.map(h => h ? 'var(--color-optimal)' : '#f43f5e');
 
-  const datasets = [{
-    label: 'Ping Response Latency',
+  const mainDataset = {
+    label: label,
     data: values,
-    borderColor: '#3b82f6',
+    borderColor: borderColor,
     borderWidth: 2,
     backgroundColor: gradient,
     fill: true,
-    tension: 0.3,
+    tension: mode === 'status' ? 0.0 : 0.3,
+    stepped: mode === 'status' ? 'before' : false,
     pointBackgroundColor: pointColors,
     pointBorderColor: pointColors,
     pointHoverRadius: 6,
     pointRadius: values.length > 50 ? 2 : 4
-  }];
+  };
 
-  if (typeof avgLatency === 'number' && values.length > 0) {
+  const datasets = [mainDataset];
+
+  if (typeof avgValue === 'number' && values.length > 0 && mode !== 'status') {
     datasets.push({
-      label: 'Average Latency',
-      data: Array(values.length).fill(avgLatency),
-      borderColor: 'rgba(244, 63, 94, 0.45)',
+      label: `Average (${formatMetricValue(avgValue, unit)})`,
+      data: Array(values.length).fill(avgValue),
+      borderColor: 'rgba(244, 63, 94, 0.5)',
       borderWidth: 1.5,
       borderDash: [5, 5],
       fill: false,
       pointRadius: 0,
       pointHoverRadius: 0
     });
+  }
+
+  const yAxisConfig = {
+    grid: { color: 'rgba(255,255,255,0.06)' },
+    ticks: {
+      color: '#cbd5e1',
+      font: {
+        family: "'Inter', system-ui, -apple-system, sans-serif",
+        size: 11,
+        weight: '500'
+      },
+      callback: function (val) {
+        if (mode === 'status') {
+          return val === 1 ? 'ONLINE' : (val === 0 ? 'ALERT' : '');
+        }
+        return unit ? `${val} ${unit}` : val;
+      }
+    },
+    suggestedMin: 0
+  };
+
+  if (mode === 'status') {
+    yAxisConfig.min = -0.2;
+    yAxisConfig.max = 1.2;
+    yAxisConfig.ticks.stepSize = 1;
   }
 
   historyChartInstance = new Chart(ctx, {
@@ -6137,6 +6490,17 @@ function drawHistoryChart(labels, values, healths, avgLatency, chronologicalDeta
                 });
               }
               return context[0].label;
+            },
+            label: function (context) {
+              const idx = context.dataIndex;
+              const logItem = chronologicalDetails[idx];
+              if (mode === 'status' && logItem) {
+                return ` State: ${String(logItem.value || (logItem.status)).toUpperCase()}`;
+              }
+              if (mode === 'latency') {
+                return ` Latency: ${context.parsed.y.toFixed(2)} ms`;
+              }
+              return ` ${label}: ${context.parsed.y} ${unit}`.trim();
             }
           },
           titleFont: {
@@ -6168,18 +6532,7 @@ function drawHistoryChart(labels, values, healths, avgLatency, chronologicalDeta
             maxTicksLimit: 8
           }
         },
-        y: {
-          grid: { color: 'rgba(255,255,255,0.06)' },
-          ticks: {
-            color: '#cbd5e1',
-            font: {
-              family: "'Inter', system-ui, -apple-system, sans-serif",
-              size: 11,
-              weight: '500'
-            },
-            suggestedMin: 0
-          }
-        }
+        y: yAxisConfig
       }
     }
   });
@@ -6806,7 +7159,14 @@ async function loadHosts(forceFetch = false) {
       ]);
 
       if (!hostsRes.ok) throw new Error(`HTTP ${hostsRes.status}`);
-      window.currentHostsData = await hostsRes.json();
+      const rawHosts = await hostsRes.json();
+      const seenHostIds = new Set();
+      window.currentHostsData = (Array.isArray(rawHosts) ? rawHosts : []).filter(h => {
+        if (!h || !h.id) return false;
+        if (seenHostIds.has(h.id)) return false;
+        seenHostIds.add(h.id);
+        return true;
+      });
       window.currentHosts = window.currentHostsData; // Keep reference for edit forms
 
       let plugins = [];
@@ -6874,44 +7234,47 @@ async function loadHosts(forceFetch = false) {
 
       function isProbeOnline(m) {
         const ent = (cachedEntities && cachedEntities[`monitor-${m.id}-status`]) ? cachedEntities[`monitor-${m.id}-status`].value : m.last_status;
-        const s = String(ent || '').toLowerCase();
-        return (s === 'up' || s === 'online' || s === 'healthy' || s === 'stable');
+        return isProbeStatusOnline(ent || m.last_status, m.type);
       }
 
       const internalUp = internalMonitors.length > 0 ? internalMonitors.every(isProbeOnline) : null;
-      const externalUp = (host.target_external && externalMonitors.length > 0) ? externalMonitors.every(isProbeOnline) : null;
+      const externalUp = externalMonitors.length > 0 ? externalMonitors.every(isProbeOnline) : null;
 
       let statusPillHtml = '';
-      if (host.target_external) {
-        if (internalUp === true && externalUp === true) {
+      if (internalUp !== null && externalUp !== null) {
+        if (internalUp && externalUp) {
           statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">🟢 ALL ONLINE</span>`;
-        } else if (internalUp === true && externalUp === false) {
+        } else if (internalUp && !externalUp) {
           statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="LAN is online, but external domain is failing">🟡 EXTERNAL DOWN</span>`;
-        } else if (internalUp === false && externalUp === true) {
+        } else if (!internalUp && externalUp) {
           statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="External domain responding, but internal LAN IP is unreachable">🟡 INTERNAL DOWN</span>`;
-        } else if (internalUp === false && externalUp === false) {
-          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">🔴 OFFLINE</span>`;
         } else {
-          statusPillHtml = `<span class="status-pill default" style="font-size:0.6rem; padding:2px 7px;">INITIALIZING</span>`;
+          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">🔴 OFFLINE</span>`;
+        }
+      } else if (internalUp !== null) {
+        if (internalUp) {
+          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">🟢 ONLINE</span>`;
+        } else {
+          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">🔴 OFFLINE</span>`;
+        }
+      } else if (externalUp !== null) {
+        if (externalUp) {
+          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">🟢 ONLINE</span>`;
+        } else {
+          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">🔴 OFFLINE</span>`;
         }
       } else {
-        if (internalUp === true) {
-          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">ONLINE</span>`;
-        } else if (internalUp === false) {
-          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">OFFLINE</span>`;
-        } else {
-          statusPillHtml = `<span class="status-pill default" style="font-size:0.6rem; padding:2px 7px;">STANDBY</span>`;
-        }
+        statusPillHtml = `<span class="status-pill default" style="font-size:0.6rem; padding:2px 7px;">STANDBY</span>`;
       }
 
-      const internalTarget = host.target_internal || host.target || '';
+      const internalTarget = host.target_internal || (!host.target_external ? host.target : '') || '';
       const externalTarget = host.target_external || '';
 
-      const outageBannerHtml = (host.target_external && internalUp === true && externalUp === false) ? `
+      const outageBannerHtml = (internalUp === true && externalUp === false) ? `
         <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:4px 8px; margin-bottom:8px; font-size:0.68rem; color:#fde047; display:flex; align-items:center; gap:6px;">
           <i data-lucide="alert-triangle" style="width:13px; height:13px; color:#fbbf24; flex-shrink:0;"></i>
           <span>External WAN domain unreachable. Internal LAN is operational.</span>
-        </div>` : (host.target_external && internalUp === false && externalUp === true) ? `
+        </div>` : (internalUp === false && externalUp === true) ? `
         <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:4px 8px; margin-bottom:8px; font-size:0.68rem; color:#fde047; display:flex; align-items:center; gap:6px;">
           <i data-lucide="alert-triangle" style="width:13px; height:13px; color:#fbbf24; flex-shrink:0;"></i>
           <span>Internal LAN IP unreachable. External proxy is responding.</span>
@@ -6919,10 +7282,11 @@ async function loadHosts(forceFetch = false) {
 
       const targetsDisplayHtml = `
         <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:10px;">
+          ${internalTarget ? `
           <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:#e2e8f0; font-family:monospace;">
             <span style="font-size:0.62rem; background:rgba(59,130,246,0.15); color:var(--accent-blue); padding:1px 5px; border-radius:3px; font-weight:700; font-family:sans-serif; letter-spacing:0.5px;">LAN</span>
             <span>${internalTarget}</span>
-          </div>
+          </div>` : ''}
           ${externalTarget ? `
           <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:#94a3b8; font-family:monospace;">
             <span style="font-size:0.62rem; background:rgba(16,185,129,0.15); color:#34d399; padding:1px 5px; border-radius:3px; font-weight:700; font-family:sans-serif; letter-spacing:0.5px;">WAN</span>
@@ -6992,9 +7356,17 @@ async function loadHosts(forceFetch = false) {
       );
 
       const activeCheckers = entities.map(e => e.name || e.entity_key);
-      const checkersHtml = activeCheckers.length > 0
-        ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(239, 108, 0, 0.15); color:var(--accent-orange); border:1px solid rgba(239, 108, 0, 0.3); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
-        : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active entries reported</span>`;
+      let checkersHtml = '';
+      if (activeCheckers.length > 0) {
+        const visibleCheckers = activeCheckers.slice(0, 3);
+        const remainingCount = activeCheckers.length - visibleCheckers.length;
+        checkersHtml = visibleCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(239, 108, 0, 0.15); color:var(--accent-orange); border:1px solid rgba(239, 108, 0, 0.3); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px;" title="${c}">${c}</span>`).join(' ');
+        if (remainingCount > 0) {
+          checkersHtml += ` <span style="font-size:0.65rem; background:rgba(255,255,255,0.06); color:var(--text-secondary); border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600;" title="${remainingCount} more entities reported">+${remainingCount} more</span>`;
+        }
+      } else {
+        checkersHtml = `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active entries reported</span>`;
+      }
 
       const pluginHostId = `'plugin-${p.id}'`;
       const entityKeyStatus = `plugin-${p.id}-status`;
@@ -7134,6 +7506,17 @@ window.openAddHostModal = function () {
   document.getElementById('host-port-number').value = '';
   document.getElementById('host-port-number').disabled = true;
 
+  const pingTarget = document.getElementById('host-check-ping-target');
+  if (pingTarget) pingTarget.value = 'both';
+  const httpTarget = document.getElementById('host-check-http-target');
+  if (httpTarget) httpTarget.value = 'both';
+  const httpsTarget = document.getElementById('host-check-https-target');
+  if (httpsTarget) httpsTarget.value = 'both';
+  const sslTarget = document.getElementById('host-check-ssl-target');
+  if (sslTarget) sslTarget.value = 'external';
+  const portTarget = document.getElementById('host-check-port-target');
+  if (portTarget) portTarget.value = 'internal';
+
   const intervalEl = document.getElementById('host-polling-interval');
   if (intervalEl) {
     intervalEl.value = 3;
@@ -7161,16 +7544,16 @@ window.openEditHostModal = function (hostId) {
   document.getElementById('host-modal-title').textContent = 'Modify Host Device';
   document.getElementById('host-modal-id').value = host.id;
   document.getElementById('host-name').value = host.name;
-  document.getElementById('host-target').value = host.target;
+  document.getElementById('host-target').value = host.target || '';
   
-  const intTarget = host.target_internal || host.target || '';
+  const intTarget = host.target_internal || (!host.target_external ? host.target : '') || '';
   const extTarget = host.target_external || '';
   const intInput = document.getElementById('host-target-internal');
   if (intInput) intInput.value = intTarget;
   const extInput = document.getElementById('host-target-external');
   if (extInput) extInput.value = extTarget;
   const legInput = document.getElementById('host-target');
-  if (legInput) legInput.value = intTarget;
+  if (legInput) legInput.value = intTarget || extTarget;
 
   document.getElementById('host-check-ping').checked = host.ping_enabled;
   document.getElementById('host-check-http').checked = host.http_enabled;
@@ -7179,6 +7562,17 @@ window.openEditHostModal = function (hostId) {
   document.getElementById('host-check-port').checked = host.port_enabled;
   document.getElementById('host-port-number').value = host.port_number || '';
   document.getElementById('host-port-number').disabled = !host.port_enabled;
+
+  const editPingTarget = document.getElementById('host-check-ping-target');
+  if (editPingTarget) editPingTarget.value = host.ping_target || 'both';
+  const editHttpTarget = document.getElementById('host-check-http-target');
+  if (editHttpTarget) editHttpTarget.value = host.http_target || 'both';
+  const editHttpsTarget = document.getElementById('host-check-https-target');
+  if (editHttpsTarget) editHttpsTarget.value = host.https_target || 'both';
+  const editSslTarget = document.getElementById('host-check-ssl-target');
+  if (editSslTarget) editSslTarget.value = host.ssl_target || 'external';
+  const editPortTarget = document.getElementById('host-check-port-target');
+  if (editPortTarget) editPortTarget.value = host.port_target || 'internal';
 
   const isDefault = (!host.polling_interval || host.polling_interval === defaultVal);
   const defaultCheckbox = document.getElementById('host-use-default-interval');
@@ -7204,12 +7598,11 @@ window.submitSaveHost = async function () {
   const { httpUrl } = getApiUrls();
   const id = document.getElementById('host-modal-id').value;
   const name = document.getElementById('host-name').value.trim();
-  const target = document.getElementById('host-target').value.trim();
-  const targetInternal = (document.getElementById('host-target-internal')?.value || document.getElementById('host-target')?.value || '').trim();
+  const targetInternal = (document.getElementById('host-target-internal')?.value || '').trim() || null;
   const targetExternal = (document.getElementById('host-target-external')?.value || '').trim() || null;
 
-  if (!name || !targetInternal) {
-    alert("Host Name and Internal Target address are required.");
+  if (!name || (!targetInternal && !targetExternal)) {
+    alert("Host Name and at least one Target address (Internal or External) are required.");
     return;
   }
 
@@ -7221,16 +7614,21 @@ window.submitSaveHost = async function () {
 
   const payload = {
     name: name,
-    target: targetInternal,
+    target: targetInternal || targetExternal,
     target_internal: targetInternal,
     target_external: targetExternal,
     use_default_interval: useDefault,
     polling_interval: pollingInterval,
     ping_enabled: document.getElementById('host-check-ping').checked,
+    ping_target: document.getElementById('host-check-ping-target')?.value || 'both',
     http_enabled: document.getElementById('host-check-http').checked,
+    http_target: document.getElementById('host-check-http-target')?.value || 'both',
     https_enabled: document.getElementById('host-check-https').checked,
+    https_target: document.getElementById('host-check-https-target')?.value || 'both',
     ssl_enabled: document.getElementById('host-check-ssl').checked,
+    ssl_target: document.getElementById('host-check-ssl-target')?.value || 'external',
     port_enabled: document.getElementById('host-check-port').checked,
+    port_target: document.getElementById('host-check-port-target')?.value || 'internal',
     port_number: document.getElementById('host-check-port').checked
       ? parseInt(document.getElementById('host-port-number').value) || null
       : null
@@ -7437,7 +7835,8 @@ window.openHostDetail = async function (hostId) {
       } else {
         probersList.innerHTML = entities.map(m => {
           const statusVal = m.value !== undefined ? m.value : 'unknown';
-          const isOnline = statusVal === 'healthy' || statusVal === 'stable' || statusVal === 'online' || statusVal === 'up' || statusVal === 'ON' || statusVal === 'ACTIVE';
+          const sValUpper = String(statusVal).trim().toUpperCase();
+          const isOnline = isProbeStatusOnline(statusVal) || sValUpper === 'ON' || sValUpper === 'ACTIVE' || sValUpper === 'RUNNING' || sValUpper === 'OK' || sValUpper === 'IDLE' || sValUpper === 'PASSED';
           const statusClass = isOnline ? 'online' : 'offline';
           const statusLabel = typeof statusVal === 'string' ? statusVal.toUpperCase() : statusVal;
 
@@ -7549,11 +7948,18 @@ window.openHostDetail = async function (hostId) {
                 ${detailsHtml}
               </div>
               <div style="border-top: 1px dashed var(--border-soft); padding-top:4px; margin-top:2px; font-size:0.65rem; color:var(--text-secondary);">
-                <div>Sensor ID: <code style="color:var(--accent-orange);">${sensorIdStatus}</code></div>
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">
+                  <span style="word-break:break-all;">Sensor ID: <code style="color:var(--accent-orange); word-break:break-all; user-select:all;">${sensorIdStatus}</code></span>
+                  <button class="btn-icon" onclick="event.stopPropagation(); copySensorId('${sensorIdStatus}', this)" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px; flex-shrink:0;" title="Copy Sensor ID">
+                    <i data-lucide="copy" style="width:11px; height:11px;"></i>
+                    <span>Copy</span>
+                  </button>
+                </div>
               </div>
             </div>
           `;
         }).join('');
+        if (window.lucide) window.lucide.createIcons();
       }
     }
 
@@ -7623,9 +8029,9 @@ window.openHostDetail = async function (hostId) {
             const sensorIdStatus = window.getSensorIdForEntity('monitors', `monitor-${m.id}-status`, m.name, m.type);
             const sensorIdLatency = window.getSensorIdForEntity('monitors', `monitor-${m.id}-latency`, m.name, m.type);
 
-            const isOnline = statusVal === 'healthy' || statusVal === 'stable' || statusVal === 'online' || statusVal === 'up';
+            const isOnline = isProbeStatusOnline(statusVal, m.type);
             const statusClass = isOnline ? 'online' : 'offline';
-            const statusLabel = isOnline ? 'Online' : statusVal.toUpperCase();
+            const statusLabel = isOnline ? (statusVal === 'up' || statusVal === 'online' ? 'Online' : statusVal.toUpperCase()) : statusVal.toUpperCase();
 
             return `
               <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
@@ -7637,13 +8043,26 @@ window.openHostDetail = async function (hostId) {
                   <span>Target: <span style="font-family:monospace; color:#fff;">${m.target}</span></span>
                   <span>Latency: <span style="color:#fff;">${latencyVal} ms</span></span>
                 </div>
-                <div style="border-top: 1px dashed var(--border-soft); padding-top:4px; margin-top:2px; font-size:0.65rem; color:var(--text-secondary); display:flex; flex-direction:column; gap:2px;">
-                  <div>Status Sensor: <code style="color:var(--accent-orange);">${sensorIdStatus}</code></div>
-                  <div>Latency Sensor: <code style="color:var(--accent-orange);">${sensorIdLatency}</code></div>
+                <div style="border-top: 1px dashed var(--border-soft); padding-top:4px; margin-top:2px; font-size:0.65rem; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px;">
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">
+                    <span style="word-break:break-all;">Status Sensor: <code style="color:var(--accent-orange); word-break:break-all; user-select:all;">${sensorIdStatus}</code></span>
+                    <button class="btn-icon" onclick="event.stopPropagation(); copySensorId('${sensorIdStatus}', this)" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px; flex-shrink:0;" title="Copy Sensor ID">
+                      <i data-lucide="copy" style="width:11px; height:11px;"></i>
+                      <span>Copy</span>
+                    </button>
+                  </div>
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">
+                    <span style="word-break:break-all;">Latency Sensor: <code style="color:var(--accent-orange); word-break:break-all; user-select:all;">${sensorIdLatency}</code></span>
+                    <button class="btn-icon" onclick="event.stopPropagation(); copySensorId('${sensorIdLatency}', this)" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px; flex-shrink:0;" title="Copy Sensor ID">
+                      <i data-lucide="copy" style="width:11px; height:11px;"></i>
+                      <span>Copy</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             `;
           }).join('');
+          if (window.lucide) window.lucide.createIcons();
         }
       } else {
         probersList.innerHTML = `<span style="font-size:0.75rem; color:#f43f5e;">Failed to fetch host prober elements.</span>`;
@@ -7728,7 +8147,27 @@ window.checkPluginsForUpdates = async function () {
   }
 };
 
-function showPluginsView() {
+window.copySensorId = function (text, el) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    if (el) {
+      const origHtml = el.innerHTML;
+      el.innerHTML = `<i data-lucide="check" style="width:11px; height:11px; color:#10b981;"></i><span style="color:#10b981;">Copied</span>`;
+      if (window.lucide) window.lucide.createIcons();
+      setTimeout(() => {
+        el.innerHTML = origHtml;
+        if (window.lucide) window.lucide.createIcons();
+      }, 1500);
+    }
+    if (typeof showToast === 'function') {
+      showToast(`Copied Sensor ID: ${text}`, "info");
+    }
+  }).catch(err => {
+    console.error("Failed to copy sensor ID:", err);
+  });
+};
+
+function showPluginsView(initialTab = 'installed') {
   const mainContent = document.getElementById('main-content');
   if (mainContent && mainContent.classList.contains('edit-mode')) {
     const editToggleBtn = document.getElementById('edit-toggle-btn');
@@ -7744,7 +8183,10 @@ function showPluginsView() {
   if (pluginsView) pluginsView.classList.remove('hide');
 
   const navPlugins = document.getElementById('nav-plugins');
-  if (navPlugins) navPlugins.classList.add('active');
+  if (navPlugins) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    navPlugins.classList.add('active');
+  }
 
   // Hook search block on input dynamically
   const searchInput = document.getElementById('plugin-search');
@@ -7770,8 +8212,12 @@ function showPluginsView() {
     });
   });
 
-  switchPluginTab('installed');
+  switchPluginTab(initialTab);
 }
+
+window.navigateToPluginStore = function () {
+  showPluginsView('marketplace');
+};
 
 window.switchPluginTab = function (tab) {
   // Clear search query when changing tabs
