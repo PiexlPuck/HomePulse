@@ -595,6 +595,7 @@ async def setup_database_schema(conn):
                 CONSTRAINT uq_node_dependency UNIQUE (parent_target, child_target)
             );
         """)
+        await conn.execute("ALTER TABLE telemetry_logs ALTER COLUMN entity_key TYPE VARCHAR(255);")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs (timestamp);")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_system_audits_timestamp ON system_audits (timestamp);")
         logger.info("hosts and node_dependencies database schema, indexes, and relationships verified.")
@@ -3386,6 +3387,17 @@ async def get_monitor_logs(
     except Exception as e:
         logger.error(f"Failed to fetch telemetry logs for {entity_key}: {e}")
         raise HTTPException(status_code=500, detail="Database log query error.")
+
+@app.get("/api/telemetry/logs/{entity_key}")
+async def get_telemetry_logs_alias(
+    entity_key: str, 
+    limit: int = 10, 
+    hours: int = None, 
+    offset: int = 0,
+    start_time: str = None,
+    end_time: str = None
+):
+    return await get_monitor_logs(entity_key, limit, hours, offset, start_time, end_time)
 
 @app.post("/api/discovery/approve/{node_id}")
 async def approve_node(node_id: str, payload: ApprovePayload):
