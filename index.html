@@ -1622,59 +1622,33 @@
   <div class="modal-overlay" id="widget-editor-modal" style="display: none;">
     <div class="modal-content wide" style="max-height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-header">
-        <h3>Widget Editor</h3>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <!-- 3-Dots Menu Dropdown -->
-          <div style="position: relative; display: inline-block;">
-            <button class="btn-icon" onclick="toggleWidgetEditorMenu(event)"
-              style="background:none; border:none; padding:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:50%; width:28px; height:28px; transition: background 0.2s;"
-              onmouseover="this.style.background='rgba(255, 255, 255, 0.08)'" onmouseout="this.style.background='none'"
-              title="Options">
-              <i data-lucide="more-vertical" style="width: 18px; height: 18px; color: var(--text-secondary);"></i>
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <h3 style="margin: 0;">Card Editor</h3>
+          <div class="editor-mode-switcher">
+            <button type="button" class="editor-mode-btn active" id="editor-tab-ui" onclick="toggleWidgetEditorMode('ui')">
+              <i data-lucide="sliders" style="width: 14px; height: 14px;"></i> Visual
             </button>
-            <div id="widget-editor-menu-dropdown"
-              style="display: none; position: absolute; right: 0; top: 32px; background: #181614; border: 1px solid var(--border-soft); border-radius: 6px; z-index: 1001; min-width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); padding: 4px 0;">
-              <a href="#" id="menu-toggle-editor-mode" onclick="clickedToggleEditorMode(event)"
-                style="display: block; color: var(--text-primary); padding: 8px 16px; font-size: 0.78rem; text-decoration: none; transition: background 0.2s;"
-                onmouseover="this.style.background='rgba(255, 255, 255, 0.08)'"
-                onmouseout="this.style.background='none'">
-                Edit in YAML
-              </a>
-            </div>
+            <button type="button" class="editor-mode-btn" id="editor-tab-yaml" onclick="toggleWidgetEditorMode('yaml')">
+              <i data-lucide="code" style="width: 14px; height: 14px;"></i> YAML
+            </button>
           </div>
-          <button class="modal-close-btn" onclick="closeModal('widget-editor-modal')">&times;</button>
         </div>
+        <button class="modal-close-btn" onclick="closeModal('widget-editor-modal')">&times;</button>
       </div>
       <div class="modal-body"
         style="overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px;">
         <input type="hidden" id="edit-widget-id">
 
         <!-- UI Fields Container -->
-        <div id="editor-ui-fields" style="display: flex; flex-direction: column; gap: 16px;">
-
-          <!-- Section 1: Basic -->
-          <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
-            <h4 class="form-section-header"
-              style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-              🎛️ Basic Properties</h4>
-
+        <div id="editor-ui-fields" style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="form-grid-2col">
             <div class="modal-group">
-              <label for="edit-widget-title"
-                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Widget
-                Label</label>
-              <input type="text" class="modal-input" id="edit-widget-title" placeholder="e.g. Gateway Status"
-                style="width: 100%; box-sizing: border-box;">
-              <span class="form-field-help"
-                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">The title
-                text shown at the top of this card.</span>
+              <label for="edit-widget-title">Widget Label</label>
+              <input type="text" class="modal-input" id="edit-widget-title" placeholder="e.g. Gateway Status" oninput="updateEditorVisualPreview()">
             </div>
-
             <div class="modal-group">
-              <label for="edit-widget-color"
-                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Theme
-                Accent</label>
-              <select id="edit-widget-color" class="modal-input"
-                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+              <label for="edit-widget-color">Theme Accent</label>
+              <select id="edit-widget-color" class="modal-input" onchange="updateEditorVisualPreview()">
                 <option value="var(--color-optimal)">Emerald green (Optimal)</option>
                 <option value="var(--accent-blue)">Ice blue (Info)</option>
                 <option value="var(--color-caution)">Amber (Caution)</option>
@@ -1682,98 +1656,61 @@
                 <option value="#c084fc">Amethyst purple</option>
                 <option value="#f472b6">Pink glow</option>
               </select>
-              <span class="form-field-help"
-                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Primary color
-                used for gauges, highlights, and icons.</span>
             </div>
           </div>
 
-          <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
-
-          <!-- Section 2: Layout -->
-          <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
-            <h4 class="form-section-header"
-              style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-              📐 Layout & Placement</h4>
-
+          <div class="form-grid-2col">
             <div class="modal-group">
-              <label for="edit-widget-tab"
-                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Dashboard
-                Tab View</label>
-              <select id="edit-widget-tab" class="modal-input"
-                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+              <label for="edit-widget-tab">Dashboard Tab</label>
+              <select id="edit-widget-tab" class="modal-input">
                 <!-- Dynamically populated -->
               </select>
-              <span class="form-field-help"
-                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">The tab on
-                which this card is displayed.</span>
             </div>
-
-            <div class="modal-group select-row" style="display: flex; gap: 12px; flex-wrap: wrap;">
-              <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
-                <label for="edit-widget-width"
-                  style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Card Width</label>
-                <select id="edit-widget-width" class="modal-input"
-                  style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
-                  <option value="1">Normal (1x)</option>
-                  <option value="2">Wide (2x)</option>
-                  <option value="3">Full Dashboard (3x)</option>
+            <div style="display: flex; gap: 10px;">
+              <div class="modal-group" style="flex: 1;">
+                <label for="edit-widget-width">Card Width</label>
+                <select id="edit-widget-width" class="modal-input">
+                  <option value="1">1x (Normal)</option>
+                  <option value="2">2x (Wide)</option>
+                  <option value="3">3x (Full)</option>
                 </select>
-                <span class="form-field-help"
-                  style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Grid columns to
-                  span.</span>
               </div>
-              <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
-                <label for="edit-widget-height"
-                  style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Card Height</label>
-                <select id="edit-widget-height" class="modal-input"
-                  style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
-                  <option value="1">Normal (1x)</option>
-                  <option value="2">Tall (2x)</option>
+              <div class="modal-group" style="flex: 1;">
+                <label for="edit-widget-height">Height</label>
+                <select id="edit-widget-height" class="modal-input">
+                  <option value="1">1x</option>
+                  <option value="2">2x</option>
                 </select>
-                <span class="form-field-help"
-                  style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Grid rows to span.</span>
               </div>
             </div>
           </div>
 
-          <!-- Section 3: Metric Details (Shown only for Gauges and Sensors) -->
-          <div class="form-section edit-scale-group" style="display: flex; flex-direction: column; gap: 12px;">
-            <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
-            <h4 class="form-section-header"
-              style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-              📊 Metric Options</h4>
-
+          <!-- Section: Metric Details (Conditional for Gauges and Sensors) -->
+          <div class="edit-scale-group form-grid-2col" style="display: flex;">
             <div class="modal-group">
-              <label for="edit-widget-unit"
-                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Display
-                Unit</label>
-              <input type="text" class="modal-input" id="edit-widget-unit" placeholder="e.g. %, °C, GB, ms"
-                style="width: 100%; box-sizing: border-box;">
-              <span class="form-field-help"
-                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Value
-                measurement suffix label.</span>
+              <label for="edit-widget-unit">Display Unit</label>
+              <input type="text" class="modal-input" id="edit-widget-unit" placeholder="e.g. %, °C, GB, ms" oninput="updateEditorVisualPreview()">
             </div>
+            <div style="display: flex; gap: 10px;">
+              <div class="modal-group" style="flex: 1;">
+                <label for="edit-scale-min">Scale Min</label>
+                <input type="number" class="modal-input" id="edit-scale-min" value="0">
+              </div>
+              <div class="modal-group" style="flex: 1;">
+                <label for="edit-scale-max">Scale Max</label>
+                <input type="number" class="modal-input" id="edit-scale-max" value="100">
+              </div>
+            </div>
+          </div>
 
-            <div class="modal-group select-row" style="display: flex; gap: 12px; flex-wrap: wrap;">
-              <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
-                <label for="edit-scale-min"
-                  style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Scale Min</label>
-                <input type="number" class="modal-input" id="edit-scale-min" value="0"
-                  style="width: 100%; box-sizing: border-box;">
-                <span class="form-field-help"
-                  style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Minimum gauge value
-                  limit.</span>
-              </div>
-              <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
-                <label for="edit-scale-max"
-                  style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Scale Max</label>
-                <input type="number" class="modal-input" id="edit-scale-max" value="100"
-                  style="width: 100%; box-sizing: border-box;">
-                <span class="form-field-help"
-                  style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Maximum gauge value
-                  limit.</span>
-              </div>
+          <!-- Live Card Preview -->
+          <div class="modal-preview-box">
+            <div class="modal-preview-header">
+              <span class="modal-preview-label">Live Card Preview</span>
+              <span style="font-size: 0.65rem; color: var(--text-secondary);">Real-time preview</span>
+            </div>
+            <div id="editor-visual-preview-container">
+              <!-- Rendered dynamically by JS -->
             </div>
           </div>
         </div>
@@ -1781,8 +1718,7 @@
         <!-- YAML Container -->
         <div id="editor-yaml-container" style="display: none; flex-direction: column; gap: 8px; width: 100%;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <span style="font-size:0.75rem; color:var(--text-secondary); font-weight: 500;">Directly edit this card's
-              Lovelace parameters using YAML:</span>
+            <span style="font-size:0.75rem; color:var(--text-secondary); font-weight: 500;">Directly edit card parameters in YAML:</span>
             <div id="yaml-linter-status"
               style="display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: #10b981; font-weight: 600;">
               <i data-lucide="check-circle" style="width: 14px; height: 14px; color: #10b981;"></i>
@@ -1799,89 +1735,55 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-danger" onclick="deleteWidgetSettings()">Remove Widget</button>
+        <button class="btn btn-danger" onclick="deleteWidgetSettings()">Remove Card</button>
         <button class="btn btn-secondary" onclick="closeModal('widget-editor-modal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveWidgetSettings()">Save Widget</button>
+        <button class="btn btn-primary" onclick="saveWidgetSettings()">Save Changes</button>
       </div>
     </div>
   </div>
 
   <!-- Widget Creator/Catalog Modal Overlay -->
   <div class="modal-overlay" id="widget-catalog-modal" style="display: none;">
-    <div class="modal-content wide" style="max-height: 90vh; overflow-y: auto;">
+    <div class="modal-content wide" style="max-height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-header">
-        <h3>Create Lovelace Card</h3>
+        <h3 style="margin: 0;">Add Lovelace Card</h3>
         <button class="modal-close-btn" onclick="closeModal('widget-catalog-modal')">&times;</button>
       </div>
       <div class="modal-body"
-        style="overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 16px;">
+        style="overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px;">
 
-        <!-- Target Selection -->
-        <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
-          <h4 class="form-section-header"
-            style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-            📋 Card Selector</h4>
+        <select id="catalog-card-type" style="display: none;" onchange="onCreatorTypeChange(this.value)">
+          <option value="sensor">Sensor</option>
+          <option value="control">Control</option>
+          <option value="gauge">Gauge</option>
+          <option value="value">Value</option>
+          <option value="entities">Entities</option>
+          <option value="glance">Glance</option>
+          <option value="title">Section Title</option>
+        </select>
 
-          <div class="modal-group">
-            <select id="catalog-card-type" class="modal-input" onchange="onCreatorTypeChange(this.value)"
-              style="display: none;">
-              <option value="sensor">Standard Telemetry Sensor</option>
-              <option value="control">Interactive Control Widget</option>
-              <option value="value">Value Display Badge</option>
-              <option value="gauge">Circular Gauge Card</option>
-              <option value="entities">Multi-Entity Row List</option>
-              <option value="glance">Glance Columns Grid</option>
-              <option value="health">System Health Snapshot</option>
-              <option value="audit">Global System Audit Log</option>
-            </select>
-
-            <label
-              style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; display: block;">Select
-              Card Type</label>
-            <input type="text" id="catalog-search" class="modal-input" placeholder="🔍 Search card templates..."
-              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box; margin-bottom: 12px; font-size: 0.8rem;">
-
-            <div id="catalog-blocks-grid"
-              style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-height: 240px; overflow-y: auto; padding-right: 4px; margin-bottom: 12px;">
-              <!-- Filled dynamically by JS -->
-            </div>
-
-            <span class="form-field-help"
-              style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Select the
-              visual card layout template.</span>
-          </div>
-
-          <div class="modal-group" id="creator-entity-select-group"
-            style="display: flex; flex-direction: column; gap: 6px;">
-            <!-- Filled dynamically: dropdown or checkboxes -->
+        <!-- Card Type Chips Grid -->
+        <div class="modal-group">
+          <label style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Card Type</label>
+          <div id="catalog-blocks-grid" class="creator-chips-grid">
+            <!-- Filled dynamically by JS -->
           </div>
         </div>
 
-        <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
+        <!-- Target Entity Selection -->
+        <div class="modal-group" id="creator-entity-select-group">
+          <!-- Filled dynamically: dropdown or checkboxes -->
+        </div>
 
-        <!-- Basic Properties -->
-        <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
-          <h4 class="form-section-header"
-            style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-            🎛️ Basic Properties</h4>
-
+        <!-- Basic Properties (2-col) -->
+        <div class="form-grid-2col">
           <div class="modal-group">
-            <label for="catalog-widget-title"
-              style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Widget
-              Label</label>
-            <input type="text" class="modal-input" id="catalog-widget-title" placeholder="Leave empty for default"
-              style="width: 100%; box-sizing: border-box;">
-            <span class="form-field-help"
-              style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">The title text
-              shown at the top of this card.</span>
+            <label for="catalog-widget-title">Card Title</label>
+            <input type="text" class="modal-input" id="catalog-widget-title" placeholder="Optional title..." oninput="updateCreatorVisualPreview()">
           </div>
-
           <div class="modal-group">
-            <label for="catalog-widget-color"
-              style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Theme
-              Accent</label>
-            <select id="catalog-widget-color" class="modal-input"
-              style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
+            <label for="catalog-widget-color">Theme Accent</label>
+            <select id="catalog-widget-color" class="modal-input" onchange="updateCreatorVisualPreview()">
               <option value="var(--color-optimal)">Emerald green (Optimal)</option>
               <option value="var(--accent-blue)">Ice blue (Info)</option>
               <option value="var(--color-caution)">Amber (Caution)</option>
@@ -1889,92 +1791,63 @@
               <option value="#c084fc">Amethyst purple</option>
               <option value="#f472b6">Pink glow</option>
             </select>
-            <span class="form-field-help"
-              style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Primary accent
-              color used for gauges, highlights, and icons.</span>
           </div>
         </div>
 
-        <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
-
-        <!-- Layout Options -->
-        <div class="form-section" style="display: flex; flex-direction: column; gap: 12px;">
-          <h4 class="form-section-header"
-            style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-            📐 Layout Options</h4>
-
-          <div class="modal-group select-row" style="display: flex; gap: 12px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
-              <label for="catalog-widget-width"
-                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Card Width</label>
-              <select id="catalog-widget-width" class="modal-input"
-                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
-                <option value="1">Normal (1x)</option>
-                <option value="2">Wide (2x)</option>
-                <option value="3">Full Dashboard (3x)</option>
+        <!-- Layout & Conditional Metric Details (2-col) -->
+        <div class="form-grid-2col">
+          <div style="display: flex; gap: 10px;">
+            <div class="modal-group" style="flex: 1;">
+              <label for="catalog-widget-width">Card Width</label>
+              <select id="catalog-widget-width" class="modal-input">
+                <option value="1">1x (Normal)</option>
+                <option value="2">2x (Wide)</option>
+                <option value="3">3x (Full)</option>
               </select>
-              <span class="form-field-help"
-                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Grid columns to span.</span>
             </div>
-            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
-              <label for="catalog-widget-height"
-                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Card Height</label>
-              <select id="catalog-widget-height" class="modal-input"
-                style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px; width: 100%; box-sizing: border-box;">
-                <option value="1">Normal (1x)</option>
-                <option value="2">Tall (2x)</option>
+            <div class="modal-group" style="flex: 1;">
+              <label for="catalog-widget-height">Height</label>
+              <select id="catalog-widget-height" class="modal-input">
+                <option value="1">1x</option>
+                <option value="2">2x</option>
               </select>
-              <span class="form-field-help"
-                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Grid rows to span.</span>
             </div>
+          </div>
+          <div class="modal-group creator-scale-group">
+            <label for="catalog-widget-unit">Display Unit</label>
+            <input type="text" class="modal-input" id="catalog-widget-unit" placeholder="e.g. %, °C, GB, ms" oninput="updateCreatorVisualPreview()">
           </div>
         </div>
 
-        <!-- Metric Details (Conditional Scale group) -->
-        <div class="form-section creator-scale-group" style="display: flex; flex-direction: column; gap: 12px;">
-          <hr style="border: 0; border-top: 1px solid var(--border-soft); margin: 6px 0;">
-          <h4 class="form-section-header"
-            style="font-size: 0.75rem; font-weight: 700; color: var(--accent-orange); margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-            📊 Metric Options</h4>
-
+        <!-- Scale Limits for gauge/sensor -->
+        <div class="creator-scale-group form-grid-2col" style="display: flex;">
           <div class="modal-group">
-            <label for="catalog-widget-unit"
-              style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: block;">Display
-              Unit (Optional)</label>
-            <input type="text" class="modal-input" id="catalog-widget-unit" placeholder="e.g. %, °C, GB, ms"
-              style="width: 100%; box-sizing: border-box;">
-            <span class="form-field-help"
-              style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px; display: block;">Value
-              measurement suffix label.</span>
+            <label for="creator-scale-min">Scale Min</label>
+            <input type="number" class="modal-input" id="creator-scale-min" value="0">
           </div>
+          <div class="modal-group">
+            <label for="creator-scale-max">Scale Max</label>
+            <input type="number" class="modal-input" id="creator-scale-max" value="100">
+          </div>
+        </div>
 
-          <div class="modal-group select-row" style="display: flex; gap: 12px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
-              <label for="creator-scale-min"
-                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Scale Min</label>
-              <input type="number" class="modal-input" id="creator-scale-min" value="0"
-                style="width: 100%; box-sizing: border-box;">
-              <span class="form-field-help"
-                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Minimum gauge value
-                limit.</span>
-            </div>
-            <div style="flex: 1; min-width: 100px; display: flex; flex-direction: column; gap: 4px;">
-              <label for="creator-scale-max"
-                style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">Scale Max</label>
-              <input type="number" class="modal-input" id="creator-scale-max" value="100"
-                style="width: 100%; box-sizing: border-box;">
-              <span class="form-field-help"
-                style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;">Maximum gauge value
-                limit.</span>
-            </div>
+        <!-- Live Card Preview -->
+        <div class="modal-preview-box">
+          <div class="modal-preview-header">
+            <span class="modal-preview-label">Live Card Preview</span>
+            <span style="font-size: 0.65rem; color: var(--text-secondary);">Real-time preview</span>
+          </div>
+          <div id="creator-visual-preview-container">
+            <!-- Rendered dynamically by JS -->
           </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal('widget-catalog-modal')">Cancel</button>
-        <button class="btn btn-primary" onclick="addWidgetToGrid()">Create Card</button>
+        <button class="btn btn-primary" onclick="addWidgetToGrid()">Add Card</button>
       </div>
     </div>
+  </div>
 
     <!-- YAML Configuration Editor Modal Overlay -->
     <div class="modal-overlay" id="yaml-config-modal" style="display: none;">

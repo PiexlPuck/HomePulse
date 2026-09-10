@@ -1984,7 +1984,136 @@ input:checked+.slider:before {
   background-color: #000;
 }
 
-/* Creator Card Catalog Blocks Styling */
+/* Editor Mode Switcher in Modal Header */
+.editor-mode-switcher {
+  display: flex;
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.editor-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.editor-mode-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.editor-mode-btn.active {
+  background: var(--bg-secondary);
+  color: var(--color-optimal);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Card Adder Chips Grid */
+.creator-chips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.creator-chip {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.creator-chip:hover {
+  border-color: var(--border-active);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.creator-chip.active {
+  border-color: var(--color-optimal) !important;
+  background: rgba(16, 185, 129, 0.08) !important;
+}
+
+.creator-chip i {
+  width: 15px;
+  height: 15px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.creator-chip.active i {
+  color: var(--color-optimal);
+}
+
+.creator-chip span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.creator-chip.active span {
+  color: var(--color-optimal);
+}
+
+/* Form 2-Column Grid Layout */
+.form-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .form-grid-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Modal Live Card Preview Box */
+.modal-preview-box {
+  background: var(--bg-primary);
+  border: 1px dashed var(--border-soft);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-preview-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+/* Creator Card Catalog Blocks Styling (Legacy Support) */
 .creator-block-card {
   background: rgba(20, 20, 22, 0.5);
   border: 1px solid var(--border-soft);

@@ -1,5 +1,6 @@
 # HomePulse
 
+HomePulse is a community-focused, highly modular framework for real-time telemetry monitoring and dashboard visualization. Inspired by Home Assistant's Lovelace design, it consumes telemetry streams from local nodes, custom servers, and microcontrollers, displaying them on a lightweight, highly responsive interface.
 HomePulse is a community-focused, highly modular framework for real-time telemetry monitoring and dashboard visualization. Inspired by Home Assistant's Lovelace design, it consumes telemetry streams from local nodes, custom servers, microcontrollers, and external infrastructure platforms, displaying them on a lightweight, highly responsive interface.
 
 ---
@@ -14,6 +15,12 @@ graph TD
     classDef bg fill:#8b5cf6,stroke:#6d28d9,color:#fff;
     classDef alert fill:#ef4444,stroke:#b91c1c,color:#fff;
 
+    A[mDNS Native Discovery Daemon]:::bg -->|Push Nodes| B(FastAPI Server Integration):::api
+    C[IoT Nodes / Prober Servers] -->|HTTP POST / WebSocket| B
+    B -->|Serve Files / Static Routing| D[Lovelace Frontend UI]:::client
+    D -->|WS Client Stream Connection| B
+    D -->|Settings & Panel API Requests| B
+    B -->|Write Telemetry & Configs| E[(PostgreSQL Storage Layer)]:::db
     subgraph Data_Sources["Data Sources & Integration Targets"]
         Nodes["IoT Nodes & Hardware Sensors"]
         Probers["Probed Host Services (HTTP/Ping/Port/DNS/WS)"]
@@ -71,6 +78,9 @@ graph TD
     class Notifications,Webhook alert;
 ```
 
+*   **Frontend**: Built on HTML5, Vanilla JavaScript (ES6+), and tailored CSS themes. Page elements load dynamically via Lucide Icons, and telemetry charts utilize Chart.js.
+*   **Backend**: Managed by a Python `FastAPI` instance. It handles WebSocket notification streams, runs background network polling workers, processes incoming JSON telemetry logs, and hosts mDNS node discovery services.
+*   **Database**: PostgreSQL serves as the relational and history logs data store. The database initializes schema and runs setup checks upon startup.
 *   **Frontend**: Built on HTML5, Vanilla JavaScript (ES6+), and tailored CSS themes. Dynamic icon rendering is powered by Lucide Icons, and telemetry analytics charts utilize Chart.js.
 *   **Backend**: Managed by a Python `FastAPI` instance running on Uvicorn. It handles WebSocket notification streams, background network probers, telemetry persistence, multi-channel alert rule evaluation, plugin subprocess lifecycle watchdogs, and API token security.
 *   **Database**: PostgreSQL serves as the persistent storage layer for device configurations, approved endpoints, telemetry history, service check targets, alert rules, plugin configs, and user preferences.
@@ -80,15 +90,20 @@ graph TD
 ## Core UI Modules & Capabilities
 
 ### 1. Advanced Lovelace YAML Layouts
+*   Configure widgets dynamically via in-browser YAML updates.
+*   Widgets include Semicircular Gauges, Glance Grids, and Entity lists.
 *   Configure widgets dynamically via in-browser raw YAML updates with instant preview.
 *   Widget types include Semicircular Gauges, Glance Grids, and Entity Lists.
 *   Supports a **Compact Room Layout** mode alongside standard grid views.
 
 ### 2. Flexible Host Manager
+*   Configure and probe remote servers and network devices.
 *   Configure and probe remote servers, network devices, and infrastructure nodes.
 *   Supports a persistent **Grid/List View** preference saved in the client's `localStorage` (`hp_hosts_layout`).
 *   Nested host topology grouping displays child service monitors under parent host cards.
 
+### 3. Zabbix-Style Analytics
+*   Filter history telemetry through purely time-based intervals (1h, 3h, 12h, 24h, 7d, 30d) or input a **Custom Date-Time Range**.
 ### 3. Built-in Service & Network Probers (Monitors)
 *   Supports 6 distinct check types: `http`, `https`, `ping`, `port` (TCP), `dns`, and `websocket`.
 *   Configurable check intervals, timeouts, and monitor grouping into status cards.
@@ -116,10 +131,14 @@ graph TD
 *   Calculates and renders a rose-dashed **Average Latency Guideline** overlay on history charts.
 *   Adapts chart x-axis ticks to include dates or weekday names for query ranges exceeding 24 hours.
 
+### 4. Collapsible Hover Logs Table Drilldown
 ### 8. Collapsible Hover Logs Table Drilldown
 *   Detailed history logs are nested within a collapsible `<details>` panel ("Advanced Telemetry Records").
+*   Hovering over any node on the line chart dynamically filters this log list to display only records within a ±2 minute window of the hovered point, highlighting the closest time match.
 *   Hovering over any point on the line chart dynamically filters the log list to display records within a ±2 minute window of the hovered timestamp.
 
+### 5. Custom Promise Dialogs
+*   Removed blocking native browser alerts. All critical system warnings and delete calls use custom styles, non-blocking HTML promise modal overlays.
 ### 9. External Infrastructure Integrations
 *   Built-in integration and monitoring support for **Proxmox (VE, PBS, PMG)**, **TrueNAS SCALE**, **Unraid**, **Dockhand**, and **Nginx**.
 *   Standardized REST API and WebSocket protocols allow custom external agents and hypervisors to report telemetry directly into HomePulse.
@@ -135,6 +154,7 @@ graph TD
 
 ## Database Schema Directory
 
+Below is a reference of the key tables created during the database schema verification:
 Below is a reference of the key PostgreSQL database tables managed by HomePulse:
 
 | Table | Purpose | Primary Specifications |
@@ -146,6 +166,7 @@ Below is a reference of the key PostgreSQL database tables managed by HomePulse:
 | `system_monitors` | Core service check target specifications | `id` (PK), `name`, `type`, `target`, `check_interval`, `timeout`, `last_status`, `enabled` |
 | `hosts` | User-managed remote host manager targets | `id` (PK), `name`, `target`, `ping_enabled`, `http_enabled`, `https_enabled` |
 | `dashboard_config` | Lovelace layout representation configurations | `key` (PK), `value` (raw YAML representation) |
+| `alert_rules` | User-defined alert thresholds | `id` (PK), `entity_key`, `rule_condition`, `warning_level`, `enabled` |
 | `notification_channels` | Configured notification endpoints | `id` (PK), `name`, `type` (webhook/discord/telegram/email/slack), `config` |
 | `alert_rules` | User-defined alert condition rules | `id` (PK), `entity_key`, `rule_condition`, `warning_level`, `enabled` |
 | `alert_flows` | Pipelines connecting alert rules to channels | `id` (PK), `rule_id` (FK), `channel_id` (FK), `enabled` |
@@ -168,10 +189,16 @@ Below is a reference of the key PostgreSQL database tables managed by HomePulse:
 *   **Description**: Establishes bi-directional communication to stream telemetry, system audits, and discovery queue updates live to client dashboards.
 
 ### 2. Device Controllers
+*   **Endpoint**: `POST /api/control/{node_id}/{entity_key}`
 *   **Endpoint**: `POST /api/entities/control/{node_id}/{entity_id}`
 *   **Payload**: `{"value": <any>}`
 *   **Description**: Controls active IoT switches or sliders, broadcasting state changes to all connected clients.
 
+### 3. Node Discovery & Approvals
+*   **Endpoint**: `GET /api/discovery` - Lists pending nodes cached during mDNS discovery.
+*   **Endpoint**: `POST /api/discovery/approve/{node_id}`
+*   **Payload**: `{"preshared_key": "<key>"}`
+*   **Description**: Validates the payload device authorization code PIN to register a node and map its entities.
 ### 3. Service Monitors & Groups
 *   **Endpoints**:
     *   `GET /api/monitors` - List all configured service probers.
@@ -181,6 +208,7 @@ Below is a reference of the key PostgreSQL database tables managed by HomePulse:
     *   `GET /api/monitor-groups` - Fetch monitor groups for status dashboards.
     *   `POST /api/monitor-groups` / `DELETE /api/monitor-groups/{id}` - Manage monitor groups.
 
+### 4. Telemetry History API
 ### 4. Alerting & Notification System
 *   **Endpoints**:
     *   `GET /api/alerts/channels` - List notification channels (Webhooks, Discord, Telegram, Email, Slack).
@@ -207,6 +235,7 @@ Below is a reference of the key PostgreSQL database tables managed by HomePulse:
 ### 6. Telemetry History API
 *   **Endpoint**: `GET /api/monitors/logs/{entity_key}`
 *   **Parameters**:
+    *   `hours`: Number of hours offset.
     *   `hours`: Number of hours offset (1, 3, 12, 24, 168, 720).
     *   `offset`: Zabbix-style backward time offset shift.
     *   `start_time` / `end_time` *(Optional)*: Timezone-naive datetime-local filter bounds.
@@ -238,6 +267,7 @@ Below is a reference of the key PostgreSQL database tables managed by HomePulse:
 
 ## Maintenance & Administration CLI
 
+HomePulse includes a robust administrative script (`maintenance.sh` / `update.sh`) located in the root directory. To run:
 HomePulse includes a comprehensive administrative shell script (`maintenance.sh`) located in the root directory:
 
 ```bash
@@ -245,6 +275,11 @@ chmod +x maintenance.sh
 ./maintenance.sh
 ```
 
+### CLI Command Options
+1.  **Backup System Database**: Creates gzipped schemas and SQL table backups, rotating archives to preserve only the 3 most recent backups.
+2.  **Restore Database**: Scans the backup archives directory, updates permissions, and imports selected configurations.
+3.  **Delete Backups Menu**: Provides an interactive terminal menu list to purge specific archives.
+4.  **Perform Fresh Installation**: Wipes existing configurations, databases, and logs, returning HomePulse to its initial clean-slate state.
 You can also run automated first-time setups directly:
 ```bash
 ./maintenance.sh --first-install

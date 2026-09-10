@@ -3032,6 +3032,7 @@ function openCardEditor(widgetId, initialMode = 'ui') {
 
   // Bind initial tab state to UI
   toggleWidgetEditorMode(initialMode);
+  updateEditorVisualPreview();
 
   // Initialize and bind YAML Live Preview
   const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
@@ -3149,9 +3150,14 @@ function toggleWidgetEditorMode(mode) {
   const uiFields = document.getElementById('editor-ui-fields');
   const yamlContainer = document.getElementById('editor-yaml-container');
   const yamlError = document.getElementById('edit-widget-yaml-error');
+  const tabUi = document.getElementById('editor-tab-ui');
+  const tabYaml = document.getElementById('editor-tab-yaml');
   const menuLink = document.getElementById('menu-toggle-editor-mode');
 
   if (yamlError) yamlError.style.display = 'none';
+
+  if (tabUi) tabUi.classList.toggle('active', mode === 'ui');
+  if (tabYaml) tabYaml.classList.toggle('active', mode === 'yaml');
 
   if (menuLink) {
     menuLink.textContent = (mode === 'ui') ? 'Edit in YAML' : 'Edit in visual editor';
@@ -3163,6 +3169,7 @@ function toggleWidgetEditorMode(mode) {
 
     // Sync structural form fields values from YAML draft code parameters
     syncYAMLToFormFields();
+    updateEditorVisualPreview();
   } else {
     if (uiFields) uiFields.style.display = 'none';
     if (yamlContainer) yamlContainer.style.display = 'flex';
@@ -3284,6 +3291,14 @@ function renderMockCardHTML(widget) {
   const unit = (widget.options && widget.options.unit) || "";
   const color = (widget.options && widget.options.color) || "var(--color-optimal)";
 
+  if (type === 'title') {
+    return `
+      <div class="card card-title-type" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:10px 14px; display:flex; align-items:center; min-height:48px;">
+        <span style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">${title}</span>
+      </div>
+    `;
+  }
+
   let body = '';
   if (type === 'gauge') {
     body = `
@@ -3299,7 +3314,7 @@ function renderMockCardHTML(widget) {
       <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
         <div style="font-size:0.8rem; font-weight:bold; margin-bottom:4px;">ON</div>
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:0.6rem; color:var(--text-secondary);">Active</span>
+          <span style="font-size:0.6rem; color:var(--text-secondary);">Active State</span>
           <label class="switch" style="scale:0.7; pointer-events:none;"><input type="checkbox" checked><span class="slider"></span></label>
         </div>
       </div>
@@ -3311,12 +3326,40 @@ function renderMockCardHTML(widget) {
         <div style="height:3px; background:${color}; margin-top:8px; border-radius:1px;"></div>
       </div>
     `;
+  } else if (type === 'entities') {
+    body = `
+      <div class="card-body" style="display:flex; flex-direction:column; gap:6px; flex:1; justify-content:center;">
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem;">
+          <span style="color:var(--text-primary);">Node Status</span>
+          <span style="font-weight:600; color:${color};">Optimal</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem;">
+          <span style="color:var(--text-primary);">Load Rate</span>
+          <span style="font-weight:600;">142${unit ? ' ' + unit : ' req/s'}</span>
+        </div>
+      </div>
+    `;
+  } else if (type === 'glance') {
+    body = `
+      <div class="card-body" style="display:flex; justify-content:space-around; align-items:center; flex:1;">
+        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+          <i data-lucide="cpu" style="width:16px; height:16px; color:${color};"></i>
+          <span style="font-size:0.6rem; color:var(--text-secondary);">CPU</span>
+          <span style="font-size:0.72rem; font-weight:600;">18%</span>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+          <i data-lucide="database" style="width:16px; height:16px; color:${color};"></i>
+          <span style="font-size:0.6rem; color:var(--text-secondary);">RAM</span>
+          <span style="font-size:0.72rem; font-weight:600;">52%</span>
+        </div>
+      </div>
+    `;
   } else {
     // sensor
     body = `
       <div class="card-body" style="padding-bottom: 0; flex:1; display:flex; flex-direction:column; justify-content:flex-end;">
         <div style="font-size:0.9rem; font-weight:bold; margin-bottom:6px;">32<span style="font-size:0.6rem;"> ${unit}</span></div>
-        <div style="height:24px; width:100%; display:flex; align-items:flex-end; gap:2px;">
+        <div style="height:20px; width:100%; display:flex; align-items:flex-end; gap:2px;">
           <div style="flex:1; height:8px; background:${color}; opacity:0.8; border-radius:1px;"></div>
           <div style="flex:1; height:12px; background:${color}; opacity:0.8; border-radius:1px;"></div>
           <div style="flex:1; height:18px; background:${color}; opacity:0.8; border-radius:1px;"></div>
@@ -3328,19 +3371,56 @@ function renderMockCardHTML(widget) {
   }
 
   return `
-    <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:rgba(255,255,255,0.02); pointer-events:none; display:flex; flex-direction:column; min-height:120px; box-sizing:border-box; margin:0; width: 100%;">
-      <div class="card-header" style="padding:8px 12px; border-bottom:1px solid var(--border-soft); display:flex; justify-content:space-between; align-items:center;">
+    <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); pointer-events:none; display:flex; flex-direction:column; min-height:95px; box-sizing:border-box; margin:0; width: 100%;">
+      <div class="card-header" style="padding:6px 10px; border-bottom:1px solid var(--border-soft); display:flex; justify-content:space-between; align-items:center;">
         <div class="card-title-area" style="display:flex; flex-direction:column;">
-          <span class="card-title" style="font-size:0.75rem; font-weight:bold; color:#fff;">${title}</span>
-          <span class="card-subtitle" style="font-size:0.55rem; color:var(--text-secondary);">preview-node.local</span>
+          <span class="card-title" style="font-size:0.75rem; font-weight:bold; color:var(--text-primary);">${title}</span>
         </div>
-        <span class="status-pill success" style="font-size:0.5rem; padding:1px 4px;">Stable</span>
+        <span class="status-pill success" style="font-size:0.5rem; padding:1px 4px;">Live</span>
       </div>
-      <div style="padding:8px 12px; flex:1; display:flex; flex-direction:column; justify-content:space-between; min-height:80px;">
+      <div style="padding:6px 10px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
         ${body}
       </div>
     </div>
   `;
+}
+
+function updateEditorVisualPreview() {
+  const container = document.getElementById('editor-visual-preview-container');
+  if (!container) return;
+  const widgetId = document.getElementById('edit-widget-id')?.value;
+  let widgets = [];
+  try {
+    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
+  } catch (e) { }
+  const widget = widgets.find(w => w.id === widgetId);
+  const type = widget ? widget.type : 'sensor';
+  const title = document.getElementById('edit-widget-title')?.value || (widget ? widget.title : 'Widget');
+  const unit = document.getElementById('edit-widget-unit')?.value || '';
+  const color = document.getElementById('edit-widget-color')?.value || 'var(--color-optimal)';
+
+  container.innerHTML = renderMockCardHTML({
+    type,
+    title,
+    options: { unit, color }
+  });
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function updateCreatorVisualPreview() {
+  const container = document.getElementById('creator-visual-preview-container');
+  if (!container) return;
+  const type = document.getElementById('catalog-card-type')?.value || 'sensor';
+  const title = document.getElementById('catalog-widget-title')?.value || (type.charAt(0).toUpperCase() + type.slice(1) + ' Card');
+  const unit = document.getElementById('catalog-widget-unit')?.value || '';
+  const color = document.getElementById('catalog-widget-color')?.value || 'var(--color-optimal)';
+
+  container.innerHTML = renderMockCardHTML({
+    type,
+    title,
+    options: { unit, color }
+  });
+  if (window.lucide) window.lucide.createIcons();
 }
 
 async function deleteWidgetSettings() {
@@ -3371,9 +3451,7 @@ function addNewCardPlaceholder() {
     onCreatorTypeChange('sensor');
   }
 
-  const searchInput = document.getElementById('catalog-search');
-  if (searchInput) searchInput.value = '';
-  renderCatalogBlocks('');
+  renderCatalogBlocks();
 
   document.getElementById('catalog-widget-title').value = '';
   document.getElementById('catalog-widget-unit').value = '';
@@ -3381,6 +3459,8 @@ function addNewCardPlaceholder() {
   document.getElementById('catalog-widget-height').value = '1';
   document.getElementById('creator-scale-min').value = '0';
   document.getElementById('creator-scale-max').value = '100';
+
+  updateCreatorVisualPreview();
 
   const modal = document.getElementById('widget-catalog-modal');
   if (modal) {
@@ -3390,38 +3470,29 @@ function addNewCardPlaceholder() {
 }
 
 const catalogTemplates = [
-  { value: 'title', name: 'Layout Section Title', desc: 'Add a custom text section header card to divide your dashboard visual layout.', icon: 'heading' },
-  { value: 'sensor', name: 'Standard Telemetry Sensor', desc: 'Display a single real-time sensor value with dynamic charts.', icon: 'activity' },
-  { value: 'control', name: 'Interactive Control Widget', desc: 'Add interactive toggle switches, sliders, or action triggers.', icon: 'sliders' },
-  { value: 'value', name: 'Value Display Badge', desc: 'A minimal compact badge highlighting numeric or text states.', icon: 'pocket' },
-  { value: 'gauge', name: 'Circular Gauge Card', desc: 'A beautiful radial circular gauge for resource limit tracking.', icon: 'compass' },
-  { value: 'entities', name: 'Multi-Entity Row List', desc: 'Display multiple entity values stacked cleanly in list rows.', icon: 'list' },
-  { value: 'glance', name: 'Glance Columns Grid', desc: 'An layout displaying several status badges side-by-side.', icon: 'grid' },
-  { value: 'health', name: 'System Health Snapshot', desc: 'View global system averages, load status, and issues count.', icon: 'heart' },
-  { value: 'audit', name: 'Global System Audit Log', desc: 'A real-time historical event stream of system logs.', icon: 'file-text' }
+  { value: 'sensor', name: 'Sensor', desc: 'Real-time telemetry sensor with sparkline', icon: 'activity' },
+  { value: 'control', name: 'Control', desc: 'Interactive toggle switch or trigger', icon: 'sliders' },
+  { value: 'gauge', name: 'Gauge', desc: 'Circular progress & resource gauge', icon: 'compass' },
+  { value: 'value', name: 'Value', desc: 'Compact numeric or status badge', icon: 'pocket' },
+  { value: 'entities', name: 'Entities', desc: 'Stacked multi-entity list rows', icon: 'list' },
+  { value: 'glance', name: 'Glance', desc: 'Side-by-side status glance badges', icon: 'grid' },
+  { value: 'title', name: 'Section Title', desc: 'Section header dividing card groups', icon: 'heading' }
 ];
 
-function renderCatalogBlocks(filterText = '') {
+function renderCatalogBlocks() {
   const gridEl = document.getElementById('catalog-blocks-grid');
   if (!gridEl) return;
 
-  const query = filterText.toLowerCase().trim();
   const typeSelect = document.getElementById('catalog-card-type');
   const currentValue = typeSelect ? typeSelect.value : 'sensor';
 
   let html = '';
   catalogTemplates.forEach(tpl => {
-    const matches = tpl.name.toLowerCase().includes(query) || tpl.desc.toLowerCase().includes(query);
-    if (!matches) return;
-
     const isActive = tpl.value === currentValue;
     html += `
-      <div class="creator-block-card ${isActive ? 'active' : ''}" onclick="selectCatalogBlock('${tpl.value}')">
-        <div class="creator-block-header">
-          <i data-lucide="${tpl.icon}"></i>
-          <span class="creator-block-title">${tpl.name}</span>
-        </div>
-        <span class="creator-block-desc">${tpl.desc}</span>
+      <div class="creator-chip ${isActive ? 'active' : ''}" onclick="selectCatalogBlock('${tpl.value}')" title="${tpl.desc}">
+        <i data-lucide="${tpl.icon}"></i>
+        <span>${tpl.name}</span>
       </div>`;
   });
 
@@ -3435,7 +3506,8 @@ function selectCatalogBlock(value) {
     typeSelect.value = value;
     onCreatorTypeChange(value);
   }
-  renderCatalogBlocks(document.getElementById('catalog-search')?.value || '');
+  renderCatalogBlocks();
+  updateCreatorVisualPreview();
 }
 
 function onCreatorTypeChange(type) {
@@ -3443,38 +3515,51 @@ function onCreatorTypeChange(type) {
   if (!group) return;
 
   // Toggle scales visibility
-  const scaleGroup = document.querySelector('.creator-scale-group');
-  if (scaleGroup) {
-    scaleGroup.style.display = (type === 'gauge' || type === 'sensor') ? 'flex' : 'none';
-  }
+  const scaleGroups = document.querySelectorAll('.creator-scale-group');
+  scaleGroups.forEach(el => {
+    el.style.display = (type === 'gauge' || type === 'sensor') ? 'flex' : 'none';
+  });
 
   if (type === 'health' || type === 'audit' || type === 'title') {
-    group.innerHTML = '<span style="color:var(--text-secondary); font-size:0.75rem;">(This card acts as a section divider title and does not map to a specific entity)</span>';
+    group.innerHTML = '<span style="color:var(--text-secondary); font-size:0.75rem; font-style: italic;">No entity binding required for this card type.</span>';
+    updateCreatorVisualPreview();
     return;
   }
 
   if (type === 'entities' || type === 'glance') {
     // Generate Checklist checkboxes
-    let html = '<label>Select Target Entities</label><div style="max-height: 140px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px; border-radius: 6px; display:flex; flex-direction:column; gap:6px;">';
-    Object.values(cachedEntities).forEach(entity => {
-      html += `
-        <label style="display:flex; align-items:center; gap:8px; font-weight: normal; font-size:0.75rem;">
-          <input type="checkbox" name="creator-entities" value="${entity.node_id}|${entity.entity_key}">
-          <span>${entity.name || entity.entity_key} (${entity.node_id}.local)</span>
-        </label>
-      `;
-    });
+    let html = '<label style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Target Entities</label><div style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px; border-radius: 6px; display:flex; flex-direction:column; gap:6px; background: var(--bg-secondary);">';
+    const entList = Object.values(cachedEntities || {});
+    if (entList.length === 0) {
+      html += '<span style="font-size:0.75rem; color:var(--text-secondary);">No discovered entities available.</span>';
+    } else {
+      entList.forEach(entity => {
+        html += `
+          <label style="display:flex; align-items:center; gap:8px; font-weight: normal; font-size:0.75rem; cursor:pointer;">
+            <input type="checkbox" name="creator-entities" value="${entity.node_id}|${entity.entity_key}">
+            <span>${entity.name || entity.entity_key} (${entity.node_id}.local)</span>
+          </label>
+        `;
+      });
+    }
     html += '</div>';
     group.innerHTML = html;
   } else {
     // Single selector dropdown
-    let html = '<label for="creator-select">Select Target Entity</label><select id="creator-select" class="modal-input" style="background:#221d16; color:#f0e6d3; border: 1px solid rgba(200, 140, 60, 0.12); padding: 8px 12px; border-radius: 6px;">';
-    Object.values(cachedEntities).forEach(entity => {
-      html += `<option value="${entity.node_id}|${entity.entity_key}">${entity.name || entity.entity_key} (${entity.node_id}.local)</option>`;
-    });
+    let html = '<label for="creator-select" style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Target Entity</label><select id="creator-select" class="modal-input">';
+    const entList = Object.values(cachedEntities || {});
+    if (entList.length === 0) {
+      html += '<option value="">No discovered entities available</option>';
+    } else {
+      entList.forEach(entity => {
+        html += `<option value="${entity.node_id}|${entity.entity_key}">${entity.name || entity.entity_key} (${entity.node_id}.local)</option>`;
+      });
+    }
     html += '</select>';
     group.innerHTML = html;
   }
+
+  updateCreatorVisualPreview();
 }
 
 function addWidgetToGrid() {
