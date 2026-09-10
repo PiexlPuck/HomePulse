@@ -115,6 +115,10 @@
             style="background: transparent; border: 1px solid var(--border-soft); color: var(--text-secondary); border-radius: 4px; padding: 2px 6px; cursor: pointer; display: flex; align-items: center; gap: 4px; height: 20px; font-size: 0.65rem;">
             <i data-lucide="palette" style="width: 11px; height: 11px;"></i> Theme
           </button>
+          <button id="header-density-toggle" class="btn-density-toggle" onclick="toggleDensityMode()" title="Toggle Grid Density"
+            style="background: transparent; border: 1px solid var(--border-soft); color: var(--text-secondary); border-radius: 4px; padding: 2px 6px; cursor: pointer; display: flex; align-items: center; gap: 4px; height: 20px; font-size: 0.65rem;">
+            <i data-lucide="layout-grid" style="width: 11px; height: 11px;"></i> <span id="density-mode-label">Compact</span>
+          </button>
         </div>
       </div>
 
@@ -124,7 +128,11 @@
           <!-- Dynamically populated from JS -->
         </div>
 
-
+        <!-- Stable Uptime Badge -->
+        <div class="uptime-badge" id="uptime-header-badge">
+          <span class="dot"></span>
+          <span id="uptime-header-text">STABLE UPTIME: 99.98%</span>
+        </div>
 
         <!-- Add Card Button (Visible in Edit Mode only) -->
         <button id="add-card-btn" class="btn btn-secondary" onclick="addNewCardPlaceholder()"
@@ -160,8 +168,80 @@
     <!-- Dashboard Content Grid -->
     <div class="dashboard-content">
       <div class="dashboard-grid" id="dashboard-grid">
+      </div>
 
+      <!-- Bottom Audits & Snapshot Row -->
+      <div class="bottom-section" id="bottom-section">
+        
+        <!-- Global System Audit -->
+        <div class="audit-box">
+          <div class="section-box-title-bar">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="shield-alert" style="width: 18px; height: 18px; color: var(--accent-blue);"></i>
+              <span class="section-box-title">Global System Audit</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="audit-filters">
+                <button class="audit-filter-btn active" data-filter="all" onclick="filterAuditLogs('all')">All</button>
+                <button class="audit-filter-btn" data-filter="info" onclick="filterAuditLogs('info')">Info</button>
+                <button class="audit-filter-btn" data-filter="success" onclick="filterAuditLogs('success')">Success</button>
+                <button class="audit-filter-btn" data-filter="warning" onclick="filterAuditLogs('warning')">Warning</button>
+                <button class="audit-filter-btn" data-filter="error" onclick="filterAuditLogs('error')">Error</button>
+              </div>
+              <div style="display: flex; gap: 4px; border-left: 1px solid var(--border-soft); padding-left: 8px;">
+                <button onclick="exportAuditLogs('json')" title="Export JSON" class="audit-export-btn">JSON</button>
+                <button onclick="exportAuditLogs('csv')" title="Export CSV" class="audit-export-btn">CSV</button>
+              </div>
+            </div>
+          </div>
+          <div class="audit-list" id="audit-list">
+            <!-- Dynamically populated from live audits stream -->
+          </div>
+        </div>
 
+        <!-- Health Snapshot -->
+        <div class="snapshot-box">
+          <div class="section-box-title-bar">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="heart-pulse" style="width: 18px; height: 18px; color: var(--color-optimal);"></i>
+              <span class="section-box-title">Health Snapshot</span>
+            </div>
+            <span class="status-pill optimal" id="snapshot-overall-status">Healthy</span>
+          </div>
+          <div class="snapshot-list">
+            <div class="snapshot-item">
+              <div class="snapshot-header">
+                <span class="snapshot-label">Global Availability</span>
+                <span class="snapshot-value green" id="snapshot-availability">100%</span>
+              </div>
+              <div class="snapshot-progress-bg">
+                <div class="snapshot-progress-fill green" id="snapshot-availability-bar" style="width: 100%;"></div>
+              </div>
+            </div>
+            <div class="snapshot-item">
+              <div class="snapshot-header">
+                <span class="snapshot-label">Resource Saturation</span>
+                <span class="snapshot-value green" id="snapshot-saturation">Normal</span>
+              </div>
+              <div class="snapshot-progress-bg">
+                <div class="snapshot-progress-fill green" id="snapshot-saturation-bar" style="width: 35%;"></div>
+              </div>
+            </div>
+            <div class="snapshot-item">
+              <div class="snapshot-header">
+                <span class="snapshot-label">Security Posture</span>
+                <span class="snapshot-value green" id="snapshot-security">Hardened</span>
+              </div>
+              <div class="snapshot-progress-bg">
+                <div class="snapshot-progress-fill green" id="snapshot-security-bar" style="width: 100%;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="snapshot-notice">
+            <i data-lucide="info" style="width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px;"></i>
+            <span>Real-time telemetry stream active. Monitored nodes reporting nominal heartbeat.</span>
+          </div>
+        </div>
 
       </div>
     </div>

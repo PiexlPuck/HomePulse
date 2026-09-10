@@ -296,13 +296,21 @@ header {
   background-color: rgba(24, 24, 27, 0.8);
   border: 1px solid var(--border-soft);
   border-radius: 6px;
-  padding: 8px 16px;
+  padding: 6px 14px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--text-primary);
+  white-space: nowrap;
+}
+
+@keyframes pulse-glow {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
 .uptime-badge .dot {
@@ -310,6 +318,8 @@ header {
   height: 8px;
   border-radius: 50%;
   background-color: var(--color-optimal);
+  display: inline-block;
+  animation: pulse-glow 2s infinite;
 }
 
 .tab-bar {
@@ -942,6 +952,56 @@ main.edit-mode .card-placeholder {
   letter-spacing: 0.05em;
   color: var(--text-secondary);
   text-transform: uppercase;
+}
+
+/* Audit Feed Filters & Export Controls */
+.audit-filters {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.audit-filter-btn {
+  font-size: 0.68rem;
+  font-weight: 500;
+  padding: 3px 8px;
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-speed);
+}
+
+.audit-filter-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-active);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.audit-filter-btn.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--border-active);
+  font-weight: 600;
+}
+
+.audit-export-btn {
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 500;
+  transition: all var(--transition-speed);
+}
+
+.audit-export-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border-color: var(--border-active);
 }
 
 /* Audit Feed Rows */
