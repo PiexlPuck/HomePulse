@@ -99,13 +99,6 @@
 
   <!-- Main Content Area -->
   <main id="main-content">
-    <!-- Edit Mode Active Warning Banner -->
-    <div id="edit-mode-banner"
-      style="display: none; align-items: center; justify-content: center; gap: 8px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; padding: 12px; margin: 16px 32px 0 32px; border-radius: 8px; font-size: 0.88rem; font-weight: 600; text-align: center;">
-      <i data-lucide="alert-triangle" style="width:16px; height:16px;"></i>
-      <span>DASHBOARD EDITOR ACTIVE — You are editing the dashboard layout. Click "Exit Edit Mode" in the header to save
-        layout or view live details.</span>
-    </div>
     <header>
       <div class="header-left">
         <div class="page-title">Observer View: Core Cluster Alpha</div>
@@ -124,7 +117,7 @@
 
       <div class="header-actions">
         <!-- Dashboard Tabs -->
-        <div class="tab-bar" id="tab-bar" style="display: flex; align-items: center;">
+        <div class="tab-bar" id="tab-bar">
           <!-- Dynamically populated from JS -->
         </div>
 
@@ -134,19 +127,37 @@
           <span id="uptime-header-text">STABLE UPTIME: 99.98%</span>
         </div>
 
-        <!-- Add Card Button (Visible in Edit Mode only) -->
-        <button id="add-card-btn" class="btn btn-secondary" onclick="addNewCardPlaceholder()"
-          style="display: none; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; padding: 8px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 0.85rem; height: 38px;">
-          <i data-lucide="plus-circle" style="width:14px; height:14px;"></i>
-          <span>Add Lovelace Card</span>
-        </button>
         <!-- Edit Dashboard Button -->
-        <button class="edit-toggle-btn" id="edit-toggle-btn">
+        <button class="edit-toggle-btn" id="edit-toggle-btn" onclick="toggleEditMode()">
           <i data-lucide="edit-3"></i>
           <span>Edit Dashboard</span>
         </button>
       </div>
     </header>
+
+    <!-- Sleek Dashboard Editor Toolbar (Appears in Edit Mode) -->
+    <div id="edit-mode-banner" class="editor-toolbar" style="display: none;">
+      <div class="editor-toolbar-left">
+        <span class="editor-status-chip">
+          <i data-lucide="layout"></i> Layout Editor
+        </span>
+        <span class="editor-tip">Drag cards to reorder &bull; Double-click cards to edit properties</span>
+      </div>
+      <div class="editor-toolbar-actions">
+        <button class="btn-toolbar btn-toolbar-primary" onclick="addNewCardPlaceholder()">
+          <i data-lucide="plus-circle"></i> Add Card
+        </button>
+        <button class="btn-toolbar" onclick="openNewDashboardModal()">
+          <i data-lucide="folder-plus"></i> Add View
+        </button>
+        <button class="btn-toolbar" onclick="openYAMLConfigEditor()">
+          <i data-lucide="code"></i> Raw YAML
+        </button>
+        <button class="btn-toolbar btn-toolbar-done" onclick="toggleEditMode()">
+          <i data-lucide="check"></i> Exit Edit Mode
+        </button>
+      </div>
+    </div>
 
     <!-- Interactive Discovery Banner (mDNS notification) - Hidden by default -->
     <div class="discovery-banner hide" id="discovery-banner" style="display: none !important;">
@@ -1849,8 +1860,78 @@
     </div>
   </div>
 
-    <!-- YAML Configuration Editor Modal Overlay -->
-    <div class="modal-overlay" id="yaml-config-modal" style="display: none;">
+  <!-- Dashboard Views Modal Overlay -->
+  <div class="modal-overlay" id="dashboard-view-modal" style="display: none;">
+    <div class="modal-content" style="max-width: 480px; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h3 style="margin: 0;" id="dashboard-modal-title">Dashboard Views</h3>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('dashboard-view-modal')">&times;</button>
+      </div>
+
+      <!-- Segmented Mode Switcher -->
+      <div style="padding: 0 4px; margin-bottom: 12px;">
+        <div class="editor-mode-switcher" style="width: 100%;">
+          <button type="button" class="editor-mode-btn active" id="tab-dash-create" onclick="switchDashboardModalTab('create')" style="flex: 1; justify-content: center;">
+            <i data-lucide="plus" style="width: 14px; height: 14px;"></i> New View
+          </button>
+          <button type="button" class="editor-mode-btn" id="tab-dash-manage" onclick="switchDashboardModalTab('manage')" style="flex: 1; justify-content: center;">
+            <i data-lucide="list" style="width: 14px; height: 14px;"></i> Manage Views
+          </button>
+        </div>
+      </div>
+
+      <div class="modal-body" style="padding: 0 4px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: 60vh;">
+        <!-- Tab 1: Create View Form -->
+        <div id="dash-create-pane" style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="modal-group">
+            <label for="new-dash-name">View Name</label>
+            <input type="text" class="modal-input" id="new-dash-name" placeholder="e.g. Server Rack, Networking, Living Room..." oninput="updateDashboardPreview()">
+          </div>
+
+          <div class="modal-group">
+            <label>View Icon</label>
+            <div class="view-icon-chips-grid" id="view-icon-chips-grid">
+              <!-- Filled dynamically by JS -->
+            </div>
+            <input type="hidden" id="new-dash-icon" value="layout-dashboard">
+          </div>
+
+          <div class="modal-preview-box">
+            <div class="modal-preview-header">
+              <span class="modal-preview-label">Tab Preview</span>
+              <span style="font-size: 0.65rem; color: var(--text-secondary);">Live preview</span>
+            </div>
+            <div style="display: flex; align-items: center;">
+              <div class="tab-btn active" id="preview-tab-pill" style="display: inline-flex; align-items: center; gap: 6px; pointer-events: none;">
+                <i data-lucide="layout-dashboard" id="preview-tab-icon" style="width: 13px; height: 13px;"></i>
+                <span id="preview-tab-label">New View</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Manage Views List -->
+        <div id="dash-manage-pane" style="display: none; flex-direction: column; gap: 10px;">
+          <span style="font-size: 0.72rem; color: var(--text-secondary);">Configure and organize all dashboard views:</span>
+          <div id="dashboards-list-container" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Filled dynamically by JS -->
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" id="dash-modal-footer" style="margin-top: 16px;">
+        <button class="btn btn-secondary" onclick="closeModal('dashboard-view-modal')">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-dashboard-view" onclick="submitNewDashboardView()">
+          <i data-lucide="check" style="width: 14px; height: 14px;"></i> Add View
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- YAML Configuration Editor Modal Overlay -->
+  <div class="modal-overlay" id="yaml-config-modal" style="display: none;">
       <div class="modal-content"
         style="width: 85%; max-width: 900px; height: 80vh; display: flex; flex-direction: column;">
         <div class="modal-header">

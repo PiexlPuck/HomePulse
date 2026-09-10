@@ -324,29 +324,45 @@ header {
 
 .tab-bar {
   display: flex;
+  align-items: center;
   gap: 4px;
   background-color: var(--bg-secondary);
-  padding: 4px;
-  border-radius: 6px;
+  padding: 3px 4px;
+  border-radius: 8px;
   border: 1px solid var(--border-soft);
 }
 
 .tab-btn {
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-secondary);
   font-weight: 500;
   font-size: 0.8rem;
-  padding: 6px 12px;
-  border-radius: 4px;
+  padding: 5px 12px;
+  border-radius: 6px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   transition: all var(--transition-speed);
+  user-select: none;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
 .tab-btn.active {
   background-color: var(--bg-primary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-soft);
+  color: var(--color-optimal);
+  border-color: var(--border-soft);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.tab-btn i {
+  width: 13px;
+  height: 13px;
 }
 
 .edit-toggle-btn {
@@ -354,24 +370,135 @@ header {
   border: 1px solid var(--border-soft);
   color: var(--text-secondary);
   font-size: 0.8rem;
-  font-weight: 500;
-  padding: 8px 14px;
+  font-weight: 600;
+  padding: 6px 14px;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
   transition: all var(--transition-speed);
+  height: 34px;
 }
 
 .edit-toggle-btn:hover {
   background-color: var(--bg-secondary);
   color: var(--text-primary);
+  border-color: var(--border-active);
 }
 
 .edit-toggle-btn.active {
   border-color: var(--color-optimal);
+  background-color: rgba(16, 185, 129, 0.1);
   color: var(--color-optimal);
+}
+
+/* Modern Dashboard Editor Toolbar */
+.editor-toolbar {
+  margin: 12px 32px 0 32px;
+  background: rgba(24, 24, 27, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 8px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+  gap: 16px;
+  animation: fadeInDown 0.2s ease;
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.editor-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.editor-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--color-optimal);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.editor-status-chip i {
+  width: 13px;
+  height: 13px;
+}
+
+.editor-tip {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.editor-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-toolbar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-toolbar:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-active);
+}
+
+.btn-toolbar i {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-toolbar-primary {
+  background: var(--color-optimal);
+  border-color: var(--color-optimal);
+  color: #000 !important;
+}
+
+.btn-toolbar-primary:hover {
+  background: #059669;
+  border-color: #059669;
+  color: #fff !important;
+}
+
+.btn-toolbar-done {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: var(--color-optimal);
+}
+
+.btn-toolbar-done:hover {
+  background: var(--color-optimal);
+  color: #000;
 }
 
 /* Interactive Discovery Banner */
@@ -1738,23 +1865,25 @@ main.edit-mode .card-header {
 
 /* Dynamic Add Tab button */
 .add-tab-btn {
-  display: flex !important;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
   background: transparent;
   color: var(--text-secondary);
   border: 1px dashed var(--border-soft);
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   padding: 4px 8px;
-  margin-left: 4px;
+  margin-left: 2px;
+  height: 26px;
+  min-width: 26px;
   transition: all var(--transition-speed);
 }
 
 .add-tab-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--border-active);
-  background-color: var(--border-soft);
+  color: var(--color-optimal);
+  border-color: var(--color-optimal);
+  background-color: rgba(16, 185, 129, 0.08);
 }
 
 /* Semicircular Circular Gauge widget */
@@ -2388,4 +2517,105 @@ aside.collapsed .nav-group-toggle .group-arrow {
   background: rgba(255, 255, 255, 0.05);
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+/* Dashboard View Modal Icon Chips & Manage Views */
+.view-icon-chips-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+@media (max-width: 540px) {
+  .view-icon-chips-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.view-icon-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 8px 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.view-icon-chip:hover {
+  border-color: var(--border-active);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.view-icon-chip.active {
+  border-color: var(--color-optimal) !important;
+  background: rgba(16, 185, 129, 0.1) !important;
+}
+
+.view-icon-chip i {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+}
+
+.view-icon-chip.active i {
+  color: var(--color-optimal);
+}
+
+.view-icon-chip span {
+  font-size: 0.64rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.view-icon-chip.active span {
+  color: var(--color-optimal);
+  font-weight: 600;
+}
+
+.manage-view-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 8px 12px;
+  gap: 10px;
+}
+
+.manage-view-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.manage-view-info i {
+  width: 16px;
+  height: 16px;
+  color: var(--color-optimal);
+  flex-shrink: 0;
+}
+
+.manage-view-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.manage-view-count {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.manage-view-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }

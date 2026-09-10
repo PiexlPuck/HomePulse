@@ -281,43 +281,43 @@ function initializeSidebar() {
 
   // Edit Mode Toggle hooks
   const editToggleBtn = document.getElementById('edit-toggle-btn');
-  const mainContent = document.getElementById('main-content');
-
-  if (editToggleBtn && mainContent) {
-    editToggleBtn.addEventListener('click', () => {
-      const isEditMode = mainContent.classList.toggle('edit-mode');
-      editToggleBtn.classList.toggle('active');
-
-      // Update dynamic tab bar and enable/disable drag-and-drop
-      renderDashboards();
-      if (isEditMode) {
-        enableDragAndDrop();
-      } else {
-        disableDragAndDrop();
-      }
-
-      const addCardBtn = document.getElementById('add-card-btn');
-      if (addCardBtn) {
-        addCardBtn.style.display = isEditMode ? 'flex' : 'none';
-      }
-
-      const editBanner = document.getElementById('edit-mode-banner');
-      if (editBanner) {
-        editBanner.style.display = isEditMode ? 'flex' : 'none';
-      }
-
-      const spanText = editToggleBtn.querySelector('span');
-      if (spanText) {
-        spanText.textContent = isEditMode ? 'Exit Edit Mode' : 'Edit Dashboard';
-      }
-
-      const icon = editToggleBtn.querySelector('i');
-      if (icon) {
-        icon.setAttribute('data-lucide', isEditMode ? 'check' : 'edit-3');
-      }
-      if (window.lucide) window.lucide.createIcons();
-    });
+  if (editToggleBtn) {
+    editToggleBtn.addEventListener('click', toggleEditMode);
   }
+}
+
+function toggleEditMode() {
+  const mainContent = document.getElementById('main-content');
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  if (!mainContent) return;
+
+  const isEditMode = mainContent.classList.toggle('edit-mode');
+  if (editToggleBtn) {
+    editToggleBtn.classList.toggle('active', isEditMode);
+    const spanText = editToggleBtn.querySelector('span');
+    if (spanText) {
+      spanText.textContent = isEditMode ? 'Exit Edit Mode' : 'Edit Dashboard';
+    }
+    const icon = editToggleBtn.querySelector('i');
+    if (icon) {
+      icon.setAttribute('data-lucide', isEditMode ? 'check' : 'edit-3');
+    }
+  }
+
+  const editBanner = document.getElementById('edit-mode-banner');
+  if (editBanner) {
+    editBanner.style.display = isEditMode ? 'flex' : 'none';
+  }
+
+  // Update dynamic tab bar and enable/disable drag-and-drop
+  renderDashboards();
+  if (isEditMode) {
+    enableDragAndDrop();
+  } else {
+    disableDragAndDrop();
+  }
+
+  if (window.lucide) window.lucide.createIcons();
 }
 
 // 3. Tab switching filtering logic
@@ -2754,7 +2754,7 @@ function renderDashboards() {
   // Initialize main defaults if missing
   if (!localStorage.getItem('hp_dashboards')) {
     localStorage.setItem('hp_dashboards', JSON.stringify([
-      { id: "main", name: "Main" }
+      { id: "main", name: "Main", icon: "layout-dashboard" }
     ]));
   }
 
@@ -2762,23 +2762,21 @@ function renderDashboards() {
   try {
     dashboards = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
   } catch (err) {
-    dashboards = [{ id: "main", name: "Main" }];
+    dashboards = [{ id: "main", name: "Main", icon: "layout-dashboard" }];
   }
 
-  const isEditMode = document.getElementById('main-content').classList.contains('edit-mode');
+  const isEditMode = document.getElementById('main-content')?.classList.contains('edit-mode');
 
   dashboards.forEach(tab => {
     const btn = document.createElement('button');
     btn.className = 'tab-btn';
     btn.setAttribute('data-tab', tab.id);
     btn.onclick = () => switchTab(tab.id);
-    btn.ondblclick = () => onTabDoubleClick(tab.id, tab.name);
+    btn.ondblclick = () => openManageDashboardsModal(tab.id);
 
-    // Set text label
-    btn.textContent = tab.name;
-    if (isEditMode) {
-      btn.title = "Double-click to Rename/Delete";
-    }
+    const iconName = tab.icon || 'layout-dashboard';
+    btn.innerHTML = `<i data-lucide="${iconName}"></i><span>${tab.name}</span>`;
+    btn.title = isEditMode ? "Click to view • Double-click to manage" : `View ${tab.name}`;
 
     if (tab.id === activeTab) {
       btn.classList.add('active');
@@ -2786,43 +2784,219 @@ function renderDashboards() {
     container.appendChild(btn);
   });
 
-  // Appends Creator Plus button if editing
-  if (isEditMode) {
-    const plusBtn = document.createElement('button');
-    plusBtn.className = 'add-tab-btn';
-    plusBtn.onclick = addNewDashboardTab;
-    plusBtn.innerHTML = '<i data-lucide="plus" style="width:14px; height:14px;"></i>';
-    container.appendChild(plusBtn);
+  // Appends Add / Manage Views button
+  const plusBtn = document.createElement('button');
+  plusBtn.className = 'add-tab-btn';
+  plusBtn.onclick = () => openNewDashboardModal();
+  plusBtn.title = "Add or Manage Dashboard Views";
+  plusBtn.innerHTML = '<i data-lucide="plus" style="width:13px; height:13px;"></i>';
+  container.appendChild(plusBtn);
 
-    // Re-render plus icon
-    setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 5);
-  }
+  if (window.lucide) window.lucide.createIcons();
 }
 
 function switchTab(tabId) {
   activeTab = tabId;
   buildDashboardCards(cachedEntities);
-  if (document.getElementById('main-content').classList.contains('edit-mode')) {
+  renderDashboards();
+  if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
     enableDragAndDrop();
   }
 }
 
-function onTabDoubleClick(tabId, tabName) {
-  if (!document.getElementById('main-content').classList.contains('edit-mode')) return;
-  const res = prompt(`Rename dashboard view "${tabName}" to:\n(Or type "delete" to remove this dashboard view)`, tabName);
-  if (res === null) return;
-  const val = res.trim();
-  if (val.toLowerCase() === 'delete') {
-    deleteDashboardTab(tabId);
-  } else if (val && val !== tabName) {
-    renameDashboardTab(tabId, val);
+// ─────────────────────────────────────────
+// DASHBOARD VIEWS MODAL & MANAGEMENT API
+// ─────────────────────────────────────────
+
+const DASHBOARD_ICONS = [
+  { id: 'layout-dashboard', label: 'Dashboard' },
+  { id: 'server', label: 'Server' },
+  { id: 'cpu', label: 'Compute' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'wifi', label: 'Network' },
+  { id: 'shield', label: 'Security' },
+  { id: 'home', label: 'Home' },
+  { id: 'database', label: 'Database' },
+  { id: 'hard-drive', label: 'Storage' },
+  { id: 'zap', label: 'Power' },
+  { id: 'gauge', label: 'Telemetry' },
+  { id: 'terminal', label: 'System' }
+];
+
+let selectedViewIcon = 'layout-dashboard';
+
+function renderViewIconChips() {
+  const container = document.getElementById('view-icon-chips-grid');
+  if (!container) return;
+
+  let html = '';
+  DASHBOARD_ICONS.forEach(item => {
+    const isActive = item.id === selectedViewIcon;
+    html += `
+      <div class="view-icon-chip ${isActive ? 'active' : ''}" onclick="selectViewIcon('${item.id}')" title="${item.label}">
+        <i data-lucide="${item.id}"></i>
+        <span>${item.label}</span>
+      </div>`;
+  });
+  container.innerHTML = html;
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function selectViewIcon(iconId) {
+  selectedViewIcon = iconId;
+  const input = document.getElementById('new-dash-icon');
+  if (input) input.value = iconId;
+
+  renderViewIconChips();
+  updateDashboardPreview();
+}
+
+function updateDashboardPreview() {
+  const nameInput = document.getElementById('new-dash-name');
+  const labelEl = document.getElementById('preview-tab-label');
+  const iconEl = document.getElementById('preview-tab-icon');
+
+  const val = (nameInput?.value.trim()) || 'New View';
+  if (labelEl) labelEl.textContent = val;
+  if (iconEl) iconEl.setAttribute('data-lucide', selectedViewIcon);
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function openNewDashboardModal() {
+  const modal = document.getElementById('dashboard-view-modal');
+  if (!modal) return;
+
+  const nameInput = document.getElementById('new-dash-name');
+  if (nameInput) {
+    nameInput.value = '';
+    nameInput.style.borderColor = '';
+  }
+
+  selectedViewIcon = 'layout-dashboard';
+  const iconInput = document.getElementById('new-dash-icon');
+  if (iconInput) iconInput.value = 'layout-dashboard';
+
+  renderViewIconChips();
+  updateDashboardPreview();
+  switchDashboardModalTab('create');
+
+  modal.style.display = 'flex';
+  setTimeout(() => {
+    modal.classList.add('active');
+    if (nameInput) nameInput.focus();
+  }, 10);
+}
+
+function openManageDashboardsModal(tabId) {
+  openNewDashboardModal();
+  switchDashboardModalTab('manage');
+}
+
+function switchDashboardModalTab(mode) {
+  const createPane = document.getElementById('dash-create-pane');
+  const managePane = document.getElementById('dash-manage-pane');
+  const btnCreate = document.getElementById('tab-dash-create');
+  const btnManage = document.getElementById('tab-dash-manage');
+  const footerBtn = document.getElementById('btn-save-dashboard-view');
+
+  if (btnCreate) btnCreate.classList.toggle('active', mode === 'create');
+  if (btnManage) btnManage.classList.toggle('active', mode === 'manage');
+
+  if (mode === 'create') {
+    if (createPane) createPane.style.display = 'flex';
+    if (managePane) managePane.style.display = 'none';
+    if (footerBtn) footerBtn.style.display = 'inline-flex';
+  } else {
+    if (createPane) createPane.style.display = 'none';
+    if (managePane) managePane.style.display = 'flex';
+    if (footerBtn) footerBtn.style.display = 'none';
+    renderDashboardsManageList();
   }
 }
 
-function addNewDashboardTab() {
-  const name = prompt("Enter name for the new dashboard view:");
-  if (!name) return;
-  const tabName = name.trim();
+function renderDashboardsManageList() {
+  const container = document.getElementById('dashboards-list-container');
+  if (!container) return;
+
+  let list = [];
+  try {
+    list = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
+  } catch (e) { }
+
+  let widgets = [];
+  try {
+    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
+  } catch (e) { }
+
+  if (list.length === 0) {
+    container.innerHTML = '<span style="font-size:0.75rem; color:var(--text-secondary);">No views configured.</span>';
+    return;
+  }
+
+  let html = '';
+  list.forEach(tab => {
+    const cardCount = widgets.filter(w => w.tab === tab.id).length;
+    const isOnlyOne = list.length <= 1;
+    const isCurrent = tab.id === activeTab;
+
+    html += `
+      <div class="manage-view-item" id="manage-item-${tab.id}">
+        <div class="manage-view-info">
+          <i data-lucide="${tab.icon || 'layout-dashboard'}"></i>
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="text" class="modal-input" id="manage-input-${tab.id}" value="${tab.name}" style="padding:4px 8px; font-size:0.8rem; font-weight:600; width:150px; background:var(--bg-primary);">
+              ${isCurrent ? '<span style="font-size:0.6rem; color:var(--color-optimal); background:rgba(16,185,129,0.12); padding:1px 6px; border-radius:4px; font-weight:600;">ACTIVE</span>' : ''}
+            </div>
+            <span class="manage-view-count">${cardCount} card${cardCount === 1 ? '' : 's'} assigned</span>
+          </div>
+        </div>
+        <div class="manage-view-actions">
+          <button class="btn btn-secondary" style="padding:5px 10px; font-size:0.75rem;" onclick="saveDashboardName('${tab.id}')" title="Save name change">
+            <i data-lucide="check" style="width:12px; height:12px;"></i> Save
+          </button>
+          <button class="btn btn-danger" style="padding:5px 8px; font-size:0.75rem; ${isOnlyOne ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${isOnlyOne ? 'disabled' : `onclick="deleteDashboardTab('${tab.id}')"`} title="${isOnlyOne ? 'Cannot delete the only remaining view' : 'Delete View'}">
+            <i data-lucide="trash-2" style="width:12px; height:12px;"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function saveDashboardName(tabId) {
+  const input = document.getElementById(`manage-input-${tabId}`);
+  if (!input) return;
+  const newName = input.value.trim();
+  if (!newName) {
+    input.style.borderColor = '#f43f5e';
+    return;
+  }
+
+  renameDashboardTab(tabId, newName);
+  input.style.borderColor = 'var(--color-optimal)';
+  setTimeout(() => {
+    input.style.borderColor = '';
+  }, 1000);
+  addAuditEntry('info', `Renamed dashboard view to "${newName}".`);
+}
+
+function submitNewDashboardView() {
+  const nameInput = document.getElementById('new-dash-name');
+  if (!nameInput) return;
+
+  const tabName = nameInput.value.trim();
+  if (!tabName) {
+    nameInput.style.borderColor = '#f43f5e';
+    nameInput.focus();
+    return;
+  }
+
+  const iconName = selectedViewIcon || 'layout-dashboard';
   const id = 'tab_' + Date.now();
 
   let list = [];
@@ -2830,11 +3004,17 @@ function addNewDashboardTab() {
     list = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
   } catch (e) { }
 
-  list.push({ id, name: tabName });
+  list.push({ id, name: tabName, icon: iconName });
   localStorage.setItem('hp_dashboards', JSON.stringify(list));
 
+  closeModal('dashboard-view-modal');
   renderDashboards();
   switchTab(id);
+  addAuditEntry('success', `Created new dashboard view "${tabName}".`);
+}
+
+function addNewDashboardTab() {
+  openNewDashboardModal();
 }
 
 function renameDashboardTab(tabId, newName) {
@@ -2878,7 +3058,11 @@ async function deleteDashboardTab(tabId) {
   localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
 
   renderDashboards();
-  switchTab(primaryTab);
+  renderDashboardsManageList();
+  if (activeTab === tabId) {
+    switchTab(primaryTab);
+  }
+  addAuditEntry('warning', `Deleted dashboard view "${tabId}".`);
 }
 
 // ─────────────────────────────────────────
