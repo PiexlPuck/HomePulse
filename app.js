@@ -286,7 +286,12 @@ function initializeSidebar() {
   }
 }
 
+let lastToggleTime = 0;
 function toggleEditMode() {
+  const now = Date.now();
+  if (now - lastToggleTime < 250) return;
+  lastToggleTime = now;
+
   const mainContent = document.getElementById('main-content');
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   if (!mainContent) return;
@@ -319,6 +324,7 @@ function toggleEditMode() {
 
   if (window.lucide) window.lucide.createIcons();
 }
+window.toggleEditMode = toggleEditMode;
 
 // 3. Tab switching filtering logic
 function switchTab(tabName) {
