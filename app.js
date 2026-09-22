@@ -1663,11 +1663,7 @@ function updateHealthSnapshot() {
     }
   }
 
-  // Uptime badge in header
-  const uptimeText = document.getElementById('uptime-header-text');
-  if (uptimeText) {
-    uptimeText.textContent = dbConnected ? 'STABLE UPTIME: 99.98%' : 'SYSTEM DEGRADED';
-  }
+
 }
 
 // ─────────────────────────────────────────
