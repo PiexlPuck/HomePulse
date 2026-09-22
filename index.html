@@ -1217,59 +1217,128 @@
     <div class="settings-view hide" id="uptime-history-view">
       <div class="settings-card">
         <div class="settings-header"
-          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
           <div>
             <h3>Telemetry &amp; Sensor History</h3>
-            <p>Visualize latency charts, sensor telemetry, and uptime timelines for monitors and plugins.</p>
+            <p>Search by sensor or monitor ID and inspect historical telemetry data between any two dates.</p>
           </div>
-          <!-- Filters -->
-          <div style="display: flex; gap: 10px; align-items: center;">
-            <div style="display: flex; flex-direction: column; gap: 2px;">
-              <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Metric / Sensor Source</label>
-              <select id="history-monitor-select" onchange="loadHistoryAnalytics()"
-                style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 220px;">
+        </div>
+
+        <!-- History Search & Date Range Toolbar -->
+        <div class="history-toolbar-container"
+          style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-soft); border-radius: 8px; padding: 14px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 12px;">
+          
+          <!-- Row 1: Search by ID & Source Select Dropdown -->
+          <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+            <!-- Search by Sensor / Monitor ID -->
+            <div style="flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 4px;">
+              <label for="history-id-search" style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; display: flex; align-items: center; gap: 5px;">
+                <i data-lucide="search" style="width: 12px; height: 12px; color: var(--color-primary);"></i>
+                Search by Sensor ID / Key
+              </label>
+              <div style="position: relative; display: flex; align-items: center;">
+                <input type="text" id="history-id-search" list="history-id-datalist" placeholder="Paste or type ID, e.g. sensor.cpu_utilization, mon-19..."
+                  oninput="handleHistoryIdSearchInput(this.value)"
+                  onkeydown="if(event.key==='Enter'){handleHistoryIdSearchSubmit();}"
+                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 6px; padding: 7px 32px 7px 10px; font-size: 0.8rem; width: 100%; box-sizing: border-box; font-family: monospace;">
+                <datalist id="history-id-datalist">
+                  <!-- Dynamically populated -->
+                </datalist>
+                <button type="button" id="btn-history-clear-id" onclick="clearHistoryIdSearch()"
+                  style="position: absolute; right: 8px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; display: none; padding: 2px;"
+                  title="Clear ID search">
+                  <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Metric / Sensor Dropdown Selector -->
+            <div style="flex: 1.2; min-width: 280px; display: flex; flex-direction: column; gap: 4px;">
+              <label for="history-monitor-select" style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; display: flex; align-items: center; gap: 5px;">
+                <i data-lucide="layers" style="width: 12px; height: 12px; color: var(--accent-blue);"></i>
+                Metric / Sensor Source
+              </label>
+              <select id="history-monitor-select" onchange="onHistorySourceDropdownChange()"
+                style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 6px; padding: 7px 12px; font-size: 0.8rem; cursor: pointer; width: 100%; box-sizing: border-box; height: 34px;">
                 <!-- Dynamically populated with monitors & plugin sensors -->
               </select>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 2px;">
-              <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase;">Time
-                Range</label>
-              <div style="display: flex; gap: 4px; align-items: center;">
-                <button id="btn-history-shift-back" onclick="shiftHistoryTime(-1)"
-                  style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 30px; width: 30px; transition: all 0.2s;"
-                  title="Shift Backward">
-                  <i data-lucide="chevron-left" style="width: 14px; height: 14px; color: #fff;"></i>
-                </button>
-                <select id="history-timeframe-select" onchange="resetHistoryTimeOffset(); loadHistoryAnalytics()"
-                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 6px 12px; font-size: 0.75rem; cursor: pointer; min-width: 120px; height: 30px;">
-                  <option value="hours-1" selected>Last 1 Hour</option>
-                  <option value="hours-3">Last 3 Hours</option>
-                  <option value="hours-12">Last 12 Hours</option>
-                  <option value="hours-24">Last 24 Hours</option>
-                  <option value="hours-168">Last 7 Days</option>
-                  <option value="hours-720">Last 30 Days</option>
-                  <option value="custom">Custom Range</option>
-                </select>
-                <button id="btn-history-shift-forward" onclick="shiftHistoryTime(1)"
-                  style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 4px; cursor: default; display: flex; align-items: center; justify-content: center; height: 30px; width: 30px; opacity: 0.5; transition: all 0.2s;"
-                  title="Shift Forward" disabled>
-                  <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
-                </button>
-              </div>
-              <div id="history-custom-range-inputs"
-                style="display: none; align-items: center; gap: 4px; margin-top: 6px;">
-                <input type="datetime-local" id="history-custom-start"
-                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.7rem; height: 30px;">
-                <span style="color: var(--text-secondary); font-size: 0.7rem;">to</span>
-                <input type="datetime-local" id="history-custom-end"
-                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.7rem; height: 30px;">
-                <button onclick="loadHistoryAnalytics()" class="btn-primary"
-                  style="padding: 4px 8px; font-size: 0.7rem; border-radius: 4px; height: 30px; display: flex; align-items: center; cursor: pointer; border: none; background: var(--color-primary); color: #fff;">
-                  Apply
-                </button>
+          </div>
+
+          <!-- Row 2: Date Range Between Two Dates & Quick Presets -->
+          <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 10px;">
+            <!-- Quick Range Preset Chips -->
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600;">Presets</label>
+              <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn-preset-chip active" onclick="applyHistoryPreset('1h')" data-preset="1h" style="background: rgba(59, 130, 246, 0.2); border: 1px solid var(--color-primary); color: #fff; font-size: 0.7rem; font-weight: 600; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: all 0.15s;">1H</button>
+                <button type="button" class="btn-preset-chip" onclick="applyHistoryPreset('3h')" data-preset="3h" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-soft); color: #e2e8f0; font-size: 0.7rem; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: all 0.15s;">3H</button>
+                <button type="button" class="btn-preset-chip" onclick="applyHistoryPreset('12h')" data-preset="12h" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-soft); color: #e2e8f0; font-size: 0.7rem; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: all 0.15s;">12H</button>
+                <button type="button" class="btn-preset-chip" onclick="applyHistoryPreset('24h')" data-preset="24h" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-soft); color: #e2e8f0; font-size: 0.7rem; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: all 0.15s;">24H</button>
+                <button type="button" class="btn-preset-chip" onclick="applyHistoryPreset('7d')" data-preset="7d" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-soft); color: #e2e8f0; font-size: 0.7rem; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: all 0.15s;">7D</button>
+                <button type="button" class="btn-preset-chip" onclick="applyHistoryPreset('30d')" data-preset="30d" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-soft); color: #e2e8f0; font-size: 0.7rem; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: all 0.15s;">30D</button>
               </div>
             </div>
+
+            <!-- Date Pickers: From & To -->
+            <div style="display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; flex: 1;">
+              <!-- Start Date -->
+              <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 170px;">
+                <label for="history-custom-start" style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600;">From Date / Time</label>
+                <input type="datetime-local" id="history-custom-start" onchange="onCustomDateRangeChanged()"
+                  onkeydown="if(event.key==='Enter'){loadHistoryAnalytics();}"
+                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 6px; padding: 6px 10px; font-size: 0.75rem; height: 32px; width: 100%; box-sizing: border-box;">
+              </div>
+
+              <!-- End Date -->
+              <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 170px;">
+                <label for="history-custom-end" style="font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600;">To Date / Time</label>
+                <input type="datetime-local" id="history-custom-end" onchange="onCustomDateRangeChanged()"
+                  onkeydown="if(event.key==='Enter'){loadHistoryAnalytics();}"
+                  style="background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-soft); border-radius: 6px; padding: 6px 10px; font-size: 0.75rem; height: 32px; width: 100%; box-sizing: border-box;">
+              </div>
+
+              <!-- Time Navigation Shift Controls (< and >) -->
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <button type="button" id="btn-history-shift-back" onclick="shiftHistoryTimeWindow(-1)"
+                  style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 32px; width: 32px; transition: all 0.2s;"
+                  title="Shift Window Backward in Time">
+                  <i data-lucide="chevron-left" style="width: 14px; height: 14px; color: #fff;"></i>
+                </button>
+                <button type="button" id="btn-history-shift-forward" onclick="shiftHistoryTimeWindow(1)"
+                  style="border: 1px solid var(--border-soft); background: var(--bg-secondary); padding: 6px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 32px; width: 32px; transition: all 0.2s;"
+                  title="Shift Window Forward in Time">
+                  <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: #fff;"></i>
+                </button>
+              </div>
+
+              <!-- Search History Button -->
+              <button type="button" id="btn-history-search" class="btn btn-primary" onclick="loadHistoryAnalytics()"
+                style="height: 32px; padding: 0 14px; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; cursor: pointer;">
+                <i data-lucide="search" style="width: 14px; height: 14px;"></i>
+                Search History
+              </button>
+            </div>
           </div>
+
+          <!-- Active Query Summary / Badge Bar -->
+          <div id="history-active-query-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 0.72rem; color: var(--text-secondary); background: rgba(255,255,255,0.02); border-radius: 4px; padding: 6px 10px; border: 1px solid rgba(255,255,255,0.04);">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <span>Viewing:</span>
+              <strong id="history-query-target-name" style="color: #fff;">--</strong>
+              <span id="history-query-sensor-id-pill" style="display: none; background: rgba(245, 158, 11, 0.15); color: var(--accent-orange); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 3px; padding: 1px 6px; font-family: monospace; font-size: 0.68rem; align-items: center; gap: 4px;">
+                <span id="history-query-sensor-id-text">--</span>
+                <button type="button" onclick="copyActiveSensorId()" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--accent-orange); display: flex;" title="Copy Sensor ID">
+                  <i data-lucide="copy" style="width: 11px; height: 11px;"></i>
+                </button>
+              </span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span id="history-query-date-range">Range: Last 1 Hour</span>
+              <span id="history-query-record-count" style="color: var(--color-optimal); font-weight: 600;">-- records</span>
+            </div>
+          </div>
+
         </div>
 
         <div class="settings-form" style="border-top:1px solid var(--border-soft); padding-top:20px;">
@@ -1413,11 +1482,9 @@
                 <i data-lucide="list" style="width: 14px; height: 14px; color: var(--text-secondary);"></i>
               </button>
             </div>
-            <button id="btn-install-custom-monitors-hosts" class="btn btn-secondary" onclick="openMarketplaceModal()"
             <button id="btn-install-custom-monitors-hosts" class="btn btn-secondary" onclick="navigateToPluginStore()"
               style="font-size: 0.75rem; padding: 8px 16px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
               <i data-lucide="shopping-bag" style="width: 14px; height: 14px; color: var(--accent-orange);"></i>
-              Install Custom Monitors
               Plugin Store
             </button>
             <button class="btn btn-primary" onclick="openAddHostModal()"

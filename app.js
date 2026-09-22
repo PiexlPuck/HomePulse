@@ -6141,8 +6141,337 @@ function showUptimeHistoryView() {
   populateHistoryMonitorsDropdown();
 }
 
+function formatDateTimeLocal(d) {
+  if (!d || isNaN(d.getTime())) d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+window.historyLookupIndex = {};
+window.historyCurrentPreset = '1h';
+
+function findMatchingOptionValue(rawQuery, selectEl) {
+  if (!rawQuery || !selectEl) return null;
+  const q = rawQuery.trim().toLowerCase();
+
+  // 1. Direct index lookup
+  if (window.historyLookupIndex && window.historyLookupIndex[q]) {
+    return window.historyLookupIndex[q];
+  }
+
+  // 2. Direct option value or sensor ID match
+  const options = Array.from(selectEl.options);
+  for (const opt of options) {
+    const val = (opt.value || '').toLowerCase();
+    const sensorId = (opt.getAttribute('data-sensor-id') || '').toLowerCase();
+    const key = (opt.getAttribute('data-key') || '').toLowerCase();
+    const id = (opt.getAttribute('data-id') || '').toLowerCase();
+    if (val === q || sensorId === q || key === q || id === q) {
+      return opt.value;
+    }
+  }
+
+  // 3. Try HA resolution if sensorId has domain prefix
+  if (typeof window.resolveSensorIdToEntityRef === 'function') {
+    const ref = window.resolveSensorIdToEntityRef(rawQuery.trim());
+    if (ref && ref.entityKey) {
+      const matchByKey = options.find(o => (o.getAttribute('data-key') || '').toLowerCase() === ref.entityKey.toLowerCase());
+      if (matchByKey) return matchByKey.value;
+    }
+  }
+
+  // 4. Check for hyphen/underscore variant
+  const qAlt = q.includes('_') ? q.replace(/_/g, '-') : q.replace(/-/g, '_');
+  for (const opt of options) {
+    const sensorId = (opt.getAttribute('data-sensor-id') || '').toLowerCase();
+    const key = (opt.getAttribute('data-key') || '').toLowerCase();
+    if (sensorId === qAlt || key === qAlt) {
+      return opt.value;
+    }
+  }
+
+  // 5. Partial text match (startsWith or includes)
+  const partial = options.find(opt => {
+    const text = (opt.textContent || '').toLowerCase();
+    const sId = (opt.getAttribute('data-sensor-id') || '').toLowerCase();
+    return sId.includes(q) || text.includes(q);
+  });
+  if (partial) return partial.value;
+
+  return null;
+}
+
+window.handleHistoryIdSearchInput = function(query) {
+  const clearBtn = document.getElementById('btn-history-clear-id');
+  const q = (query || '').trim();
+  if (clearBtn) {
+    clearBtn.style.display = q ? 'block' : 'none';
+  }
+  if (!q) return;
+
+  const select = document.getElementById('history-monitor-select');
+  if (!select) return;
+
+  const matchedVal = findMatchingOptionValue(q, select);
+  if (matchedVal) {
+    select.value = matchedVal;
+    updateActiveQueryBanner();
+    if (window.historySearchDebounce) clearTimeout(window.historySearchDebounce);
+    window.historySearchDebounce = setTimeout(() => {
+      loadHistoryAnalytics();
+    }, 350);
+  }
+};
+
+window.handleHistoryIdSearchSubmit = function() {
+  const input = document.getElementById('history-id-search');
+  const select = document.getElementById('history-monitor-select');
+  if (!input || !select) return;
+  const q = input.value.trim();
+  if (!q) return;
+
+  const matchedVal = findMatchingOptionValue(q, select);
+  if (matchedVal) {
+    select.value = matchedVal;
+  } else {
+    // Custom ID not currently in dropdown: create or reuse a custom option
+    let customOpt = select.querySelector('option[data-source="direct"]');
+    if (!customOpt) {
+      customOpt = document.createElement('option');
+      customOpt.setAttribute('data-source', 'direct');
+      select.insertBefore(customOpt, select.firstChild);
+    }
+    customOpt.value = `direct-${q}`;
+    customOpt.textContent = `Custom ID: ${q}`;
+    customOpt.setAttribute('data-key', q);
+    customOpt.setAttribute('data-name', q);
+    customOpt.setAttribute('data-sensor-id', q);
+    select.value = customOpt.value;
+  }
+  updateActiveQueryBanner();
+  loadHistoryAnalytics();
+};
+
+window.clearHistoryIdSearch = function() {
+  const input = document.getElementById('history-id-search');
+  const clearBtn = document.getElementById('btn-history-clear-id');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  if (clearBtn) clearBtn.style.display = 'none';
+};
+
+window.onHistorySourceDropdownChange = function() {
+  const select = document.getElementById('history-monitor-select');
+  const searchInput = document.getElementById('history-id-search');
+  if (!select) return;
+  const opt = select.options[select.selectedIndex];
+  if (opt && searchInput) {
+    const sId = opt.getAttribute('data-sensor-id') || opt.getAttribute('data-key') || opt.value;
+    searchInput.value = sId;
+    const clearBtn = document.getElementById('btn-history-clear-id');
+    if (clearBtn) clearBtn.style.display = sId ? 'block' : 'none';
+  }
+  updateActiveQueryBanner();
+  loadHistoryAnalytics();
+};
+
+window.applyHistoryPreset = function(preset, triggerLoad = true) {
+  const chips = document.querySelectorAll('.btn-preset-chip');
+  chips.forEach(chip => {
+    const isMatch = chip.getAttribute('data-preset') === preset;
+    chip.classList.toggle('active', isMatch);
+    if (isMatch) {
+      chip.style.background = 'rgba(59, 130, 246, 0.2)';
+      chip.style.borderColor = 'var(--color-primary)';
+      chip.style.color = '#fff';
+      chip.style.fontWeight = '600';
+    } else {
+      chip.style.background = 'rgba(255, 255, 255, 0.06)';
+      chip.style.borderColor = 'var(--border-soft)';
+      chip.style.color = '#e2e8f0';
+      chip.style.fontWeight = 'normal';
+    }
+  });
+
+  let hours = 1;
+  if (preset === '1h') hours = 1;
+  else if (preset === '3h') hours = 3;
+  else if (preset === '12h') hours = 12;
+  else if (preset === '24h') hours = 24;
+  else if (preset === '7d') hours = 168;
+  else if (preset === '30d') hours = 720;
+
+  const now = new Date();
+  const start = new Date(now.getTime() - hours * 3600 * 1000);
+
+  const startInput = document.getElementById('history-custom-start');
+  const endInput = document.getElementById('history-custom-end');
+  if (startInput) startInput.value = formatDateTimeLocal(start);
+  if (endInput) endInput.value = formatDateTimeLocal(now);
+
+  window.historyCurrentPreset = preset;
+  updateShiftButtonsState();
+  if (triggerLoad) {
+    loadHistoryAnalytics();
+  }
+};
+
+window.onCustomDateRangeChanged = function() {
+  window.historyCurrentPreset = 'custom';
+  const chips = document.querySelectorAll('.btn-preset-chip');
+  chips.forEach(chip => {
+    chip.classList.remove('active');
+    chip.style.background = 'rgba(255, 255, 255, 0.06)';
+    chip.style.borderColor = 'var(--border-soft)';
+    chip.style.color = '#e2e8f0';
+    chip.style.fontWeight = 'normal';
+  });
+  updateShiftButtonsState();
+};
+
+window.shiftHistoryTimeWindow = function(direction) {
+  const startInput = document.getElementById('history-custom-start');
+  const endInput = document.getElementById('history-custom-end');
+  if (!startInput || !endInput || !startInput.value || !endInput.value) return;
+
+  let sTime = new Date(startInput.value).getTime();
+  let eTime = new Date(endInput.value).getTime();
+  if (isNaN(sTime) || isNaN(eTime)) return;
+  if (sTime > eTime) { const t = sTime; sTime = eTime; eTime = t; }
+
+  let duration = eTime - sTime;
+  if (duration <= 0) duration = 3600 * 1000;
+
+  let newStart, newEnd;
+  const now = Date.now();
+  if (direction === -1) {
+    newStart = new Date(sTime - duration);
+    newEnd = new Date(eTime - duration);
+  } else {
+    newStart = new Date(sTime + duration);
+    newEnd = new Date(eTime + duration);
+    if (newEnd.getTime() > now) {
+      newEnd = new Date(now);
+      newStart = new Date(now - duration);
+    }
+  }
+
+  startInput.value = formatDateTimeLocal(newStart);
+  endInput.value = formatDateTimeLocal(newEnd);
+  onCustomDateRangeChanged();
+  loadHistoryAnalytics();
+};
+
+window.shiftHistoryTime = function(direction) {
+  shiftHistoryTimeWindow(direction);
+};
+
+window.resetHistoryTimeOffset = function() {
+  applyHistoryPreset('1h');
+};
+
+function updateShiftButtonsState() {
+  const btnForward = document.getElementById('btn-history-shift-forward');
+  const endInput = document.getElementById('history-custom-end');
+  if (btnForward && endInput && endInput.value) {
+    const eTime = new Date(endInput.value).getTime();
+    const isAtPresent = (Date.now() - eTime) < 60000;
+    btnForward.disabled = isAtPresent;
+    btnForward.style.opacity = isAtPresent ? '0.5' : '1.0';
+    btnForward.style.cursor = isAtPresent ? 'default' : 'pointer';
+    const icon = btnForward.querySelector('i, svg');
+    if (icon) {
+      icon.style.color = isAtPresent ? 'var(--text-secondary)' : '#fff';
+    }
+  }
+}
+
+function updateActiveQueryBanner(metricName, sensorId, recordCount) {
+  const select = document.getElementById('history-monitor-select');
+  const opt = select ? select.options[select.selectedIndex] : null;
+
+  const name = metricName || (opt ? (opt.getAttribute('data-name') || opt.text) : '--');
+  const sId = sensorId || (opt ? (opt.getAttribute('data-sensor-id') || opt.getAttribute('data-key')) : null);
+
+  const nameEl = document.getElementById('history-query-target-name');
+  const idTextEl = document.getElementById('history-query-sensor-id-text');
+  const idPill = document.getElementById('history-query-sensor-id-pill');
+  const rangeEl = document.getElementById('history-query-date-range');
+  const countEl = document.getElementById('history-query-record-count');
+
+  if (nameEl) nameEl.textContent = name;
+  if (idTextEl && idPill) {
+    if (sId) {
+      idTextEl.textContent = sId;
+      idPill.style.display = 'inline-flex';
+      window.currentActiveHistorySensorId = sId;
+    } else {
+      idPill.style.display = 'none';
+      window.currentActiveHistorySensorId = null;
+    }
+  }
+
+  const startInput = document.getElementById('history-custom-start');
+  const endInput = document.getElementById('history-custom-end');
+  if (rangeEl && startInput && endInput && startInput.value && endInput.value) {
+    const s = new Date(startInput.value);
+    const e = new Date(endInput.value);
+    const formatDt = (d) => {
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + 
+             d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    };
+    rangeEl.textContent = `Range: ${formatDt(s)} → ${formatDt(e)}`;
+  }
+
+  if (countEl && recordCount !== undefined) {
+    countEl.textContent = `${recordCount} record${recordCount === 1 ? '' : 's'}`;
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+window.copyActiveSensorId = function() {
+  if (window.currentActiveHistorySensorId) {
+    navigator.clipboard.writeText(window.currentActiveHistorySensorId).then(() => {
+      showToast(`Copied Sensor ID: ${window.currentActiveHistorySensorId}`, 'success');
+    }).catch(() => {
+      prompt("Copy Sensor ID:", window.currentActiveHistorySensorId);
+    });
+  }
+};
+
+window.openHistoryForSensor = function(sensorId) {
+  if (!sensorId) return;
+  showUptimeHistoryView();
+  setTimeout(() => {
+    const input = document.getElementById('history-id-search');
+    if (input) {
+      input.value = sensorId;
+      handleHistoryIdSearchInput(sensorId);
+    }
+    const select = document.getElementById('history-monitor-select');
+    if (select) {
+      const matched = findMatchingOptionValue(sensorId, select);
+      if (matched) {
+        select.value = matched;
+        updateActiveQueryBanner();
+        loadHistoryAnalytics();
+      } else {
+        handleHistoryIdSearchSubmit();
+      }
+    }
+  }, 100);
+};
+
 async function populateHistoryMonitorsDropdown() {
   const select = document.getElementById('history-monitor-select');
+  const datalist = document.getElementById('history-id-datalist');
   if (!select) return;
 
   const previousSelected = select.value;
@@ -6152,6 +6481,7 @@ async function populateHistoryMonitorsDropdown() {
     // 1. Fetch configured prober monitors
     const monitorsRes = await fetch(`${httpUrl}/api/monitors`);
     const monitors = monitorsRes.ok ? await monitorsRes.json() : [];
+    window.allMonitorsCache = monitors;
 
     // 2. Fetch active entities (plugins and core telemetry)
     let entities = {};
@@ -6165,13 +6495,34 @@ async function populateHistoryMonitorsDropdown() {
     }
 
     let optionsHtml = '';
+    let datalistHtml = '';
+    window.historyLookupIndex = {};
+
+    const registerLookup = (val, optValue, label) => {
+      if (!val) return;
+      const clean = String(val).trim().toLowerCase();
+      window.historyLookupIndex[clean] = optValue;
+      datalistHtml += `<option value="${val}">${label || val}</option>`;
+    };
 
     // A. Probers & Monitors group
     if (monitors.length > 0) {
       optionsHtml += `<optgroup label="📡 Probers & Monitors">`;
       monitors.forEach(mon => {
         const typeStr = (mon.type || 'ping').toUpperCase();
-        optionsHtml += `<option value="mon-${mon.id}" data-source="monitor" data-id="${mon.id}" data-type="${mon.type}">${mon.name} (${typeStr})</option>`;
+        const sensorIdStatus = window.getSensorIdForEntity ? window.getSensorIdForEntity('monitors', `monitor-${mon.id}-status`, mon.name, mon.type) : `ping.${mon.name}`;
+        const sensorIdLatency = window.getSensorIdForEntity ? window.getSensorIdForEntity('monitors', `monitor-${mon.id}-latency`, mon.name, mon.type) : `sensor.${mon.name}_latency`;
+        const optVal = `mon-${mon.id}`;
+
+        optionsHtml += `<option value="${optVal}" data-source="monitor" data-id="${mon.id}" data-type="${mon.type}" data-name="${mon.name}" data-sensor-id="${sensorIdLatency}">
+          ${mon.name} (${typeStr})
+        </option>`;
+
+        registerLookup(sensorIdStatus, optVal, `${mon.name} (Status)`);
+        registerLookup(sensorIdLatency, optVal, `${mon.name} (Latency)`);
+        registerLookup(`mon-${mon.id}`, optVal, `${mon.name} (mon-${mon.id})`);
+        registerLookup(String(mon.id), optVal, `${mon.name} (ID: ${mon.id})`);
+        registerLookup(mon.name, optVal, mon.name);
       });
       optionsHtml += `</optgroup>`;
     }
@@ -6184,18 +6535,15 @@ async function populateHistoryMonitorsDropdown() {
       const key = ent.entity_key || '';
       const nodeId = ent.node_id || '';
 
-      // Skip internal monitor status keys already shown in probers
       if (key.startsWith('monitor-') && (key.endsWith('-status') || key.endsWith('-latency'))) {
         return;
       }
 
-      // Check for core system metrics
       if (nodeId === 'core-mon' || ['cpu-utilization', 'database-latency', 'database-storage-pct'].includes(key)) {
         coreTelemetry.push(ent);
         return;
       }
 
-      // Plugin entities
       if (nodeId !== 'core-mon' && nodeId !== 'monitors') {
         let pName = nodeId;
         if (pName.toLowerCase().includes('proxmox') || key.startsWith('pbs-')) {
@@ -6221,7 +6569,15 @@ async function populateHistoryMonitorsDropdown() {
         const unit = (ent.attributes && ent.attributes.unit) || ent.unit || '';
         const displayName = ent.name || ent.entity_key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         const labelWithUnit = unit ? `${displayName} (${unit})` : displayName;
-        optionsHtml += `<option value="ent-${ent.entity_key}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}">${labelWithUnit}</option>`;
+        const sensorId = window.getSensorIdForEntity ? window.getSensorIdForEntity(ent.node_id, ent.entity_key, ent.name, ent.type) : `${ent.node_id}.${ent.entity_key}`;
+        const optVal = `ent-${ent.entity_key}`;
+
+        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">
+          ${labelWithUnit}
+        </option>`;
+
+        registerLookup(sensorId, optVal, `${displayName} (${sensorId})`);
+        registerLookup(ent.entity_key, optVal, `${displayName} (${ent.entity_key})`);
       });
       optionsHtml += `</optgroup>`;
     });
@@ -6233,7 +6589,15 @@ async function populateHistoryMonitorsDropdown() {
         const unit = (ent.attributes && ent.attributes.unit) || ent.unit || '';
         const displayName = ent.name || ent.entity_key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         const labelWithUnit = unit ? `${displayName} (${unit})` : displayName;
-        optionsHtml += `<option value="ent-${ent.entity_key}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}">${labelWithUnit}</option>`;
+        const sensorId = window.getSensorIdForEntity ? window.getSensorIdForEntity(ent.node_id || 'core-mon', ent.entity_key, ent.name, ent.type) : `sensor.${ent.entity_key}`;
+        const optVal = `ent-${ent.entity_key}`;
+
+        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">
+          ${labelWithUnit}
+        </option>`;
+
+        registerLookup(sensorId, optVal, `${displayName} (${sensorId})`);
+        registerLookup(ent.entity_key, optVal, `${displayName} (${ent.entity_key})`);
       });
       optionsHtml += `</optgroup>`;
     }
@@ -6244,6 +6608,16 @@ async function populateHistoryMonitorsDropdown() {
     }
 
     select.innerHTML = optionsHtml;
+    if (datalist) {
+      datalist.innerHTML = datalistHtml;
+    }
+
+    // Ensure default date range is initialized if empty
+    const startInput = document.getElementById('history-custom-start');
+    const endInput = document.getElementById('history-custom-end');
+    if (!startInput || !endInput || !startInput.value || !endInput.value) {
+      applyHistoryPreset('1h', false);
+    }
 
     // Restore previously selected item if valid
     if (previousSelected) {
@@ -6253,7 +6627,15 @@ async function populateHistoryMonitorsDropdown() {
       }
     }
 
-    // Trigger initial load
+    // Update ID input to match selected option
+    const activeOpt = select.options[select.selectedIndex];
+    const searchInput = document.getElementById('history-id-search');
+    if (activeOpt && searchInput && !searchInput.value) {
+      const sId = activeOpt.getAttribute('data-sensor-id') || activeOpt.getAttribute('data-key') || activeOpt.value;
+      searchInput.value = sId;
+    }
+
+    updateActiveQueryBanner();
     loadHistoryAnalytics();
   } catch (err) {
     console.error('Failed to populate history sources list:', err);
@@ -6261,56 +6643,6 @@ async function populateHistoryMonitorsDropdown() {
 }
 
 let historyChartInstance = null;
-
-window.historyTimeOffsetHours = 0;
-
-window.resetHistoryTimeOffset = function () {
-  window.historyTimeOffsetHours = 0;
-  updateShiftButtonsState();
-};
-
-window.shiftHistoryTime = function (direction) {
-  const rangeEl = document.getElementById('history-timeframe-select');
-  if (!rangeEl) return;
-
-  const rangeVal = rangeEl.value;
-  let increment = 1;
-  if (rangeVal.startsWith('hours-')) {
-    increment = parseInt(rangeVal.split('-')[1]) || 1;
-  }
-
-  if (direction === -1) {
-    window.historyTimeOffsetHours += increment;
-  } else {
-    window.historyTimeOffsetHours = Math.max(0, window.historyTimeOffsetHours - increment);
-  }
-
-  updateShiftButtonsState();
-  loadHistoryAnalytics();
-};
-
-function updateShiftButtonsState() {
-  const btnForward = document.getElementById('btn-history-shift-forward');
-  if (btnForward) {
-    if (window.historyTimeOffsetHours === 0) {
-      btnForward.disabled = true;
-      btnForward.style.opacity = '0.5';
-      btnForward.style.cursor = 'default';
-      const icon = btnForward.querySelector('i, svg');
-      if (icon) {
-        icon.style.color = 'var(--text-secondary)';
-      }
-    } else {
-      btnForward.disabled = false;
-      btnForward.style.opacity = '1.0';
-      btnForward.style.cursor = 'pointer';
-      const icon = btnForward.querySelector('i, svg');
-      if (icon) {
-        icon.style.color = '#fff';
-      }
-    }
-  }
-}
 
 function formatMetricValue(num, unit) {
   if (typeof num !== 'number' || isNaN(num)) return '--';
@@ -6333,7 +6665,6 @@ function isSensorStatusHealthy(val) {
 
 async function loadHistoryAnalytics() {
   const select = document.getElementById('history-monitor-select');
-  const rangeEl = document.getElementById('history-timeframe-select');
   const tableBody = document.getElementById('history-logs-table-body');
   if (!select || !select.value || !tableBody) return;
 
@@ -6341,36 +6672,39 @@ async function loadHistoryAnalytics() {
   if (!selectedOpt) return;
 
   const source = selectedOpt.getAttribute('data-source') || (select.value.startsWith('mon-') ? 'monitor' : 'entity');
-  const rangeVal = rangeEl ? rangeEl.value : 'hours-1';
+
+  // Compute date range from start & end inputs
+  const startInput = document.getElementById('history-custom-start');
+  const endInput = document.getElementById('history-custom-end');
 
   let queryParams = '';
-  let hoursCount = 0;
-  if (rangeVal === 'custom') {
-    const startInput = document.getElementById('history-custom-start');
-    const endInput = document.getElementById('history-custom-end');
-    const customDiv = document.getElementById('history-custom-range-inputs');
-    if (customDiv) customDiv.style.display = 'flex';
+  let hoursCount = 1;
 
-    if (!startInput || !endInput || !startInput.value || !endInput.value) {
-      tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Please choose start and end dates and click Apply.</td></tr>`;
-      return;
+  if (startInput && endInput && startInput.value && endInput.value) {
+    let sTime = new Date(startInput.value).getTime();
+    let eTime = new Date(endInput.value).getTime();
+    if (isNaN(sTime) || isNaN(eTime)) {
+      applyHistoryPreset('1h', false);
+      sTime = new Date(startInput.value).getTime();
+      eTime = new Date(endInput.value).getTime();
     }
-
+    if (sTime > eTime) {
+      const tmp = startInput.value;
+      startInput.value = endInput.value;
+      endInput.value = tmp;
+      sTime = new Date(startInput.value).getTime();
+      eTime = new Date(endInput.value).getTime();
+    }
+    const startISO = new Date(sTime).toISOString();
+    const endISO = new Date(eTime).toISOString();
+    queryParams = `?start_time=${encodeURIComponent(startISO)}&end_time=${encodeURIComponent(endISO)}`;
+    hoursCount = Math.max(0.1, (eTime - sTime) / (1000 * 60 * 60));
+  } else {
+    applyHistoryPreset('1h', false);
     const startISO = new Date(startInput.value).toISOString();
     const endISO = new Date(endInput.value).toISOString();
     queryParams = `?start_time=${encodeURIComponent(startISO)}&end_time=${encodeURIComponent(endISO)}`;
-    hoursCount = Math.abs(new Date(endISO) - new Date(startISO)) / (1000 * 60 * 60);
-  } else {
-    const customDiv = document.getElementById('history-custom-range-inputs');
-    if (customDiv) customDiv.style.display = 'none';
-
-    if (rangeVal.startsWith('limit-')) {
-      queryParams = `?limit=${rangeVal.split('-')[1]}`;
-    } else if (rangeVal.startsWith('hours-')) {
-      const hours = rangeVal.split('-')[1];
-      queryParams = `?hours=${hours}&offset=${window.historyTimeOffsetHours || 0}`;
-      hoursCount = parseInt(hours) || 0;
-    }
+    hoursCount = 1;
   }
 
   tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Loading analytics...</td></tr>`;
@@ -6421,6 +6755,7 @@ async function loadHistoryAnalytics() {
         tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No log records found for this prober in the selected range.</td></tr>`;
         updateHistoryStats(0, 0, 0, 100);
         drawHistoryChart([], [], [], 0, [], { mode: 'latency', label: 'Ping Response Latency', unit: 'ms' });
+        updateActiveQueryBanner(selectedOpt.text, selectedOpt.getAttribute('data-sensor-id'), 0);
         if (loaderEl) loaderEl.style.display = 'none';
         return;
       }
@@ -6532,12 +6867,13 @@ async function loadHistoryAnalytics() {
         label: `${selectedOpt.text} Latency`,
         unit: 'ms'
       });
+      updateActiveQueryBanner(selectedOpt.text, selectedOpt.getAttribute('data-sensor-id'), chronologicalDetails.length);
 
     } else {
       // ═════════════════════════════════════════════
       // CASE 2: PLUGIN SENSORS & TELEMETRY ENTITIES
       // ═════════════════════════════════════════════
-      const entityKey = selectedOpt.getAttribute('data-key') || select.value.replace(/^ent-/, '');
+      const entityKey = selectedOpt.getAttribute('data-key') || select.value.replace(/^ent-/, '').replace(/^direct-/, '');
       const metricName = selectedOpt.getAttribute('data-name') || selectedOpt.text;
       const unit = selectedOpt.getAttribute('data-unit') || '';
 
@@ -6555,6 +6891,7 @@ async function loadHistoryAnalytics() {
         if (maxEl) maxEl.textContent = '--';
         if (outagesEl) { outagesEl.textContent = '--'; outagesEl.style.color = 'var(--text-secondary)'; }
         drawHistoryChart([], [], [], 0, [], { mode: 'numeric', label: metricName, unit });
+        updateActiveQueryBanner(metricName, selectedOpt.getAttribute('data-sensor-id') || entityKey, 0);
         if (loaderEl) loaderEl.style.display = 'none';
         return;
       }
@@ -6639,6 +6976,7 @@ async function loadHistoryAnalytics() {
           label: `${metricName}${unit ? ' (' + unit + ')' : ''}`,
           unit: unit
         });
+        updateActiveQueryBanner(metricName, selectedOpt.getAttribute('data-sensor-id') || entityKey, sortedLogs.length);
 
       } else {
         // ─────────────────────────────────────────
@@ -6712,6 +7050,7 @@ async function loadHistoryAnalytics() {
           label: `${metricName} State`,
           unit: 'State'
         });
+        updateActiveQueryBanner(metricName, selectedOpt.getAttribute('data-sensor-id') || entityKey, sortedLogs.length);
       }
     }
 
@@ -8376,10 +8715,16 @@ window.openHostDetail = async function (hostId) {
               <div style="border-top: 1px dashed var(--border-soft); padding-top:4px; margin-top:2px; font-size:0.65rem; color:var(--text-secondary);">
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">
                   <span style="word-break:break-all;">Sensor ID: <code style="color:var(--accent-orange); word-break:break-all; user-select:all;">${sensorIdStatus}</code></span>
-                  <button class="btn-icon" onclick="event.stopPropagation(); copySensorId('${sensorIdStatus}', this)" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px; flex-shrink:0;" title="Copy Sensor ID">
-                    <i data-lucide="copy" style="width:11px; height:11px;"></i>
-                    <span>Copy</span>
-                  </button>
+                  <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                    <button class="btn-icon" onclick="event.stopPropagation(); openHistoryForSensor('${sensorIdStatus}')" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px;" title="View Telemetry History">
+                      <i data-lucide="history" style="width:11px; height:11px; color:var(--color-primary);"></i>
+                      <span>History</span>
+                    </button>
+                    <button class="btn-icon" onclick="event.stopPropagation(); copySensorId('${sensorIdStatus}', this)" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px;" title="Copy Sensor ID">
+                      <i data-lucide="copy" style="width:11px; height:11px;"></i>
+                      <span>Copy</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -8472,17 +8817,29 @@ window.openHostDetail = async function (hostId) {
                 <div style="border-top: 1px dashed var(--border-soft); padding-top:4px; margin-top:2px; font-size:0.65rem; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px;">
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">
                     <span style="word-break:break-all;">Status Sensor: <code style="color:var(--accent-orange); word-break:break-all; user-select:all;">${sensorIdStatus}</code></span>
-                    <button class="btn-icon" onclick="event.stopPropagation(); copySensorId('${sensorIdStatus}', this)" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px; flex-shrink:0;" title="Copy Sensor ID">
-                      <i data-lucide="copy" style="width:11px; height:11px;"></i>
-                      <span>Copy</span>
-                    </button>
+                    <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                      <button class="btn-icon" onclick="event.stopPropagation(); openHistoryForSensor('${sensorIdStatus}')" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px;" title="View Telemetry History">
+                        <i data-lucide="history" style="width:11px; height:11px; color:var(--color-primary);"></i>
+                        <span>History</span>
+                      </button>
+                      <button class="btn-icon" onclick="event.stopPropagation(); copySensorId('${sensorIdStatus}', this)" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px;" title="Copy Sensor ID">
+                        <i data-lucide="copy" style="width:11px; height:11px;"></i>
+                        <span>Copy</span>
+                      </button>
+                    </div>
                   </div>
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">
                     <span style="word-break:break-all;">Latency Sensor: <code style="color:var(--accent-orange); word-break:break-all; user-select:all;">${sensorIdLatency}</code></span>
-                    <button class="btn-icon" onclick="event.stopPropagation(); copySensorId('${sensorIdLatency}', this)" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px; flex-shrink:0;" title="Copy Sensor ID">
-                      <i data-lucide="copy" style="width:11px; height:11px;"></i>
-                      <span>Copy</span>
-                    </button>
+                    <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                      <button class="btn-icon" onclick="event.stopPropagation(); openHistoryForSensor('${sensorIdLatency}')" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px;" title="View Telemetry History">
+                        <i data-lucide="history" style="width:11px; height:11px; color:var(--color-primary);"></i>
+                        <span>History</span>
+                      </button>
+                      <button class="btn-icon" onclick="event.stopPropagation(); copySensorId('${sensorIdLatency}', this)" style="padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); border-radius:3px; cursor:pointer; font-size:0.65rem; color:#94a3b8; display:inline-flex; align-items:center; gap:4px;" title="Copy Sensor ID">
+                        <i data-lucide="copy" style="width:11px; height:11px;"></i>
+                        <span>Copy</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

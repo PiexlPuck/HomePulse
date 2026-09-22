@@ -602,6 +602,7 @@ async def setup_database_schema(conn):
         """)
         await conn.execute("ALTER TABLE telemetry_logs ALTER COLUMN entity_key TYPE VARCHAR(255);")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs (timestamp);")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_logs_entity_time ON telemetry_logs (entity_key, timestamp DESC);")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_system_audits_timestamp ON system_audits (timestamp);")
         logger.info("hosts and node_dependencies database schema, indexes, and relationships verified.")
     except Exception as hosts_err:
@@ -3389,10 +3390,44 @@ async def toggle_monitor(monitor_id: int, payload: TogglePayload):
         logger.error(f"Failed to toggle monitor: {e}")
         raise HTTPException(status_code=500, detail="Database write error.")
 
+def parse_flexible_datetime(dt_str: Optional[str]) -> Optional[Any]:
+    if not dt_str:
+        return None
+    s = dt_str.strip()
+    if not s:
+        return None
+    from datetime import datetime, timezone
+    # Handle pure numeric millisecond/second timestamps
+    if s.isdigit():
+        try:
+            val = int(s)
+            if val > 1e11:  # milliseconds
+                return datetime.fromtimestamp(val / 1000.0, tz=timezone.utc).replace(tzinfo=None)
+            else:
+                return datetime.fromtimestamp(val, tz=timezone.utc).replace(tzinfo=None)
+        except Exception:
+            pass
+    # Handle standard ISO formats (with or without Z / offset)
+    try:
+        iso_s = s.replace('Z', '+00:00')
+        dt = datetime.fromisoformat(iso_s)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+    # Fallback common formats
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except Exception:
+            pass
+    return None
+
 @app.get("/api/monitors/logs/{entity_key}")
 async def get_monitor_logs(
     entity_key: str, 
-    limit: int = 10, 
+    limit: int = 100, 
     hours: int = None, 
     offset: int = 0,
     start_time: str = None,
@@ -3401,37 +3436,73 @@ async def get_monitor_logs(
     if not db_pool:
         return JSONResponse(content=[])
     try:
+        from datetime import datetime, timedelta
+
+        # Build candidate keys to match entity_key flexibly
+        # Supports: raw entity_key, HA sensor ID (e.g. sensor.cpu_utilization),
+        # prober keys (mon-19, monitor-19-status, 19), and hyphen/underscore variations
+        cand_keys = [entity_key]
+        for pfx in ("sensor.", "binary_sensor.", "ping."):
+            if entity_key.startswith(pfx):
+                cand_keys.append(entity_key[len(pfx):])
+
+        replaced_dash = entity_key.replace('_', '-')
+        if replaced_dash not in cand_keys:
+            cand_keys.append(replaced_dash)
+
+        for k in list(cand_keys):
+            if '_' in k:
+                dash_k = k.replace('_', '-')
+                if dash_k not in cand_keys:
+                    cand_keys.append(dash_k)
+
+        # Handle monitor id prefixes e.g. "mon-19", "monitor-19", or raw "19"
+        raw_id = entity_key
+        if raw_id.startswith("mon-"):
+            raw_id = raw_id[4:]
+        elif raw_id.startswith("monitor-"):
+            raw_id = raw_id[8:]
+        if raw_id.isdigit():
+            cand_keys.append(f"monitor-{raw_id}-latency")
+            cand_keys.append(f"monitor-{raw_id}-status")
+
         async with db_pool.acquire() as conn:
-            if start_time and end_time:
-                from datetime import datetime
-                # Parse to offset-naive datetimes to avoid timezone mismatch errors
-                t_start = datetime.fromisoformat(start_time.replace('Z', '+00:00')).replace(tzinfo=None)
-                t_end = datetime.fromisoformat(end_time.replace('Z', '+00:00')).replace(tzinfo=None)
-                
-                # Query custom date-time window
+            t_start = parse_flexible_datetime(start_time)
+            t_end = parse_flexible_datetime(end_time)
+
+            if t_start and not t_end:
+                t_end = datetime.utcnow()
+            elif t_end and not t_start:
+                t_start = t_end - timedelta(hours=24)
+
+            if t_start and t_end:
+                # Ensure start is before end
+                if t_start > t_end:
+                    t_start, t_end = t_end, t_start
+
                 rows = await conn.fetch(
                     """SELECT timestamp, value FROM telemetry_logs 
-                       WHERE entity_key = $1 
+                       WHERE entity_key = ANY($1::text[]) 
                          AND timestamp >= $2 
                          AND timestamp <= $3 
                        ORDER BY timestamp DESC;""",
-                    entity_key, t_start, t_end
+                    cand_keys, t_start, t_end
                 )
             elif hours is not None:
                 rows = await conn.fetch(
                     """SELECT timestamp, value FROM telemetry_logs 
-                       WHERE entity_key = $1 
+                       WHERE entity_key = ANY($1::text[]) 
                          AND timestamp >= NOW() - (($2::integer + $3::integer) * INTERVAL '1 hour')
                          AND timestamp <= NOW() - ($3::integer * INTERVAL '1 hour')
                        ORDER BY timestamp DESC;""",
-                    entity_key, hours, offset
+                    cand_keys, hours, offset
                 )
             else:
                 rows = await conn.fetch(
                     """SELECT timestamp, value FROM telemetry_logs 
-                       WHERE entity_key = $1 
+                       WHERE entity_key = ANY($1::text[]) 
                        ORDER BY timestamp DESC LIMIT $2;""",
-                    entity_key, limit
+                    cand_keys, limit
                 )
             res = []
             for r in rows:
@@ -3447,7 +3518,7 @@ async def get_monitor_logs(
 @app.get("/api/telemetry/logs/{entity_key}")
 async def get_telemetry_logs_alias(
     entity_key: str, 
-    limit: int = 10, 
+    limit: int = 100, 
     hours: int = None, 
     offset: int = 0,
     start_time: str = None,
