@@ -6152,135 +6152,306 @@ function formatDateTimeLocal(d) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-window.historyLookupIndex = {};
+window.historyAllSourceItems = [];
+window.historyActiveCategory = 'all';
+window.historyComboboxHighlightedIndex = -1;
 window.historyCurrentPreset = '1h';
 
-function findMatchingOptionValue(rawQuery, selectEl) {
-  if (!rawQuery || !selectEl) return null;
-  const q = rawQuery.trim().toLowerCase();
+window.openHistoryCombobox = function() {
+  const popup = document.getElementById('history-combobox-popup');
+  const chevron = document.getElementById('history-combobox-chevron');
+  const wrapper = document.getElementById('history-combobox-wrapper');
+  if (!popup) return;
 
-  // 1. Direct index lookup
-  if (window.historyLookupIndex && window.historyLookupIndex[q]) {
-    return window.historyLookupIndex[q];
-  }
+  popup.style.display = 'flex';
+  if (chevron) chevron.style.transform = 'rotate(180deg)';
+  if (wrapper) wrapper.style.borderColor = 'var(--color-primary)';
 
-  // 2. Direct option value or sensor ID match
-  const options = Array.from(selectEl.options);
-  for (const opt of options) {
-    const val = (opt.value || '').toLowerCase();
-    const sensorId = (opt.getAttribute('data-sensor-id') || '').toLowerCase();
-    const key = (opt.getAttribute('data-key') || '').toLowerCase();
-    const id = (opt.getAttribute('data-id') || '').toLowerCase();
-    if (val === q || sensorId === q || key === q || id === q) {
-      return opt.value;
-    }
-  }
-
-  // 3. Try HA resolution if sensorId has domain prefix
-  if (typeof window.resolveSensorIdToEntityRef === 'function') {
-    const ref = window.resolveSensorIdToEntityRef(rawQuery.trim());
-    if (ref && ref.entityKey) {
-      const matchByKey = options.find(o => (o.getAttribute('data-key') || '').toLowerCase() === ref.entityKey.toLowerCase());
-      if (matchByKey) return matchByKey.value;
-    }
-  }
-
-  // 4. Check for hyphen/underscore variant
-  const qAlt = q.includes('_') ? q.replace(/_/g, '-') : q.replace(/-/g, '_');
-  for (const opt of options) {
-    const sensorId = (opt.getAttribute('data-sensor-id') || '').toLowerCase();
-    const key = (opt.getAttribute('data-key') || '').toLowerCase();
-    if (sensorId === qAlt || key === qAlt) {
-      return opt.value;
-    }
-  }
-
-  // 5. Partial text match (startsWith or includes)
-  const partial = options.find(opt => {
-    const text = (opt.textContent || '').toLowerCase();
-    const sId = (opt.getAttribute('data-sensor-id') || '').toLowerCase();
-    return sId.includes(q) || text.includes(q);
-  });
-  if (partial) return partial.value;
-
-  return null;
-}
-
-window.handleHistoryIdSearchInput = function(query) {
-  const clearBtn = document.getElementById('btn-history-clear-id');
-  const q = (query || '').trim();
-  if (clearBtn) {
-    clearBtn.style.display = q ? 'block' : 'none';
-  }
-  if (!q) return;
-
-  const select = document.getElementById('history-monitor-select');
-  if (!select) return;
-
-  const matchedVal = findMatchingOptionValue(q, select);
-  if (matchedVal) {
-    select.value = matchedVal;
-    updateActiveQueryBanner();
-    if (window.historySearchDebounce) clearTimeout(window.historySearchDebounce);
-    window.historySearchDebounce = setTimeout(() => {
-      loadHistoryAnalytics();
-    }, 350);
-  }
+  renderComboboxCategoryTabs();
+  renderComboboxItems();
 };
 
-window.handleHistoryIdSearchSubmit = function() {
-  const input = document.getElementById('history-id-search');
-  const select = document.getElementById('history-monitor-select');
-  if (!input || !select) return;
-  const q = input.value.trim();
-  if (!q) return;
+window.closeHistoryCombobox = function() {
+  const popup = document.getElementById('history-combobox-popup');
+  const chevron = document.getElementById('history-combobox-chevron');
+  const wrapper = document.getElementById('history-combobox-wrapper');
+  if (popup) popup.style.display = 'none';
+  if (chevron) chevron.style.transform = 'rotate(0deg)';
+  if (wrapper) wrapper.style.borderColor = 'var(--border-soft)';
+  window.historyComboboxHighlightedIndex = -1;
+};
 
-  const matchedVal = findMatchingOptionValue(q, select);
-  if (matchedVal) {
-    select.value = matchedVal;
+window.toggleHistoryCombobox = function() {
+  const popup = document.getElementById('history-combobox-popup');
+  if (popup && popup.style.display === 'flex') {
+    closeHistoryCombobox();
   } else {
-    // Custom ID not currently in dropdown: create or reuse a custom option
-    let customOpt = select.querySelector('option[data-source="direct"]');
-    if (!customOpt) {
-      customOpt = document.createElement('option');
-      customOpt.setAttribute('data-source', 'direct');
-      select.insertBefore(customOpt, select.firstChild);
-    }
-    customOpt.value = `direct-${q}`;
-    customOpt.textContent = `Custom ID: ${q}`;
-    customOpt.setAttribute('data-key', q);
-    customOpt.setAttribute('data-name', q);
-    customOpt.setAttribute('data-sensor-id', q);
-    select.value = customOpt.value;
+    openHistoryCombobox();
+    const input = document.getElementById('history-combobox-input');
+    if (input) input.focus();
   }
-  updateActiveQueryBanner();
-  loadHistoryAnalytics();
 };
 
-window.clearHistoryIdSearch = function() {
-  const input = document.getElementById('history-id-search');
-  const clearBtn = document.getElementById('btn-history-clear-id');
+window.filterComboboxByCategory = function(categoryKey) {
+  window.historyActiveCategory = categoryKey;
+  renderComboboxCategoryTabs();
+  renderComboboxItems();
+  const input = document.getElementById('history-combobox-input');
+  if (input) input.focus();
+};
+
+window.onHistoryComboboxInput = function(query) {
+  openHistoryCombobox();
+  const clearBtn = document.getElementById('btn-history-clear-sensor');
+  if (clearBtn) clearBtn.style.display = query ? 'block' : 'none';
+  renderComboboxItems(query);
+};
+
+window.clearHistoryComboboxSelection = function() {
+  const input = document.getElementById('history-combobox-input');
+  const clearBtn = document.getElementById('btn-history-clear-sensor');
   if (input) {
     input.value = '';
     input.focus();
   }
   if (clearBtn) clearBtn.style.display = 'none';
+  window.historyActiveCategory = 'all';
+  renderComboboxCategoryTabs();
+  renderComboboxItems('');
 };
 
-window.onHistorySourceDropdownChange = function() {
-  const select = document.getElementById('history-monitor-select');
-  const searchInput = document.getElementById('history-id-search');
-  if (!select) return;
-  const opt = select.options[select.selectedIndex];
-  if (opt && searchInput) {
-    const sId = opt.getAttribute('data-sensor-id') || opt.getAttribute('data-key') || opt.value;
-    searchInput.value = sId;
-    const clearBtn = document.getElementById('btn-history-clear-id');
-    if (clearBtn) clearBtn.style.display = sId ? 'block' : 'none';
+window.onHistoryComboboxKeyDown = function(e) {
+  const popup = document.getElementById('history-combobox-popup');
+  const itemsContainer = document.getElementById('history-combobox-items-list');
+  if (!popup || popup.style.display !== 'flex') {
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      openHistoryCombobox();
+      return;
+    }
   }
-  updateActiveQueryBanner();
-  loadHistoryAnalytics();
+
+  if (e.key === 'Escape') {
+    closeHistoryCombobox();
+    return;
+  }
+
+  const renderedItems = itemsContainer ? Array.from(itemsContainer.querySelectorAll('.combobox-item')) : [];
+  if (renderedItems.length === 0) return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    window.historyComboboxHighlightedIndex = Math.min(renderedItems.length - 1, window.historyComboboxHighlightedIndex + 1);
+    updateComboboxHighlight(renderedItems);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    window.historyComboboxHighlightedIndex = Math.max(0, window.historyComboboxHighlightedIndex - 1);
+    updateComboboxHighlight(renderedItems);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (window.historyComboboxHighlightedIndex >= 0 && window.historyComboboxHighlightedIndex < renderedItems.length) {
+      const val = renderedItems[window.historyComboboxHighlightedIndex].getAttribute('data-value');
+      selectHistoryComboboxOption(val);
+    } else if (renderedItems.length > 0) {
+      const val = renderedItems[0].getAttribute('data-value');
+      selectHistoryComboboxOption(val);
+    } else {
+      const input = document.getElementById('history-combobox-input');
+      if (input && input.value.trim()) {
+        selectHistoryComboboxOption(input.value.trim(), true);
+      }
+    }
+  }
 };
+
+function updateComboboxHighlight(items) {
+  items.forEach((item, idx) => {
+    if (idx === window.historyComboboxHighlightedIndex) {
+      item.style.background = 'rgba(59, 130, 246, 0.2)';
+      item.scrollIntoView({ block: 'nearest' });
+    } else {
+      item.style.background = item.classList.contains('active-item') ? 'rgba(59, 130, 246, 0.12)' : '';
+    }
+  });
+}
+
+function renderComboboxCategoryTabs() {
+  const tabsContainer = document.getElementById('history-combobox-category-tabs');
+  if (!tabsContainer) return;
+
+  const catMap = {
+    'all': { label: 'All', count: window.historyAllSourceItems.length }
+  };
+
+  window.historyAllSourceItems.forEach(item => {
+    const cat = item.category || 'other';
+    if (!catMap[cat]) {
+      catMap[cat] = {
+        label: item.categoryLabel || cat,
+        count: 0
+      };
+    }
+    catMap[cat].count++;
+  });
+
+  let tabsHtml = '';
+  Object.keys(catMap).forEach(catKey => {
+    const info = catMap[catKey];
+    const isActive = (window.historyActiveCategory || 'all') === catKey;
+    const bg = isActive ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.05)';
+    const border = isActive ? '1px solid var(--color-primary)' : '1px solid rgba(255, 255, 255, 0.08)';
+    const color = isActive ? '#fff' : 'var(--text-secondary)';
+    const fw = isActive ? '600' : 'normal';
+
+    tabsHtml += `
+      <button type="button" onclick="event.stopPropagation(); filterComboboxByCategory('${catKey}')"
+        style="background: ${bg}; border: ${border}; color: ${color}; font-size: 0.68rem; font-weight: ${fw}; padding: 3px 8px; border-radius: 12px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; transition: all 0.15s;">
+        <span>${info.label}</span>
+        <span style="opacity: 0.6; font-size: 0.62rem;">(${info.count})</span>
+      </button>
+    `;
+  });
+
+  tabsContainer.innerHTML = tabsHtml;
+}
+
+function renderComboboxItems(searchQuery) {
+  const container = document.getElementById('history-combobox-items-list');
+  if (!container) return;
+
+  const q = (searchQuery !== undefined ? searchQuery : (document.getElementById('history-combobox-input')?.value || '')).trim().toLowerCase();
+  const select = document.getElementById('history-monitor-select');
+  const currentVal = select ? select.value : '';
+
+  let filtered = window.historyAllSourceItems || [];
+
+  if (window.historyActiveCategory && window.historyActiveCategory !== 'all') {
+    filtered = filtered.filter(item => item.category === window.historyActiveCategory);
+  }
+
+  if (q) {
+    filtered = filtered.filter(item => {
+      const name = (item.name || '').toLowerCase();
+      const sId = (item.sensorId || '').toLowerCase();
+      const key = (item.key || '').toLowerCase();
+      const id = String(item.id || '').toLowerCase();
+      const cat = (item.categoryLabel || '').toLowerCase();
+      return name.includes(q) || sId.includes(q) || key.includes(q) || id === q || cat.includes(q);
+    });
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div style="padding: 16px 12px; text-align: center; color: var(--text-secondary); font-size: 0.75rem;">
+        No sensors found for <strong>"${q}"</strong>. Press <kbd style="background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 3px; font-family: monospace;">Enter</kbd> to search custom ID directly.
+      </div>
+    `;
+    window.historyComboboxHighlightedIndex = -1;
+    return;
+  }
+
+  window.historyComboboxHighlightedIndex = -1;
+
+  let itemsHtml = '';
+  filtered.forEach(item => {
+    const isSelected = item.value === currentVal;
+    const bg = isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent';
+    const borderLeft = isSelected ? '3px solid var(--color-primary)' : '3px solid transparent';
+    const activeClass = isSelected ? 'active-item' : '';
+
+    let badgeBg = 'rgba(255, 255, 255, 0.08)';
+    let badgeColor = 'var(--text-secondary)';
+    if (item.category === 'monitors') {
+      badgeBg = 'rgba(59, 130, 246, 0.15)';
+      badgeColor = '#60a5fa';
+    } else if (item.category === 'core') {
+      badgeBg = 'rgba(16, 185, 129, 0.15)';
+      badgeColor = '#34d399';
+    } else {
+      badgeBg = 'rgba(245, 158, 11, 0.15)';
+      badgeColor = '#fbbf24';
+    }
+
+    itemsHtml += `
+      <div class="combobox-item ${activeClass}" data-value="${item.value}" onclick="selectHistoryComboboxOption('${item.value}')"
+        onmouseenter="if(!this.classList.contains('active-item')) this.style.background='rgba(255,255,255,0.06)'"
+        onmouseleave="if(!this.classList.contains('active-item')) this.style.background='transparent'"
+        style="display: flex; flex-direction: column; gap: 3px; padding: 7px 10px; border-radius: 6px; cursor: pointer; transition: background 0.12s; background: ${bg}; border-left: ${borderLeft};">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+            <span style="font-size: 0.6rem; padding: 1px 6px; border-radius: 3px; font-weight: 700; text-transform: uppercase; background: ${badgeBg}; color: ${badgeColor}; flex-shrink: 0;">${item.categoryLabel}</span>
+            <span style="font-size: 0.78rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${item.name}</span>
+          </div>
+          <span style="font-size: 0.65rem; color: var(--text-secondary); font-family: monospace; flex-shrink: 0;">${item.typeStr || ''}</span>
+        </div>
+        <div style="font-size: 0.66rem; color: var(--text-secondary); font-family: monospace; display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <span style="opacity: 0.6;">ID:</span>
+          <span style="color: var(--accent-orange);">${item.sensorId || item.key}</span>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = itemsHtml;
+}
+
+window.selectHistoryComboboxOption = function(val, isCustom = false) {
+  const select = document.getElementById('history-monitor-select');
+  const input = document.getElementById('history-combobox-input');
+  const clearBtn = document.getElementById('btn-history-clear-sensor');
+
+  let item = (window.historyAllSourceItems || []).find(i => i.value === val);
+
+  if (!item && isCustom) {
+    item = {
+      value: `direct-${val}`,
+      name: `Custom ID: ${val}`,
+      category: 'other',
+      categoryLabel: 'Custom',
+      sensorId: val,
+      key: val,
+      source: 'direct'
+    };
+    window.historyAllSourceItems.unshift(item);
+  }
+
+  if (item) {
+    if (select) {
+      let opt = Array.from(select.options).find(o => o.value === item.value);
+      if (!opt) {
+        opt = document.createElement('option');
+        opt.value = item.value;
+        opt.setAttribute('data-source', item.source);
+        opt.setAttribute('data-key', item.key);
+        opt.setAttribute('data-name', item.name);
+        opt.setAttribute('data-sensor-id', item.sensorId);
+        if (item.id) opt.setAttribute('data-id', item.id);
+        if (item.type) opt.setAttribute('data-type', item.type);
+        select.appendChild(opt);
+      }
+      select.value = item.value;
+    }
+
+    if (input) {
+      input.value = item.name;
+    }
+    if (clearBtn) clearBtn.style.display = 'block';
+
+    updateActiveQueryBanner(item.name, item.sensorId);
+    closeHistoryCombobox();
+    loadHistoryAnalytics();
+  }
+};
+
+// Global click outside listener to close combobox popup
+document.addEventListener('click', function(e) {
+  const popup = document.getElementById('history-combobox-popup');
+  const wrapper = document.getElementById('history-combobox-wrapper');
+  if (popup && popup.style.display === 'flex') {
+    if (!popup.contains(e.target) && !wrapper.contains(e.target)) {
+      closeHistoryCombobox();
+    }
+  }
+});
 
 window.applyHistoryPreset = function(preset, triggerLoad = true) {
   const chips = document.querySelectorAll('.btn-preset-chip');
@@ -6450,28 +6621,23 @@ window.openHistoryForSensor = function(sensorId) {
   if (!sensorId) return;
   showUptimeHistoryView();
   setTimeout(() => {
-    const input = document.getElementById('history-id-search');
-    if (input) {
-      input.value = sensorId;
-      handleHistoryIdSearchInput(sensorId);
-    }
-    const select = document.getElementById('history-monitor-select');
-    if (select) {
-      const matched = findMatchingOptionValue(sensorId, select);
-      if (matched) {
-        select.value = matched;
-        updateActiveQueryBanner();
-        loadHistoryAnalytics();
-      } else {
-        handleHistoryIdSearchSubmit();
-      }
+    const clean = sensorId.trim().toLowerCase();
+    const matched = (window.historyAllSourceItems || []).find(item => {
+      const sId = (item.sensorId || '').toLowerCase();
+      const key = (item.key || '').toLowerCase();
+      return sId === clean || key === clean || item.value === clean;
+    });
+
+    if (matched) {
+      selectHistoryComboboxOption(matched.value);
+    } else {
+      selectHistoryComboboxOption(sensorId, true);
     }
   }, 100);
 };
 
 async function populateHistoryMonitorsDropdown() {
   const select = document.getElementById('history-monitor-select');
-  const datalist = document.getElementById('history-id-datalist');
   if (!select) return;
 
   const previousSelected = select.value;
@@ -6494,37 +6660,32 @@ async function populateHistoryMonitorsDropdown() {
       entities = window.cachedEntities || {};
     }
 
+    window.historyAllSourceItems = [];
     let optionsHtml = '';
-    let datalistHtml = '';
-    window.historyLookupIndex = {};
-
-    const registerLookup = (val, optValue, label) => {
-      if (!val) return;
-      const clean = String(val).trim().toLowerCase();
-      window.historyLookupIndex[clean] = optValue;
-      datalistHtml += `<option value="${val}">${label || val}</option>`;
-    };
 
     // A. Probers & Monitors group
     if (monitors.length > 0) {
-      optionsHtml += `<optgroup label="📡 Probers & Monitors">`;
       monitors.forEach(mon => {
         const typeStr = (mon.type || 'ping').toUpperCase();
         const sensorIdStatus = window.getSensorIdForEntity ? window.getSensorIdForEntity('monitors', `monitor-${mon.id}-status`, mon.name, mon.type) : `ping.${mon.name}`;
         const sensorIdLatency = window.getSensorIdForEntity ? window.getSensorIdForEntity('monitors', `monitor-${mon.id}-latency`, mon.name, mon.type) : `sensor.${mon.name}_latency`;
         const optVal = `mon-${mon.id}`;
 
-        optionsHtml += `<option value="${optVal}" data-source="monitor" data-id="${mon.id}" data-type="${mon.type}" data-name="${mon.name}" data-sensor-id="${sensorIdLatency}">
-          ${mon.name} (${typeStr})
-        </option>`;
+        window.historyAllSourceItems.push({
+          value: optVal,
+          name: mon.name,
+          typeStr: typeStr,
+          category: 'monitors',
+          categoryLabel: 'Prober',
+          sensorId: sensorIdLatency,
+          key: `monitor-${mon.id}-latency`,
+          source: 'monitor',
+          id: mon.id,
+          type: mon.type
+        });
 
-        registerLookup(sensorIdStatus, optVal, `${mon.name} (Status)`);
-        registerLookup(sensorIdLatency, optVal, `${mon.name} (Latency)`);
-        registerLookup(`mon-${mon.id}`, optVal, `${mon.name} (mon-${mon.id})`);
-        registerLookup(String(mon.id), optVal, `${mon.name} (ID: ${mon.id})`);
-        registerLookup(mon.name, optVal, mon.name);
+        optionsHtml += `<option value="${optVal}" data-source="monitor" data-id="${mon.id}" data-type="${mon.type}" data-name="${mon.name}" data-sensor-id="${sensorIdLatency}">${mon.name} (${typeStr})</option>`;
       });
-      optionsHtml += `</optgroup>`;
     }
 
     // B. Plugin Sensors grouped by plugin
@@ -6561,81 +6722,84 @@ async function populateHistoryMonitorsDropdown() {
       }
     });
 
-    // Render Plugin Sensors groups
+    // Render Plugin Sensors
     Object.keys(pluginGroups).sort().forEach(pName => {
       const pEntities = pluginGroups[pName].sort((a, b) => (a.name || a.entity_key).localeCompare(b.name || b.entity_key));
-      optionsHtml += `<optgroup label="🔌 Plugin: ${pName}">`;
       pEntities.forEach(ent => {
         const unit = (ent.attributes && ent.attributes.unit) || ent.unit || '';
         const displayName = ent.name || ent.entity_key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const labelWithUnit = unit ? `${displayName} (${unit})` : displayName;
         const sensorId = window.getSensorIdForEntity ? window.getSensorIdForEntity(ent.node_id, ent.entity_key, ent.name, ent.type) : `${ent.node_id}.${ent.entity_key}`;
         const optVal = `ent-${ent.entity_key}`;
 
-        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">
-          ${labelWithUnit}
-        </option>`;
+        window.historyAllSourceItems.push({
+          value: optVal,
+          name: displayName,
+          typeStr: (ent.type || 'sensor').toUpperCase(),
+          category: `plugin-${ent.node_id}`,
+          categoryLabel: pName,
+          sensorId: sensorId,
+          key: ent.entity_key,
+          source: 'entity',
+          unit: unit
+        });
 
-        registerLookup(sensorId, optVal, `${displayName} (${sensorId})`);
-        registerLookup(ent.entity_key, optVal, `${displayName} (${ent.entity_key})`);
+        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">${displayName}</option>`;
       });
-      optionsHtml += `</optgroup>`;
     });
 
     // C. Core System Telemetry
     if (coreTelemetry.length > 0) {
-      optionsHtml += `<optgroup label="💻 Core System Telemetry">`;
       coreTelemetry.sort((a, b) => (a.name || a.entity_key).localeCompare(b.name || b.entity_key)).forEach(ent => {
         const unit = (ent.attributes && ent.attributes.unit) || ent.unit || '';
         const displayName = ent.name || ent.entity_key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const labelWithUnit = unit ? `${displayName} (${unit})` : displayName;
         const sensorId = window.getSensorIdForEntity ? window.getSensorIdForEntity(ent.node_id || 'core-mon', ent.entity_key, ent.name, ent.type) : `sensor.${ent.entity_key}`;
         const optVal = `ent-${ent.entity_key}`;
 
-        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">
-          ${labelWithUnit}
-        </option>`;
+        window.historyAllSourceItems.push({
+          value: optVal,
+          name: displayName,
+          typeStr: (ent.type || 'sensor').toUpperCase(),
+          category: 'core',
+          categoryLabel: 'Core',
+          sensorId: sensorId,
+          key: ent.entity_key,
+          source: 'entity',
+          unit: unit
+        });
 
-        registerLookup(sensorId, optVal, `${displayName} (${sensorId})`);
-        registerLookup(ent.entity_key, optVal, `${displayName} (${ent.entity_key})`);
+        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">${displayName}</option>`;
       });
-      optionsHtml += `</optgroup>`;
-    }
-
-    if (!optionsHtml) {
-      select.innerHTML = '<option value="">No monitors or sensors defined</option>';
-      return;
     }
 
     select.innerHTML = optionsHtml;
-    if (datalist) {
-      datalist.innerHTML = datalistHtml;
+
+    // Set initial selected item
+    let activeItem = null;
+    if (previousSelected) {
+      activeItem = window.historyAllSourceItems.find(i => i.value === previousSelected);
+    }
+    if (!activeItem && window.historyAllSourceItems.length > 0) {
+      activeItem = window.historyAllSourceItems[0];
     }
 
-    // Ensure default date range is initialized if empty
+    if (activeItem) {
+      select.value = activeItem.value;
+      const input = document.getElementById('history-combobox-input');
+      const clearBtn = document.getElementById('btn-history-clear-sensor');
+      if (input) input.value = activeItem.name;
+      if (clearBtn) clearBtn.style.display = 'block';
+      updateActiveQueryBanner(activeItem.name, activeItem.sensorId);
+    }
+
+    // Ensure default date range initialized
     const startInput = document.getElementById('history-custom-start');
     const endInput = document.getElementById('history-custom-end');
     if (!startInput || !endInput || !startInput.value || !endInput.value) {
       applyHistoryPreset('1h', false);
     }
 
-    // Restore previously selected item if valid
-    if (previousSelected) {
-      const matching = Array.from(select.options).find(o => o.value === previousSelected);
-      if (matching) {
-        select.value = previousSelected;
-      }
-    }
-
-    // Update ID input to match selected option
-    const activeOpt = select.options[select.selectedIndex];
-    const searchInput = document.getElementById('history-id-search');
-    if (activeOpt && searchInput && !searchInput.value) {
-      const sId = activeOpt.getAttribute('data-sensor-id') || activeOpt.getAttribute('data-key') || activeOpt.value;
-      searchInput.value = sId;
-    }
-
-    updateActiveQueryBanner();
+    renderComboboxCategoryTabs();
+    renderComboboxItems();
     loadHistoryAnalytics();
   } catch (err) {
     console.error('Failed to populate history sources list:', err);
