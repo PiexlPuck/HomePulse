@@ -1206,7 +1206,6 @@
 
       </div>
     </div>
-    </div>
 
     <!-- Uptime History View Panel -->
     <div class="settings-view hide" id="uptime-history-view">
@@ -1328,6 +1327,7 @@
                 Search History
               </button>
             </div>
+          </div>
           </div>
 
           <!-- Active Query Summary / Badge Bar -->
@@ -1700,9 +1700,6 @@
 
     <!-- Bottom section spacer -->
     <div style="height: 40px;"></div>
-
-    </div>
-    </div>
   </main>
 
   <!-- Widget Editor Modal Overlay -->
@@ -2500,7 +2497,14 @@
             </div>
           </div>
         </div>
-        <!-- Notification Channel Modal Overlay -->
+        <div class="modal-footer"
+          style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end;">
+          <button class="btn btn-secondary" onclick="closeModal('marketplace-modal')">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Channel Modal Overlay -->
         <div class="modal-overlay" id="channel-modal" style="display: none;">
           <div class="modal-content" style="max-width: 480px; display: flex; flex-direction: column;">
             <div class="modal-header">
@@ -2802,10 +2806,6 @@
                         onchange="document.getElementById('host-port-number').disabled = !this.checked">
                       <span>TCP Port Monitor</span>
                     </label>
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                      <label style="font-size: 0.72rem; margin: 0; color: var(--text-secondary);">Port:</label>
-                      <input type="number" id="host-port-number" disabled placeholder="e.g. 22"
-                        style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:4px 8px; font-size:0.75rem; width: 80px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                       <div style="display: flex; align-items: center; gap: 4px;">
                         <label style="font-size: 0.72rem; margin: 0; color: var(--text-secondary);">Port:</label>
