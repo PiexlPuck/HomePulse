@@ -413,6 +413,12 @@ async def stop_plugin(plugin_id: str):
     # Update state of all plugin entities to stopped
     await stop_or_idle_plugin_entities(plugin_id, "stopped")
 
+async def stop_all_plugins():
+    """Stops all running plugin subprocesses on application shutdown."""
+    logger.info("Stopping all running plugin subprocesses...")
+    for plugin_id in list(active_processes.keys()):
+        await stop_plugin(plugin_id)
+
 async def plugins_watchdog_loop():
     while True:
         try:
@@ -459,15 +465,26 @@ async def plugins_watchdog_loop():
         except Exception as e:
             logger.error(f"Exception in plugins watchdog: {e}")
 
+# In-memory marketplace cache: (timestamp, data)
+_marketplace_cache: Dict[str, Any] = {"timestamp": 0, "data": []}
+
 # API routes
 @plugins_router.get("/marketplace")
 async def get_marketplace():
     """Queries the remote plugins repository using Git Trees API and returns manifests and files presence."""
+    import time
+    now = time.time()
+    # Return cached data if fresh (within 300 seconds)
+    if _marketplace_cache["data"] and (now - _marketplace_cache["timestamp"] < 300):
+        return _marketplace_cache["data"]
+
     url = "https://api.github.com/repos/PiexlPuck/homepulse-plugins/git/trees/main?recursive=1"
     req = urllib.request.Request(url, headers={"User-Agent": "HomePulse-Admin-Agent"})
     try:
-        with urllib.request.urlopen(req, timeout=12) as response:
-            tree_data = json.loads(response.read().decode('utf-8'))
+        def fetch_tree():
+            with urllib.request.urlopen(req, timeout=10) as response:
+                return json.loads(response.read().decode('utf-8'))
+        tree_data = await asyncio.to_thread(fetch_tree)
             
         tree_items = tree_data.get("tree", [])
         plugin_dirs = {}
@@ -490,35 +507,41 @@ async def get_marketplace():
                     plugin_dirs[plugin_id]["readme_filename"] = parts[2]
                     
         plugins = []
-        for plugin_id, manifest_path in manifest_paths.items():
-            manifest_url = f"https://raw.githubusercontent.com/PiexlPuck/homepulse-plugins/main/{manifest_path}"
+        def fetch_manifest(pid, m_path):
+            manifest_url = f"https://raw.githubusercontent.com/PiexlPuck/homepulse-plugins/main/{m_path}"
             m_req = urllib.request.Request(manifest_url, headers={"User-Agent": "HomePulse-Admin-Agent"})
             try:
-                with urllib.request.urlopen(m_req, timeout=5) as m_res:
+                with urllib.request.urlopen(m_req, timeout=4) as m_res:
                     manifest = json.loads(m_res.read().decode('utf-8'))
-                    manifest["id"] = plugin_id
-                    info = plugin_dirs.get(plugin_id, {"has_readme": False, "readme_filename": None})
+                    manifest["id"] = pid
+                    info = plugin_dirs.get(pid, {"has_readme": False, "readme_filename": None})
                     manifest["has_readme"] = info["has_readme"]
                     if info["has_readme"]:
-                        manifest["readme_url"] = f"https://raw.githubusercontent.com/PiexlPuck/homepulse-plugins/main/plugins/{plugin_id}/{info['readme_filename']}"
-                    plugins.append(manifest)
+                        manifest["readme_url"] = f"https://raw.githubusercontent.com/PiexlPuck/homepulse-plugins/main/plugins/{pid}/{info['readme_filename']}"
+                    return manifest
             except Exception as m_err:
-                logger.warning(f"Error fetching manifest for remote plugin {plugin_id}: {m_err}")
-                info = plugin_dirs.get(plugin_id, {"has_readme": False, "readme_filename": None})
+                logger.warning(f"Error fetching manifest for remote plugin {pid}: {m_err}")
+                info = plugin_dirs.get(pid, {"has_readme": False, "readme_filename": None})
                 fallback = {
-                    "id": plugin_id,
-                    "name": plugin_id.replace("-", " ").title(),
+                    "id": pid,
+                    "name": pid.replace("-", " ").title(),
                     "version": "1.0.0",
                     "description": "Custom community plugin.",
                     "has_readme": info["has_readme"]
                 }
                 if info["has_readme"]:
-                    fallback["readme_url"] = f"https://raw.githubusercontent.com/PiexlPuck/homepulse-plugins/main/plugins/{plugin_id}/{info['readme_filename']}"
-                plugins.append(fallback)
-        return plugins
+                    fallback["readme_url"] = f"https://raw.githubusercontent.com/PiexlPuck/homepulse-plugins/main/plugins/{pid}/{info['readme_filename']}"
+                return fallback
+
+        tasks = [asyncio.to_thread(fetch_manifest, pid, m_path) for pid, m_path in manifest_paths.items()]
+        plugins = await asyncio.gather(*tasks) if tasks else []
+        if plugins:
+            _marketplace_cache["data"] = plugins
+            _marketplace_cache["timestamp"] = now
+        return plugins if plugins else _marketplace_cache["data"]
     except Exception as e:
         logger.error(f"Failed to query remote plugins marketplace: {e}")
-        return []
+        return _marketplace_cache["data"] if _marketplace_cache["data"] else []
 
 @plugins_router.get("/installed")
 async def get_installed():

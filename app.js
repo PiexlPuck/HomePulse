@@ -665,7 +665,7 @@ function buildDashboardCards(entitiesMap) {
             <div class="card-title-area">
               <span class="card-title">${displayName}</span>
               <span class="card-subtitle">${item.node_id}.local</span>
-              <span class="card-subtitle" style="font-size:0.6rem; opacity:0.5; margin-top:2px;">Entity ID: ${sensorId}</span>
+              <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${sensorId}" onclick="navigator.clipboard?.writeText('${sensorId}'); showToast?.('Copied Entity ID')">Entity ID: ${sensorId}</span>
             </div>
             <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
           </div>
@@ -3977,19 +3977,21 @@ function isProbeStatusOnline(status, type) {
   if (!status) return false;
   const s = String(status).trim().toUpperCase();
   const num = parseInt(s, 10);
-  if (!isNaN(num) && num >= 200 && num < 400) return true;
+  if (!isNaN(num) && ((num >= 200 && num < 400) || num === 401 || num === 403 || num === 405)) return true;
   return (
     s === 'UP' ||
     s === 'ONLINE' ||
     s === 'HEALTHY' ||
     s === 'STABLE' ||
+    s === 'CONNECTED' ||
     s === 'SSL_OK' ||
     s === 'DNS_OK' ||
     s === 'PORT_OK' ||
     s === 'ICMP_OK' ||
     s === '101' ||
     s.includes('REMAINING') ||
-    s.includes('DAYS')
+    s.includes('DAYS') ||
+    s.includes('SELF-SIGNED')
   );
 }
 
@@ -8162,29 +8164,42 @@ async function loadHosts(forceFetch = false) {
         return isProbeStatusOnline(ent || m.last_status, m.type);
       }
 
-      const internalUp = internalMonitors.length > 0 ? internalMonitors.every(isProbeOnline) : null;
-      const externalUp = externalMonitors.length > 0 ? externalMonitors.every(isProbeOnline) : null;
+      const internalPass = internalMonitors.filter(isProbeOnline).length;
+      const internalTotal = internalMonitors.length;
+      const internalUp = internalTotal > 0 ? (internalPass === internalTotal) : null;
+      const internalAny = internalTotal > 0 && internalPass > 0;
+
+      const externalPass = externalMonitors.filter(isProbeOnline).length;
+      const externalTotal = externalMonitors.length;
+      const externalUp = externalTotal > 0 ? (externalPass === externalTotal) : null;
+      const externalAny = externalTotal > 0 && externalPass > 0;
 
       let statusPillHtml = '';
-      if (internalUp !== null && externalUp !== null) {
+      if (internalTotal > 0 && externalTotal > 0) {
         if (internalUp && externalUp) {
           statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">🟢 ALL ONLINE</span>`;
-        } else if (internalUp && !externalUp) {
+        } else if (internalAny && externalAny) {
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="${internalPass}/${internalTotal} internal and ${externalPass}/${externalTotal} external probes passing">🟡 DEGRADED</span>`;
+        } else if (internalAny && !externalAny) {
           statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="LAN is online, but external domain is failing">🟡 EXTERNAL DOWN</span>`;
-        } else if (!internalUp && externalUp) {
+        } else if (!internalAny && externalAny) {
           statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="External domain responding, but internal LAN IP is unreachable">🟡 INTERNAL DOWN</span>`;
         } else {
           statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">🔴 OFFLINE</span>`;
         }
-      } else if (internalUp !== null) {
+      } else if (internalTotal > 0) {
         if (internalUp) {
           statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">🟢 ONLINE</span>`;
+        } else if (internalAny) {
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="${internalPass}/${internalTotal} probes passing">🟡 DEGRADED</span>`;
         } else {
           statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">🔴 OFFLINE</span>`;
         }
-      } else if (externalUp !== null) {
+      } else if (externalTotal > 0) {
         if (externalUp) {
           statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">🟢 ONLINE</span>`;
+        } else if (externalAny) {
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="${externalPass}/${externalTotal} probes passing">🟡 DEGRADED</span>`;
         } else {
           statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">🔴 OFFLINE</span>`;
         }
@@ -8195,11 +8210,11 @@ async function loadHosts(forceFetch = false) {
       const internalTarget = host.target_internal || (!host.target_external ? host.target : '') || '';
       const externalTarget = host.target_external || '';
 
-      const outageBannerHtml = (internalUp === true && externalUp === false) ? `
+      const outageBannerHtml = (internalAny && !externalAny && externalTotal > 0) ? `
         <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:4px 8px; margin-bottom:8px; font-size:0.68rem; color:#fde047; display:flex; align-items:center; gap:6px;">
           <i data-lucide="alert-triangle" style="width:13px; height:13px; color:#fbbf24; flex-shrink:0;"></i>
           <span>External WAN domain unreachable. Internal LAN is operational.</span>
-        </div>` : (internalUp === false && externalUp === true) ? `
+        </div>` : (!internalAny && externalAny && internalTotal > 0) ? `
         <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:4px 8px; margin-bottom:8px; font-size:0.68rem; color:#fde047; display:flex; align-items:center; gap:6px;">
           <i data-lucide="alert-triangle" style="width:13px; height:13px; color:#fbbf24; flex-shrink:0;"></i>
           <span>Internal LAN IP unreachable. External proxy is responding.</span>
@@ -8325,14 +8340,14 @@ async function loadHosts(forceFetch = false) {
             <div>
               <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
                 <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">Plugin: ${p.name}</h4>
-                <div style="display:flex; gap:6.5px; align-items:center;">
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <span class="status-pill ${statusClass}" style="font-size:0.6rem; padding: 2px 7px; font-weight:700;">${statusLabel}</span>
                   <button class="btn-icon" onclick="event.stopPropagation(); showPluginLogs('${p.id}', '${p.name}')" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="View Logs">
                     <i data-lucide="terminal" style="width:14px; height:14px; color:#94a3b8;"></i>
                   </button>
                   <button class="btn-icon" onclick="event.stopPropagation(); killPlugin('${p.id}')" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="Force Kill">
                     <i data-lucide="power" style="width:14px; height:14px; color:#f43f5e;"></i>
                   </button>
-                  <span class="status-pill ${statusClass}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
                 </div>
               </div>
               <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; font-family:monospace;">Local Daemon (v${p.version})</p>
@@ -8350,7 +8365,8 @@ async function loadHosts(forceFetch = false) {
                 <p style="font-size:0.75rem; color:var(--text-secondary); margin:0; font-family:monospace;">Local Daemon (v${p.version})</p>
               </div>
               <div style="display:flex; align-items:center; gap:16px;">
-                <div style="display:flex; gap:6.5px; border-left:1px solid var(--border-soft); padding-left:16px; align-items:center;">
+                <span class="status-pill ${statusClass}" style="font-size:0.6rem; padding: 2px 7px; font-weight:700;">${statusLabel}</span>
+                <div style="display:flex; gap:6px; border-left:1px solid var(--border-soft); padding-left:16px; align-items:center;">
                   <button class="btn-icon" onclick="event.stopPropagation(); showPluginLogs('${p.id}', '${p.name}')" style="padding:4px; opacity:0.8; background:none; border:none; cursor:pointer;" title="View Logs">
                     <i data-lucide="terminal" style="width:14px; height:14px; color:#94a3b8;"></i>
                   </button>
@@ -8358,7 +8374,6 @@ async function loadHosts(forceFetch = false) {
                     <i data-lucide="power" style="width:14px; height:14px; color:#f43f5e;"></i>
                   </button>
                 </div>
-                <span class="status-pill ${statusClass}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
               </div>
             </div>
             <div style="border-top:1px dashed rgba(239, 108, 0, 0.25); padding-top:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; width: 100%;">
@@ -8954,8 +8969,8 @@ window.openHostDetail = async function (hostId) {
           probersList.innerHTML = `<span style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">No checkers configured for this host node.</span>`;
         } else {
           probersList.innerHTML = hostMonitors.map(m => {
-            const statusVal = (cachedEntities && cachedEntities[`monitor-${m.id}-status`]) ? cachedEntities[`monitor-${m.id}-status`].value : 'unknown';
-            const latencyVal = (cachedEntities && cachedEntities[`monitor-${m.id}-latency`]) ? cachedEntities[`monitor-${m.id}-latency`].value : '--';
+            const statusVal = (cachedEntities && cachedEntities[`monitor-${m.id}-status`]) ? cachedEntities[`monitor-${m.id}-status`].value : (m.last_status || 'unknown');
+            const latencyVal = (cachedEntities && cachedEntities[`monitor-${m.id}-latency`]) ? cachedEntities[`monitor-${m.id}-latency`].value : (m.last_latency !== null && m.last_latency !== undefined ? m.last_latency : '--');
 
             const sensorIdStatus = window.getSensorIdForEntity('monitors', `monitor-${m.id}-status`, m.name, m.type);
             const sensorIdLatency = window.getSensorIdForEntity('monitors', `monitor-${m.id}-latency`, m.name, m.type);

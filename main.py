@@ -1405,6 +1405,11 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     global db_pool
+    try:
+        from plugins_manager import stop_all_plugins
+        await stop_all_plugins()
+    except Exception as e:
+        logger.error(f"Error stopping plugins on shutdown: {e}")
     if db_pool:
         await db_pool.close()
         logger.info("Database connection pool closed.")
@@ -1578,13 +1583,19 @@ async def execute_monitor_probe(mon_id: int, mtype: str, target: str, timeout: i
             def run_urllib():
                 nonlocal response_code
                 req = urllib.request.Request(url, headers={"User-Agent": "HomePulse-Monitor/1.0"})
+                # Allow self-signed and local certificates for internal homelab services
+                import ssl
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
                 try:
-                    with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    with urllib.request.urlopen(req, timeout=timeout, context=ctx if url.startswith("https://") else None) as resp:
                         response_code = str(resp.getcode())
                         return resp.getcode() < 400
                 except urllib.error.HTTPError as he:
                     response_code = str(he.code)
-                    return he.code < 400
+                    # 401 Unauthorized, 403 Forbidden, 405 Method Not Allowed mean server is running and responding
+                    return he.code < 400 or he.code in (401, 403, 405)
                 except Exception as ex:
                     response_code = "CONN_REFUSED"
                     return False
@@ -1620,8 +1631,9 @@ async def execute_monitor_probe(mon_id: int, mtype: str, target: str, timeout: i
             else:
                 host = host.split(":")[0]
                 
+            # Send 2 ping packets with 1s deadline to avoid single-packet transient drops
             proc = await asyncio.create_subprocess_exec(
-                "ping", "-c", "1", "-W", str(timeout), host,
+                "ping", "-c", "2", "-W", str(max(1, timeout // 2)), host,
                 stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
             )
             await asyncio.wait_for(proc.wait(), timeout=timeout + 2)
@@ -1629,9 +1641,25 @@ async def execute_monitor_probe(mon_id: int, mtype: str, target: str, timeout: i
             status_code = "ICMP_OK" if is_up else "PING_FAIL"
             
         elif mtype == "port":
-            host, port_str = target.split(":")
+            # Safely handle host and port (supports host:port, [ipv6]:port, or default port 80)
+            raw = target.strip()
+            if raw.startswith("[") and "]" in raw:
+                host_part = raw.split("]")[0][1:]
+                rest = raw.split("]")[1]
+                port = int(rest[1:]) if rest.startswith(":") else 80
+                host = host_part
+            elif ":" in raw:
+                host, port_str = raw.rsplit(":", 1)
+                try:
+                    port = int(port_str)
+                except ValueError:
+                    port = 80
+            else:
+                host = raw
+                port = 80
+
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, int(port_str)), timeout=timeout
+                asyncio.open_connection(host, port), timeout=timeout
             )
             writer.close()
             await writer.wait_closed()
@@ -1649,44 +1677,54 @@ async def execute_monitor_probe(mon_id: int, mtype: str, target: str, timeout: i
             status_code = "DNS_OK"
             
         elif mtype == "ssl":
+            clean_host = target.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+            import ssl
+            import socket
+            from datetime import datetime, timezone
+            
+            port = 443
+            if ":" in target.split("/")[0]:
+                try:
+                    port = int(target.split("/")[0].split(":")[1])
+                except Exception:
+                    pass
+            
+            # First try verified context, fall back to unverified for self-signed / local CA
+            cert_der = None
+            is_self_signed = False
             try:
-                clean_host = target.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
-                import ssl
-                import socket
-                from datetime import datetime
-                
-                context = ssl.create_default_context()
-                port = 443
-                if ":" in target.split("/")[0]:
-                    try:
-                        port = int(target.split("/")[0].split(":")[1])
-                    except:
-                        pass
-                
-                start_time = time.time()
+                verified_ctx = ssl.create_default_context()
                 with socket.create_connection((clean_host, port), timeout=timeout) as sock:
-                    with context.wrap_socket(sock, server_hostname=clean_host) as ssock:
-                        cert = ssock.getpeercert()
-                latency = round((time.time() - start_time) * 1000, 2)
-                
-                not_after_str = cert.get('notAfter')
-                if not_after_str:
-                    not_after = datetime.strptime(not_after_str, '%b %d %H:%M:%S %Y %Z')
-                    remaining_days = (not_after - datetime.utcnow()).days
+                    with verified_ctx.wrap_socket(sock, server_hostname=clean_host) as ssock:
+                        cert_der = ssock.getpeercert(binary_form=True)
+            except ssl.SSLCertVerificationError:
+                is_self_signed = True
+                unverified_ctx = ssl.create_default_context()
+                unverified_ctx.check_hostname = False
+                unverified_ctx.verify_mode = ssl.CERT_NONE
+                with socket.create_connection((clean_host, port), timeout=timeout) as sock:
+                    with unverified_ctx.wrap_socket(sock, server_hostname=clean_host) as ssock:
+                        cert_der = ssock.getpeercert(binary_form=True)
+
+            if cert_der:
+                try:
+                    from cryptography import x509
+                    cert_obj = x509.load_der_x509_certificate(cert_der)
+                    expiry = cert_obj.not_valid_after_utc if hasattr(cert_obj, 'not_valid_after_utc') else cert_obj.not_valid_after
+                    now = datetime.now(timezone.utc) if (hasattr(expiry, 'tzinfo') and expiry.tzinfo) else datetime.utcnow()
+                    remaining_days = (expiry - now).days
                     is_up = remaining_days > 0
+                    suffix = " (Self-Signed)" if is_self_signed else ""
                     if is_up:
-                        status_code = f"{remaining_days}d remaining"
+                        status_code = f"{remaining_days}d remaining{suffix}"
                     else:
-                        status_code = "Expired"
-                else:
-                    is_up = False
-                    status_code = "No Cert Date"
-            except Exception as ssl_err:
-                # Fallback to connection failure
+                        status_code = f"Expired{suffix}"
+                except Exception:
+                    is_up = True
+                    status_code = "SSL_OK"
+            else:
                 is_up = False
-                status_code = "SSL_ERROR"
-                latency = 0.0
-                logger.debug(f"SSL cert validation failed: {ssl_err}")
+                status_code = "No Cert Received"
             
     except Exception as e:
         logger.debug(f"Monitor probe {mon_id} failed: {e}")
@@ -3444,17 +3482,23 @@ async def get_monitor_logs(
         cand_keys = [entity_key]
         for pfx in ("sensor.", "binary_sensor.", "ping."):
             if entity_key.startswith(pfx):
-                cand_keys.append(entity_key[len(pfx):])
-
-        replaced_dash = entity_key.replace('_', '-')
-        if replaced_dash not in cand_keys:
-            cand_keys.append(replaced_dash)
+                unprefixed = entity_key[len(pfx):]
+                if unprefixed not in cand_keys:
+                    cand_keys.append(unprefixed)
+            else:
+                prefixed = f"{pfx}{entity_key}"
+                if prefixed not in cand_keys:
+                    cand_keys.append(prefixed)
 
         for k in list(cand_keys):
             if '_' in k:
                 dash_k = k.replace('_', '-')
                 if dash_k not in cand_keys:
                     cand_keys.append(dash_k)
+            if '-' in k:
+                und_k = k.replace('-', '_')
+                if und_k not in cand_keys:
+                    cand_keys.append(und_k)
 
         # Handle monitor id prefixes e.g. "mon-19", "monitor-19", or raw "19"
         raw_id = entity_key
