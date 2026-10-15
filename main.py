@@ -12,7 +12,8 @@ import urllib.error
 from pydantic import BaseModel, model_validator
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+import yaml
 import smtplib
 import secrets
 import hashlib
@@ -2157,8 +2158,10 @@ async def delete_api_key(kid: int):
 
 
 @app.get("/api/dashboard/config")
-async def get_dashboard_config():
+async def get_dashboard_config(format: Optional[str] = None):
     if not db_pool:
+        if format == "yaml":
+            return Response(content="views:\n  - id: main\n    title: Main\ncards: []\n", media_type="text/yaml")
         return JSONResponse(content={"widgets": [], "order": [], "tabs": []})
     try:
         async with db_pool.acquire() as conn:
@@ -2173,6 +2176,16 @@ async def get_dashboard_config():
             widgets = config.get("widgets", [])
             order = config.get("order", [])
             tabs = config.get("tabs", [{"id": "main", "name": "Main"}])
+
+            if format == "yaml":
+                yaml_data = {
+                    "title": "HomePulse Dashboard",
+                    "views": tabs,
+                    "cards": widgets
+                }
+                yaml_str = yaml.dump(yaml_data, sort_keys=False, indent=2)
+                return Response(content=yaml_str, media_type="text/yaml")
+
             return JSONResponse(content={"widgets": widgets, "order": order, "tabs": tabs})
     except Exception as e:
         logger.error(f"Error fetching dashboard config: {e}")
@@ -2211,6 +2224,82 @@ async def post_dashboard_config(payload: DashboardConfigPayload):
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Error saving dashboard config: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/dashboard/config/yaml")
+async def post_dashboard_config_yaml(request: Request):
+    """Save raw YAML dashboard configuration directly to database"""
+    if not db_pool:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "No database connection"})
+    try:
+        raw_body = await request.body()
+        yaml_text = raw_body.decode("utf-8")
+        parsed = yaml.safe_load(yaml_text)
+        if not parsed or not isinstance(parsed, (dict, list)):
+            return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid YAML structure"})
+
+        tabs = []
+        widgets = []
+
+        if isinstance(parsed, list):
+            tabs = [{"id": "main", "name": "Main"}]
+            widgets = parsed
+        elif isinstance(parsed, dict):
+            raw_tabs = parsed.get("views") or parsed.get("dashboards") or parsed.get("tabs") or [{"id": "main", "name": "Main"}]
+            for idx, t in enumerate(raw_tabs):
+                if isinstance(t, dict):
+                    tid = str(t.get("id") or t.get("path") or f"view_{idx+1}")
+                    tname = str(t.get("name") or t.get("title") or f"View {idx+1}")
+                    tabs.append({"id": tid, "name": tname})
+                    if isinstance(t.get("cards"), list):
+                        for c in t["cards"]:
+                            if isinstance(c, dict):
+                                c_copy = dict(c)
+                                if "tab" not in c_copy:
+                                    c_copy["tab"] = tid
+                                widgets.append(c_copy)
+            
+            raw_cards = parsed.get("cards") or parsed.get("widgets") or []
+            if isinstance(raw_cards, list):
+                widgets.extend(raw_cards)
+
+        if not tabs:
+            tabs = [{"id": "main", "name": "Main"}]
+
+        for idx, w in enumerate(widgets):
+            if isinstance(w, dict):
+                if not w.get("id"):
+                    w["id"] = f"widget-{int(time.time()*1000)}-{idx}"
+                if not w.get("tab") and tabs:
+                    w["tab"] = tabs[0]["id"]
+                if not w.get("type"):
+                    w["type"] = "sensor"
+
+        order = [w.get("id") for w in widgets if isinstance(w, dict) and w.get("id")]
+
+        async with db_pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO dashboard_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value=$2;",
+                "widgets", json.dumps(widgets)
+            )
+            await conn.execute(
+                "INSERT INTO dashboard_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value=$2;",
+                "order", json.dumps(order)
+            )
+            await conn.execute(
+                "INSERT INTO dashboard_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value=$2;",
+                "tabs", json.dumps(tabs)
+            )
+        
+        await manager.broadcast({
+            "event": "dashboard_config_updated",
+            "widgets": widgets,
+            "order": order,
+            "tabs": tabs
+        })
+        return {"status": "success", "views": len(tabs), "cards": len(widgets)}
+    except Exception as e:
+        logger.error(f"Error saving YAML dashboard config: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 

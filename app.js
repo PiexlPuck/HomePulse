@@ -3223,6 +3223,7 @@ function openCardEditor(widgetId, initialMode = 'ui') {
   // Initialize and bind YAML Live Preview
   const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
   if (yamlTextarea) {
+    setupYamlTextareaTabKey(yamlTextarea);
     updateYamlPreview(yamlTextarea.value);
 
     const onYamlInput = () => {
@@ -3260,15 +3261,28 @@ function saveWidgetSettings() {
     if (!parsedWidget || typeof parsedWidget !== 'object') {
       throw new Error("YAML must represent a valid Lovelace card object structure.");
     }
-    if (!parsedWidget.id || parsedWidget.id !== id) {
-      throw new Error("Do not modify the card's unique 'id' field.");
-    }
-    if (!parsedWidget.type) {
-      throw new Error("Card configuration is missing a 'type' field.");
+    // Auto-preserve or assign id and tab so user is not penalized if omitted
+    if (!parsedWidget.id) {
+      parsedWidget.id = id;
     }
     if (!parsedWidget.tab) {
-      throw new Error("Card configuration is missing a destination 'tab' field.");
+      parsedWidget.tab = widgets[widgetIdx].tab || activeTab;
     }
+    if (!parsedWidget.type) {
+      parsedWidget.type = widgets[widgetIdx].type || 'sensor';
+    }
+    // Normalize name/title
+    if (!parsedWidget.title && parsedWidget.name) {
+      parsedWidget.title = parsedWidget.name;
+    }
+    // Normalize entities
+    if (parsedWidget.entity && (!parsedWidget.entities || parsedWidget.entities.length === 0)) {
+      const norm = normalizeEntityRef(parsedWidget.entity);
+      if (norm) parsedWidget.entities = [norm];
+    } else if (Array.isArray(parsedWidget.entities)) {
+      parsedWidget.entities = parsedWidget.entities.map(normalizeEntityRef).filter(Boolean);
+    }
+    if (!parsedWidget.options) parsedWidget.options = {};
   } catch (e) {
     console.warn("Card YAML editor parse warning, saving as error widget: ", e);
     // Parse tab from string via regex, defaulting to activeTab
@@ -3292,6 +3306,9 @@ function saveWidgetSettings() {
 
   widgets[widgetIdx] = parsedWidget;
   localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
+
+  // Sync updated layout to backend database
+  syncLocalConfigToServer().catch(err => console.error("Failed to sync card to server:", err));
 
   closeModal('widget-editor-modal');
   buildDashboardCards(cachedEntities);
@@ -3808,32 +3825,282 @@ function addWidgetToGrid() {
   addAuditEntry('success', `Created new ${type} card on layout.`);
 }
 
-// --- Lovelace YAML Code Editor API ---
+// --- Lovelace YAML Code Editor & Normalization Suite ---
+
+function normalizeEntityRef(ent) {
+  if (!ent) return null;
+  if (typeof ent === 'object') {
+    if (ent.nodeId && ent.entityKey) return { nodeId: String(ent.nodeId), entityKey: String(ent.entityKey) };
+    if (ent.entity) {
+      const parts = String(ent.entity).split('.');
+      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join('.') } : { nodeId: 'system', entityKey: parts[0] };
+    }
+    if (ent.id) {
+      const parts = String(ent.id).split('.');
+      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join('.') } : { nodeId: 'system', entityKey: parts[0] };
+    }
+  } else if (typeof ent === 'string') {
+    const s = ent.trim();
+    if (!s) return null;
+    const parts = s.split('.');
+    if (parts.length > 1) {
+      return { nodeId: parts[0], entityKey: parts.slice(1).join('.') };
+    }
+    return { nodeId: 'system', entityKey: s };
+  }
+  return null;
+}
+
+function normalizeCardObject(rawCard, defaultTab = 'main', index = 0) {
+  if (!rawCard || typeof rawCard !== 'object') return null;
+
+  const id = rawCard.id || ('widget-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 5) + '-' + index);
+  const type = rawCard.type || 'sensor';
+  const tab = rawCard.tab || rawCard.view || defaultTab || 'main';
+  const title = rawCard.title !== undefined ? rawCard.title : (rawCard.name !== undefined ? rawCard.name : (rawCard.header || ''));
+
+  // Extract entities
+  let entities = [];
+  if (Array.isArray(rawCard.entities)) {
+    entities = rawCard.entities.map(normalizeEntityRef).filter(Boolean);
+  } else if (rawCard.entity) {
+    const normalized = normalizeEntityRef(rawCard.entity);
+    if (normalized) entities.push(normalized);
+  } else if (Array.isArray(rawCard.cards)) {
+    rawCard.cards.forEach(c => {
+      if (c && c.entity) {
+        const normalized = normalizeEntityRef(c.entity);
+        if (normalized) entities.push(normalized);
+      }
+    });
+  }
+
+  // Extract options
+  const options = { ...(rawCard.options || {}) };
+  if (rawCard.unit !== undefined) options.unit = rawCard.unit;
+  if (rawCard.unit_of_measurement !== undefined) options.unit = rawCard.unit_of_measurement;
+  if (rawCard.color !== undefined) options.color = rawCard.color;
+  if (rawCard.gridWidth !== undefined) options.gridWidth = parseInt(rawCard.gridWidth, 10);
+  else if (rawCard.width !== undefined) options.gridWidth = parseInt(rawCard.width, 10);
+  if (rawCard.gridHeight !== undefined) options.gridHeight = parseInt(rawCard.gridHeight, 10);
+  else if (rawCard.height !== undefined) options.gridHeight = parseInt(rawCard.height, 10);
+  if (rawCard.min !== undefined) options.min = parseFloat(rawCard.min);
+  if (rawCard.max !== undefined) options.max = parseFloat(rawCard.max);
+  if (rawCard.icon !== undefined) options.icon = rawCard.icon;
+  if (rawCard.severity !== undefined) options.severity = rawCard.severity;
+
+  return {
+    id,
+    type,
+    tab,
+    title,
+    entities,
+    options
+  };
+}
+
+function normalizeDashboardConfig(input) {
+  if (!input) throw new Error("Empty YAML configuration.");
+
+  let dashboards = [];
+  let widgets = [];
+
+  // Case A: Input is an Array of cards/widgets directly
+  if (Array.isArray(input)) {
+    const currentTabs = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
+    dashboards = currentTabs.length > 0 ? currentTabs : [{ id: 'main', name: 'Main' }];
+    const defaultTab = activeTab || dashboards[0].id;
+    widgets = input.map((item, idx) => normalizeCardObject(item, defaultTab, idx)).filter(Boolean);
+    return { dashboards, widgets };
+  }
+
+  if (typeof input !== 'object') {
+    throw new Error("YAML layout content must be a structured configuration object or list of cards.");
+  }
+
+  // Case B: Lovelace HA style with `views:`
+  if (Array.isArray(input.views)) {
+    input.views.forEach((v, vIdx) => {
+      const viewId = String(v.path || v.id || ('view_' + (vIdx + 1))).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+      const viewName = v.title || v.name || ('View ' + (vIdx + 1));
+      dashboards.push({ id: viewId, name: viewName });
+
+      if (Array.isArray(v.cards)) {
+        v.cards.forEach((card, cIdx) => {
+          const w = normalizeCardObject(card, viewId, cIdx);
+          if (w) widgets.push(w);
+        });
+      }
+    });
+  }
+
+  // Case C: Standard HomePulse style with `dashboards:` or `tabs:`
+  const rawDashboards = input.dashboards || input.tabs;
+  if (Array.isArray(rawDashboards)) {
+    rawDashboards.forEach((d, dIdx) => {
+      const dId = String(d.id || d.path || ('view_' + (dIdx + 1))).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+      const dName = d.name || d.title || ('View ' + (dIdx + 1));
+      if (!dashboards.some(existing => existing.id === dId)) {
+        dashboards.push({ id: dId, name: dName });
+      }
+    });
+  }
+
+  // If no dashboards found yet, default to existing or main
+  if (dashboards.length === 0) {
+    const existing = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
+    dashboards = existing.length > 0 ? existing : [{ id: 'main', name: 'Main' }];
+  }
+
+  // Now extract root widgets/cards if any
+  const rawWidgets = input.widgets || input.cards;
+  if (Array.isArray(rawWidgets)) {
+    const defaultTab = dashboards[0].id;
+    rawWidgets.forEach((w, idx) => {
+      const cardObj = normalizeCardObject(w, defaultTab, idx);
+      if (cardObj) widgets.push(cardObj);
+    });
+  }
+
+  if (widgets.length === 0 && (!input.widgets && !input.cards && !input.views)) {
+    throw new Error("YAML does not contain any cards or widgets ('cards:', 'widgets:', or 'views:').");
+  }
+
+  return { dashboards, widgets };
+}
+
+function setupYamlTextareaTabKey(textarea) {
+  if (!textarea || textarea._tabKeyBound) return;
+  textarea._tabKeyBound = true;
+  textarea.addEventListener('keydown', function (e) {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = this.selectionStart;
+      const end = this.selectionEnd;
+      const val = this.value;
+
+      if (e.shiftKey) {
+        // Outdent 2 spaces
+        const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+        if (val.substr(lineStart, 2) === '  ') {
+          this.value = val.substring(0, lineStart) + val.substring(lineStart + 2);
+          this.selectionStart = this.selectionEnd = Math.max(lineStart, start - 2);
+        }
+      } else {
+        // Indent 2 spaces
+        this.value = val.substring(0, start) + '  ' + val.substring(end);
+        this.selectionStart = this.selectionEnd = start + 2;
+      }
+      this.dispatchEvent(new Event('input'));
+    }
+  });
+}
+
+function updateDashboardYamlValidation(yamlStr) {
+  const statusEl = document.getElementById('yaml-config-status');
+  const statusText = document.getElementById('yaml-config-status-text');
+  const errorBanner = document.getElementById('yaml-error-banner');
+  const footerStats = document.getElementById('yaml-footer-stats');
+
+  if (!statusEl) return;
+
+  try {
+    if (!yamlStr || !yamlStr.trim()) {
+      statusEl.style.background = 'rgba(245, 158, 11, 0.15)';
+      statusEl.style.color = '#f59e0b';
+      statusEl.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+      statusEl.innerHTML = '<i data-lucide="alert-triangle" style="width:13px;height:13px;"></i><span>Empty Config</span>';
+      if (errorBanner) errorBanner.style.display = 'none';
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
+
+    const parsed = jsyaml.load(yamlStr);
+    const normalized = normalizeDashboardConfig(parsed);
+
+    const viewsCount = normalized.dashboards.length;
+    const cardsCount = normalized.widgets.length;
+
+    statusEl.style.background = 'rgba(16, 185, 129, 0.15)';
+    statusEl.style.color = '#10b981';
+    statusEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+    statusEl.innerHTML = `<i data-lucide="check-circle" style="width:13px;height:13px;"></i><span>Valid YAML (${viewsCount} view${viewsCount === 1 ? '' : 's'}, ${cardsCount} card${cardsCount === 1 ? '' : 's'})</span>`;
+
+    if (errorBanner) errorBanner.style.display = 'none';
+    if (footerStats) {
+      footerStats.textContent = `Parsed: ${viewsCount} views, ${cardsCount} cards. Press Tab to indent (2 spaces).`;
+    }
+    if (window.lucide) window.lucide.createIcons();
+  } catch (err) {
+    statusEl.style.background = 'rgba(244, 63, 94, 0.15)';
+    statusEl.style.color = '#f43f5e';
+    statusEl.style.borderColor = 'rgba(244, 63, 94, 0.3)';
+
+    let msg = err.message || 'Syntax Error';
+    if (err.mark && err.mark.line !== undefined) {
+      msg = `Line ${err.mark.line + 1}: ${err.reason || err.message}`;
+    }
+    statusEl.innerHTML = `<i data-lucide="alert-circle" style="width:13px;height:13px;"></i><span>${escapeHtml(msg.slice(0, 35))}</span>`;
+
+    if (errorBanner) {
+      errorBanner.textContent = "YAML Error: " + err.message;
+      errorBanner.style.display = 'block';
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
 
 function openYAMLConfigEditor() {
   const errorBanner = document.getElementById('yaml-error-banner');
   if (errorBanner) errorBanner.style.display = 'none';
 
   // Retrieve current state from localStorage
-  const dashboards = JSON.parse(localStorage.getItem('hp_dashboards')) || [
+  const dashboards = JSON.parse(localStorage.getItem('hp_dashboards') || 'null') || [
     { id: 'main', name: 'Main' }
   ];
-  const widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets')) || [];
+  const widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || 'null') || [];
 
-  // Construct unified object
-  const configObj = {
-    dashboards: dashboards,
-    widgets: widgets
+  // Generate clean Lovelace-compatible YAML export
+  const views = dashboards.map(d => ({
+    id: d.id,
+    title: d.name || d.title || d.id
+  }));
+
+  const cards = widgets.map(w => {
+    const card = {
+      type: w.type || 'sensor',
+      title: w.title !== undefined ? w.title : '',
+      tab: w.tab || 'main'
+    };
+    if (w.entities && w.entities.length === 1) {
+      card.entity = `${w.entities[0].nodeId}.${w.entities[0].entityKey}`;
+    } else if (w.entities && w.entities.length > 1) {
+      card.entities = w.entities.map(e => `${e.nodeId}.${e.entityKey}`);
+    }
+    if (w.options && Object.keys(w.options).length > 0) {
+      card.options = w.options;
+    }
+    return card;
+  });
+
+  const exportObj = {
+    title: "HomePulse Dashboard",
+    views: views,
+    cards: cards
   };
 
   try {
-    // Convert to YAML using js-yaml library
-    const yamlContent = jsyaml.dump(configObj, { indent: 2, noRefs: true });
+    const yamlContent = jsyaml.dump(exportObj, { indent: 2, noRefs: true, lineWidth: -1 });
     const textarea = document.getElementById('yaml-editor-textarea');
     if (textarea) {
       textarea.value = yamlContent;
+      setupYamlTextareaTabKey(textarea);
+      updateDashboardYamlValidation(yamlContent);
+
+      textarea.oninput = () => {
+        updateDashboardYamlValidation(textarea.value);
+      };
     }
-    // Open modal
     openModal('yaml-config-modal');
   } catch (e) {
     console.error("YAML serialization failed: ", e);
@@ -3841,80 +4108,43 @@ function openYAMLConfigEditor() {
   }
 }
 
-function saveYAMLConfigSettings() {
+async function saveYAMLConfigSettings() {
   const textarea = document.getElementById('yaml-editor-textarea');
   if (!textarea) return;
 
-  const yamlText = textarea.value;
+  const yamlText = textarea.value.trim();
   const errorBanner = document.getElementById('yaml-error-banner');
 
   try {
     if (errorBanner) errorBanner.style.display = 'none';
 
-    // Parse YAML content
-    const configObj = jsyaml.load(yamlText);
-
-    // Validation check
-    if (!configObj || typeof configObj !== 'object') {
-      throw new Error("YAML layout content must be a structured configuration object with dashboards and widgets lists.");
+    if (!yamlText) {
+      throw new Error("YAML configuration cannot be empty.");
     }
 
-    if (!Array.isArray(configObj.dashboards)) {
-      throw new Error("Missing 'dashboards' configuration list.");
+    const parsed = jsyaml.load(yamlText);
+    const normalized = normalizeDashboardConfig(parsed);
+
+    // Save arrays into localStorage
+    localStorage.setItem('hp_dashboards', JSON.stringify(normalized.dashboards));
+    localStorage.setItem('hp_dashboard_widgets', JSON.stringify(normalized.widgets));
+
+    // Reset activeTab if deleted
+    const tabExists = normalized.dashboards.some(db => db.id === activeTab);
+    if (!tabExists && normalized.dashboards.length > 0) {
+      activeTab = normalized.dashboards[0].id;
     }
 
-    if (!Array.isArray(configObj.widgets)) {
-      throw new Error("Missing 'widgets' configuration list.");
-    }
+    // Persist to Postgres database via server API
+    await syncLocalConfigToServer();
 
-    // Validate each widget structure
-    configObj.widgets.forEach((widget, idx) => {
-      if (!widget.id) {
-        throw new Error(`Widget at index ${idx} is missing a unique 'id' field.`);
-      }
-      if (!widget.type) {
-        throw new Error(`Widget '${widget.id}' is missing a 'type' field.`);
-      }
-      if (!widget.tab) {
-        throw new Error(`Widget '${widget.id}' is missing a destination 'tab' identifier.`);
-      }
-      if (!widget.entities) {
-        widget.entities = [];
-      } else if (!Array.isArray(widget.entities)) {
-        throw new Error(`Widget '${widget.id}' 'entities' field must be an array of { nodeId, entityKey } structures.`);
-      }
-      if (!widget.options) {
-        widget.options = {};
-      }
-    });
-
-    // Clean/Verify dashboards
-    configObj.dashboards.forEach((db, idx) => {
-      if (!db.id) {
-        throw new Error(`Dashboard view at index ${idx} must contain a unique 'id' code.`);
-      }
-      if (!db.name) {
-        throw new Error(`Dashboard view '${db.id}' must contain a display 'name'.`);
-      }
-    });
-
-    // Persist arrays into localStorage
-    localStorage.setItem('hp_dashboards', JSON.stringify(configObj.dashboards));
-    localStorage.setItem('hp_dashboard_widgets', JSON.stringify(configObj.widgets));
-
-    // Reset activeTab if it has been deleted in YAML
-    const tabExists = configObj.dashboards.some(db => db.id === activeTab);
-    if (!tabExists && configObj.dashboards.length > 0) {
-      activeTab = configObj.dashboards[0].id;
-    }
-
-    // Refresh dashboard grids and views UI
+    // Refresh UI
     closeModal('yaml-config-modal');
     renderDashboards();
     buildDashboardCards(cachedEntities);
 
-    // Force updates to audit list
-    addAuditEntry('info', "Dashboard configuration updated and validated via raw YAML settings editor.");
+    showToast?.("Dashboard YAML configuration applied and saved.");
+    addAuditEntry('success', "Dashboard configuration updated and validated via YAML settings editor.");
 
   } catch (e) {
     console.error("YAML parsing error: ", e);
@@ -3928,6 +4158,135 @@ function saveYAMLConfigSettings() {
     }
   }
 }
+
+window.formatDashboardYAML = function () {
+  const textarea = document.getElementById('yaml-editor-textarea');
+  if (!textarea) return;
+  try {
+    const parsed = jsyaml.load(textarea.value);
+    const normalized = normalizeDashboardConfig(parsed);
+
+    const views = normalized.dashboards.map(d => ({
+      id: d.id,
+      title: d.name || d.title || d.id
+    }));
+
+    const cards = normalized.widgets.map(w => {
+      const card = {
+        type: w.type || 'sensor',
+        title: w.title !== undefined ? w.title : '',
+        tab: w.tab || 'main'
+      };
+      if (w.entities && w.entities.length === 1) {
+        card.entity = `${w.entities[0].nodeId}.${w.entities[0].entityKey}`;
+      } else if (w.entities && w.entities.length > 1) {
+        card.entities = w.entities.map(e => `${e.nodeId}.${e.entityKey}`);
+      }
+      if (w.options && Object.keys(w.options).length > 0) {
+        card.options = w.options;
+      }
+      return card;
+    });
+
+    const exportObj = {
+      title: "HomePulse Dashboard",
+      views: views,
+      cards: cards
+    };
+
+    textarea.value = jsyaml.dump(exportObj, { indent: 2, noRefs: true, lineWidth: -1 });
+    updateDashboardYamlValidation(textarea.value);
+    showToast?.("YAML formatted cleanly.");
+  } catch (err) {
+    alert("Cannot format invalid YAML: " + err.message);
+  }
+};
+
+window.copyDashboardYAML = function () {
+  const textarea = document.getElementById('yaml-editor-textarea');
+  if (!textarea) return;
+  navigator.clipboard.writeText(textarea.value).then(() => {
+    const copyText = document.getElementById('copy-yaml-text');
+    if (copyText) {
+      copyText.textContent = "Copied!";
+      setTimeout(() => { if (copyText) copyText.textContent = "Copy"; }, 2000);
+    }
+    showToast?.("Dashboard YAML copied to clipboard.");
+  }).catch(() => {
+    textarea.select();
+    document.execCommand('copy');
+    showToast?.("Copied to clipboard.");
+  });
+};
+
+window.downloadDashboardYAML = function () {
+  const textarea = document.getElementById('yaml-editor-textarea');
+  if (!textarea) return;
+  const blob = new Blob([textarea.value], { type: 'text/yaml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `homepulse-dashboard-${new Date().toISOString().slice(0, 10)}.yaml`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast?.("Dashboard YAML exported.");
+};
+
+window.importDashboardYAMLFile = function (event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const content = e.target.result;
+    const textarea = document.getElementById('yaml-editor-textarea');
+    if (textarea) {
+      textarea.value = content;
+      updateDashboardYamlValidation(content);
+      showToast?.(`Loaded '${file.name}'. Click 'Save & Apply' to activate.`);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+};
+
+window.insertYamlSnippet = function (type) {
+  if (!type) return;
+  const textarea = document.getElementById('yaml-editor-textarea');
+  if (!textarea) return;
+
+  const currentTab = activeTab || 'main';
+  let snippet = '';
+
+  switch (type) {
+    case 'sensor':
+      snippet = `\n  - type: sensor\n    title: "New Sensor"\n    tab: "${currentTab}"\n    entity: "system.cpu_usage"\n    options:\n      unit: "%"\n      color: "var(--color-optimal)"\n      gridWidth: 1\n      gridHeight: 1\n`;
+      break;
+    case 'gauge':
+      snippet = `\n  - type: gauge\n    title: "Resource Gauge"\n    tab: "${currentTab}"\n    entity: "system.memory_usage"\n    options:\n      min: 0\n      max: 100\n      unit: "%"\n      color: "var(--accent-orange)"\n      gridWidth: 1\n      gridHeight: 1\n`;
+      break;
+    case 'control':
+      snippet = `\n  - type: control\n    title: "Toggle Control"\n    tab: "${currentTab}"\n    entity: "plugins.service_switch"\n    options:\n      color: "var(--accent-blue)"\n      gridWidth: 1\n      gridHeight: 1\n`;
+      break;
+    case 'entities':
+      snippet = `\n  - type: entities\n    title: "System Overview"\n    tab: "${currentTab}"\n    entities:\n      - system.cpu_usage\n      - system.memory_usage\n      - system.disk_usage\n    options:\n      gridWidth: 2\n      gridHeight: 2\n`;
+      break;
+    case 'glance':
+      snippet = `\n  - type: glance\n    title: "Quick Glance"\n    tab: "${currentTab}"\n    entities:\n      - system.cpu_usage\n      - system.temperature\n    options:\n      gridWidth: 2\n      gridHeight: 1\n`;
+      break;
+  }
+
+  if (snippet) {
+    const val = textarea.value;
+    const pos = textarea.selectionStart;
+    textarea.value = val.substring(0, pos) + snippet + val.substring(pos);
+    textarea.selectionStart = textarea.selectionEnd = pos + snippet.length;
+    textarea.focus();
+    updateDashboardYamlValidation(textarea.value);
+    showToast?.(`Inserted ${type} card template.`);
+  }
+};
 
 // Built-in Background Monitor Client Functions
 // Multi-Level Standalone Probes Manager JS Engine

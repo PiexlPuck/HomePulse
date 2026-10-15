@@ -146,7 +146,7 @@
           <i data-lucide="folder-plus"></i> Add View
         </button>
         <button class="btn-toolbar" onclick="openYAMLConfigEditor()">
-          <i data-lucide="code"></i> Raw YAML
+          <i data-lucide="code"></i> YAML Config
         </button>
         <button class="btn-toolbar btn-toolbar-done" onclick="toggleEditMode()">
           <i data-lucide="check"></i> Exit Edit Mode
@@ -2005,29 +2005,77 @@
 
   <!-- YAML Configuration Editor Modal Overlay -->
   <div class="modal-overlay" id="yaml-config-modal" style="display: none;">
-      <div class="modal-content"
-        style="width: 85%; max-width: 900px; height: 80vh; display: flex; flex-direction: column;">
-        <div class="modal-header">
-          <h3>Raw YAML Configuration Editor</h3>
-          <button class="modal-close-btn" onclick="closeModal('yaml-config-modal')">&times;</button>
-        </div>
-        <div class="modal-body"
-          style="flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 12px; overflow: hidden;">
-          <span style="font-size:0.75rem; color:var(--text-secondary);">Directly edit tabs and card properties using
-            Lovelace syntax layout. Use 2 spaces for nested indentation.</span>
-          <div id="yaml-error-banner"
-            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 10px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
+    <div class="modal-content"
+      style="width: 90%; max-width: 950px; height: 85vh; display: flex; flex-direction: column; background: #121216; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,0.85);">
+      <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, rgba(239, 108, 0, 0.06), transparent);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(239, 108, 0, 0.15); display: flex; align-items: center; justify-content: center; color: var(--accent-orange);">
+            <i data-lucide="file-code" style="width: 18px; height: 18px;"></i>
           </div>
-          <textarea id="yaml-editor-textarea"
-            style="flex: 1; background: #121214; border: 1px solid var(--border-soft); border-radius: 6px; color: #e4e4e7; font-family: monospace; font-size: 0.8rem; padding: 14px; line-height: 1.5; resize: none; outline: none;"></textarea>
+          <div>
+            <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #fff;">Dashboard YAML Configuration</h3>
+            <span style="font-size: 0.72rem; color: var(--text-secondary);">Directly edit views, cards, and Lovelace layouts with live schema validation</span>
+          </div>
         </div>
-        <div class="modal-footer"
-          style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 12px;">
+        <button class="modal-close-btn" onclick="closeModal('yaml-config-modal')">&times;</button>
+      </div>
+
+      <!-- Action Toolbar -->
+      <div style="padding: 10px 20px; background: rgba(255, 255, 255, 0.02); border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <div id="yaml-config-status" style="display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 600; padding: 4px 10px; border-radius: 20px; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">
+            <i data-lucide="check-circle" style="width: 13px; height: 13px;"></i>
+            <span id="yaml-config-status-text">Valid YAML</span>
+          </div>
+          <select id="yaml-snippet-select" onchange="insertYamlSnippet(this.value); this.value='';" style="background: #1c1c22; color: #e4e4e7; border: 1px solid var(--border-soft); border-radius: 6px; font-size: 0.72rem; padding: 4px 8px; outline: none; cursor: pointer;">
+            <option value="">+ Insert Card Template...</option>
+            <option value="sensor">Sensor Card</option>
+            <option value="gauge">Gauge Card</option>
+            <option value="control">Control Switch Card</option>
+            <option value="entities">Entities List Card</option>
+            <option value="glance">Glance Card</option>
+          </select>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="formatDashboardYAML()" title="Prettify and format YAML" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
+            <i data-lucide="align-left" style="width: 13px; height: 13px;"></i> Prettify
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-yaml" onclick="copyDashboardYAML()" title="Copy YAML to clipboard" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
+            <i data-lucide="copy" style="width: 13px; height: 13px;"></i> <span id="copy-yaml-text">Copy</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="downloadDashboardYAML()" title="Export configuration to .yaml file" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
+            <i data-lucide="download" style="width: 13px; height: 13px;"></i> Export
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('yaml-file-import-input').click()" title="Import from .yaml file" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
+            <i data-lucide="upload" style="width: 13px; height: 13px;"></i> Import
+          </button>
+          <input type="file" id="yaml-file-import-input" accept=".yaml,.yml,.txt" style="display: none;" onchange="importDashboardYAMLFile(event)">
+        </div>
+      </div>
+
+      <div class="modal-body"
+        style="flex: 1; display: flex; flex-direction: column; padding: 14px 20px; gap: 8px; overflow: hidden;">
+        <div id="yaml-error-banner"
+          style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 10px 14px; border-radius: 6px; font-size: 0.74rem; font-family: monospace; white-space: pre-wrap;">
+        </div>
+        <textarea id="yaml-editor-textarea" spellcheck="false"
+          placeholder="# Paste or edit your Lovelace dashboard YAML here..."
+          style="flex: 1; background: #0c0c0e; border: 1px solid var(--border-soft); border-radius: 8px; color: #f4f4f5; font-family: 'Fira Code', 'Cascadia Code', Consolas, Monaco, monospace; font-size: 0.82rem; padding: 14px; line-height: 1.5; resize: none; outline: none; tab-size: 2; box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);"></textarea>
+      </div>
+
+      <div class="modal-footer"
+        style="padding: 12px 20px; border-top: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.01);">
+        <span style="font-size:0.7rem; color:var(--text-secondary); font-family:monospace;" id="yaml-footer-stats">Tip: Press Tab to indent (2 spaces). Lovelace syntax supported.</span>
+        <div style="display: flex; gap: 10px;">
           <button class="btn btn-secondary" onclick="closeModal('yaml-config-modal')">Close</button>
-          <button class="btn btn-primary" onclick="saveYAMLConfigSettings()">Save Config</button>
+          <button class="btn btn-primary" id="btn-save-yaml-config" onclick="saveYAMLConfigSettings()" style="display:flex; align-items:center; gap:6px;">
+            <i data-lucide="check" style="width: 14px; height: 14px;"></i> Save & Apply
+          </button>
         </div>
       </div>
     </div>
+  </div>
 
     <!-- Lucide Icons CDN -->
     <script src="https://unpkg.com/lucide@latest"></script>
