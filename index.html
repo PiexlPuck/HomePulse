@@ -146,6 +146,7 @@
           <i data-lucide="folder-plus"></i> Add View
         </button>
         <button class="btn-toolbar" onclick="openYAMLConfigEditor()">
+          <i data-lucide="code"></i> Raw YAML
           <i data-lucide="code"></i> YAML Config
         </button>
         <button class="btn-toolbar btn-toolbar-done" onclick="toggleEditMode()">
@@ -2005,6 +2006,11 @@
 
   <!-- YAML Configuration Editor Modal Overlay -->
   <div class="modal-overlay" id="yaml-config-modal" style="display: none;">
+      <div class="modal-content"
+        style="width: 85%; max-width: 900px; height: 80vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h3>Raw YAML Configuration Editor</h3>
+          <button class="modal-close-btn" onclick="closeModal('yaml-config-modal')">&times;</button>
     <div class="modal-content"
       style="width: 90%; max-width: 950px; height: 85vh; display: flex; flex-direction: column; background: #121216; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,0.85);">
       <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, rgba(239, 108, 0, 0.06), transparent);">
@@ -2017,6 +2023,12 @@
             <span style="font-size: 0.72rem; color: var(--text-secondary);">Directly edit views, cards, and Lovelace layouts with live schema validation</span>
           </div>
         </div>
+        <div class="modal-body"
+          style="flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 12px; overflow: hidden;">
+          <span style="font-size:0.75rem; color:var(--text-secondary);">Directly edit tabs and card properties using
+            Lovelace syntax layout. Use 2 spaces for nested indentation.</span>
+          <div id="yaml-error-banner"
+            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 10px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
         <button class="modal-close-btn" onclick="closeModal('yaml-config-modal')">&times;</button>
       </div>
 
@@ -2027,6 +2039,8 @@
             <i data-lucide="check-circle" style="width: 13px; height: 13px;"></i>
             <span id="yaml-config-status-text">Valid YAML</span>
           </div>
+          <textarea id="yaml-editor-textarea"
+            style="flex: 1; background: #121214; border: 1px solid var(--border-soft); border-radius: 6px; color: #e4e4e7; font-family: monospace; font-size: 0.8rem; padding: 14px; line-height: 1.5; resize: none; outline: none;"></textarea>
           <select id="yaml-snippet-select" onchange="insertYamlSnippet(this.value); this.value='';" style="background: #1c1c22; color: #e4e4e7; border: 1px solid var(--border-soft); border-radius: 6px; font-size: 0.72rem; padding: 4px 8px; outline: none; cursor: pointer;">
             <option value="">+ Insert Card Template...</option>
             <option value="sensor">Sensor Card</option>
@@ -2036,6 +2050,8 @@
             <option value="glance">Glance Card</option>
           </select>
         </div>
+        <div class="modal-footer"
+          style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 12px;">
 
         <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
           <button type="button" class="btn btn-secondary btn-sm" onclick="formatDashboardYAML()" title="Prettify and format YAML" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
@@ -2069,6 +2085,7 @@
         <span style="font-size:0.7rem; color:var(--text-secondary); font-family:monospace;" id="yaml-footer-stats">Tip: Press Tab to indent (2 spaces). Lovelace syntax supported.</span>
         <div style="display: flex; gap: 10px;">
           <button class="btn btn-secondary" onclick="closeModal('yaml-config-modal')">Close</button>
+          <button class="btn btn-primary" onclick="saveYAMLConfigSettings()">Save Config</button>
           <button class="btn btn-primary" id="btn-save-yaml-config" onclick="saveYAMLConfigSettings()" style="display:flex; align-items:center; gap:6px;">
             <i data-lucide="check" style="width: 14px; height: 14px;"></i> Save & Apply
           </button>
