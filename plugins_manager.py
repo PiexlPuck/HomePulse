@@ -111,6 +111,55 @@ os.makedirs(PLUGINS_DIR, exist_ok=True)
 class PluginConfigPayload(BaseModel):
     config: Dict[str, Any]
 
+def _enrich_plugin_entity(ent: Dict[str, Any], plugin_id: Optional[str] = None) -> Dict[str, Any]:
+    """Ensures plugin entities have top-level unit, status, status_type, value_type, and plugin_id for Dashboard/Alert compatibility."""
+    attrs = ent.get("attributes")
+    if not isinstance(attrs, dict):
+        attrs = {}
+        ent["attributes"] = attrs
+
+    if plugin_id:
+        ent["plugin_id"] = plugin_id
+    elif not ent.get("plugin_id"):
+        nid = str(ent.get("node_id", ""))
+        ekey = str(ent.get("entity_key", ""))
+        if nid and nid != "plugins":
+            ent["plugin_id"] = nid.replace("plugin-", "", 1)
+        elif ekey.startswith("plugin-") and ekey.endswith("-status"):
+            ent["plugin_id"] = ekey[len("plugin-"):-len("-status")]
+
+    # Promote unit from attributes to top-level
+    if not ent.get("unit") and attrs.get("unit"):
+        ent["unit"] = str(attrs["unit"])
+
+    val = ent.get("value")
+    val_str = "" if val is None else str(val).strip()
+    val_upper = val_str.upper()
+
+    # Infer value_type if generic string
+    if ent.get("value_type") in (None, "", "string") and ent.get("type") != "binary_sensor":
+        try:
+            float(val_str)
+            ent["value_type"] = "float"
+        except ValueError:
+            ent["value_type"] = "string"
+
+    attr_status = str(attrs.get("status", "")).strip().lower()
+    if attr_status == "stopped" or val_upper == "STOPPED":
+        ent["status"] = "Stopped"
+        ent["status_type"] = "default"
+    elif attr_status == "crashed" or val_upper in ("CRASHED", "OFF", "OFFLINE", "DOWN", "FAILED", "CRITICAL", "ERROR"):
+        ent["status"] = "Offline" if val_upper in ("OFF", "OFFLINE", "DOWN") else "Faulted"
+        ent["status_type"] = "critical"
+    elif attr_status == "idle" or val_upper in ("WARNING", "ON BATTERY", "IDLE", "DEGRADED", "UNKNOWN"):
+        ent["status"] = "Warning"
+        ent["status_type"] = "caution"
+    else:
+        ent["status"] = "Optimal"
+        ent["status_type"] = "optimal"
+
+    return ent
+
 def init_plugins_manager(pool, manager, states):
     global db_pool, ws_manager, entity_states, watchdog_task
     db_pool = pool
@@ -161,7 +210,7 @@ async def db_migration_and_startup():
                                 attrs = r["attributes"]
                                 if isinstance(attrs, str):
                                     attrs = json.loads(attrs)
-                                entity_states[r["entity_key"]] = {
+                                entity_states[r["entity_key"]] = _enrich_plugin_entity({
                                     "node_id": r["node_id"],
                                     "entity_key": r["entity_key"],
                                     "name": r["name"],
@@ -169,7 +218,7 @@ async def db_migration_and_startup():
                                     "value": r["value"],
                                     "value_type": r["value_type"],
                                     "attributes": attrs or {}
-                                }
+                                }, r["plugin_id"])
                             except Exception as parse_err:
                                 logger.error(f"Error parsing entity state attributes for {r['entity_key']}: {parse_err}")
                     logger.info(f"Restored {len(rows)} plugin entity states from DB.")
@@ -309,7 +358,7 @@ async def start_plugin(plugin_id: str, config: Any):
         # Update entity state to reflect plugin is running
         entity_key = f"plugin-{plugin_id}-status"
         if entity_states is not None:
-            entity_states[entity_key] = {
+            entity_states[entity_key] = _enrich_plugin_entity({
                 "node_id": "plugins",
                 "entity_key": entity_key,
                 "name": f"Plugin: {manifest.get('name', plugin_id)}",
@@ -319,7 +368,7 @@ async def start_plugin(plugin_id: str, config: Any):
                     "version": manifest.get("version", "1.0.0"),
                     "status": "running"
                 }
-            }
+            }, plugin_id)
             if db_pool:
                 try:
                     attrs_json = json.dumps(entity_states[entity_key]["attributes"])
@@ -349,7 +398,7 @@ async def stop_or_idle_plugin_entities(plugin_id: str, status_val: str = "stoppe
     if entity_states is not None:
         for entity_key, ent in list(entity_states.items()):
             # Check if this entity is related to the plugin
-            if ent.get("node_id") == plugin_id or ent.get("node_id") == f"plugin-{plugin_id}" or entity_key.startswith(f"plugin-{plugin_id}-"):
+            if ent.get("plugin_id") == plugin_id or ent.get("node_id") == plugin_id or ent.get("node_id") == f"plugin-{plugin_id}" or entity_key.startswith(f"plugin-{plugin_id}-"):
                 if entity_key == f"plugin-{plugin_id}-status":
                     ent["value"] = "OFF"
                     if "attributes" not in ent or ent["attributes"] is None:
@@ -370,6 +419,8 @@ async def stop_or_idle_plugin_entities(plugin_id: str, status_val: str = "stoppe
                         ent["attributes"] = {}
                     ent["attributes"]["status"] = status_val
                 
+                _enrich_plugin_entity(ent, plugin_id)
+
                 # Persist to database
                 if db_pool:
                     try:
@@ -589,10 +640,19 @@ async def get_installed():
                     logger.error(f"Failed reading manifest for installed plugin {f_name}: {e}")
     return installed
 
+def _resolve_safe_plugin_dir(plugin_id: str) -> str:
+    if not plugin_id or ".." in plugin_id or "/" in plugin_id or "\\" in plugin_id:
+        raise HTTPException(status_code=400, detail="Invalid plugin ID.")
+    base_real = os.path.realpath(PLUGINS_DIR)
+    target_real = os.path.realpath(os.path.join(base_real, plugin_id))
+    if os.path.commonpath([base_real, target_real]) != base_real or target_real == base_real:
+        raise HTTPException(status_code=400, detail="Invalid plugin path.")
+    return target_real
+
 @plugins_router.get("/readme/{plugin_id}")
 async def get_plugin_readme(plugin_id: str):
     """Returns the readme content of a locally installed plugin."""
-    target_dir = os.path.join(PLUGINS_DIR, plugin_id)
+    target_dir = _resolve_safe_plugin_dir(plugin_id)
     if not os.path.exists(target_dir):
         raise HTTPException(status_code=404, detail="Plugin directory not found.")
     for fn in ("README.md", "readme.md"):
@@ -608,68 +668,77 @@ async def get_plugin_readme(plugin_id: str):
 @plugins_router.post("/install/{plugin_id}")
 async def install_plugin(plugin_id: str):
     """Downloads files from remote repository and populates the local plugin directory."""
-    # To keep this safe and simple we pull files from the main branch contents API
-    target_dir = os.path.join(PLUGINS_DIR, plugin_id)
+    target_dir = _resolve_safe_plugin_dir(plugin_id)
     shutil.rmtree(target_dir, ignore_errors=True)
     os.makedirs(target_dir, exist_ok=True)
     
-    # We fetch files from GitHub API: contents/plugins/{plugin_id}
     url = f"https://api.github.com/repos/PiexlPuck/homepulse-plugins/contents/plugins/{plugin_id}"
-    req = urllib.request.Request(url, headers={"User-Agent": "HomePulse-Admin-Agent"})
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            contents = json.loads(response.read().decode('utf-8'))
-            
-        for file_item in contents:
-            if file_item.get("type") == "file":
-                file_name = file_item.get("name")
-                file_url = file_item.get("download_url")
-                # Downloader download url
-                f_req = urllib.request.Request(file_url, headers={"User-Agent": "HomePulse-Admin-Agent"})
-                with urllib.request.urlopen(f_req) as f_res:
-                    file_content = f_res.read()
-                    
-                local_f_path = os.path.join(target_dir, file_name)
-                # Ensure directory safety
-                if not local_f_path.startswith(PLUGINS_DIR):
-                    raise HTTPException(status_code=400, detail="Invalid plugin download path.")
-                    
-                with open(local_f_path, 'wb') as f:
-                    f.write(file_content)
-            elif file_item.get("type") == "dir":
-                # Handle assets subdirectory (single nesting)
-                sub_dir_name = file_item.get("name")
-                sub_dir_url = file_item.get("url")
-                os.makedirs(os.path.join(target_dir, sub_dir_name), exist_ok=True)
+        def _download_plugin_files():
+            req = urllib.request.Request(url, headers={"User-Agent": "HomePulse-Admin-Agent"})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                contents = json.loads(response.read().decode('utf-8'))
                 
-                s_req = urllib.request.Request(sub_dir_url, headers={"User-Agent": "HomePulse-Admin-Agent"})
-                with urllib.request.urlopen(s_req) as s_res:
-                    sub_contents = json.loads(s_res.read().decode('utf-8'))
-                    
-                for s_item in sub_contents:
-                    if s_item.get("type") == "file":
-                        s_name = s_item.get("name")
-                        s_download_url = s_item.get("download_url")
+            for file_item in contents:
+                if file_item.get("type") == "file":
+                    file_name = os.path.basename(file_item.get("name", ""))
+                    file_url = file_item.get("download_url")
+                    if not file_name or not file_url:
+                        continue
+                    f_req = urllib.request.Request(file_url, headers={"User-Agent": "HomePulse-Admin-Agent"})
+                    with urllib.request.urlopen(f_req, timeout=10) as f_res:
+                        file_content = f_res.read()
                         
-                        sf_req = urllib.request.Request(s_download_url, headers={"User-Agent": "HomePulse-Admin-Agent"})
-                        with urllib.request.urlopen(sf_req) as sf_res:
-                            sf_content = sf_res.read()
-                        with open(os.path.join(target_dir, sub_dir_name, s_name), 'wb') as f:
-                            f.write(sf_content)
+                    local_f_path = os.path.realpath(os.path.join(target_dir, file_name))
+                    if os.path.commonpath([target_dir, local_f_path]) != target_dir:
+                        raise ValueError("Invalid plugin download path.")
+                        
+                    with open(local_f_path, 'wb') as f:
+                        f.write(file_content)
+                elif file_item.get("type") == "dir":
+                    sub_dir_name = os.path.basename(file_item.get("name", ""))
+                    sub_dir_url = file_item.get("url")
+                    if not sub_dir_name or not sub_dir_url:
+                        continue
+                    sub_dir_path = os.path.realpath(os.path.join(target_dir, sub_dir_name))
+                    if os.path.commonpath([target_dir, sub_dir_path]) != target_dir:
+                        raise ValueError("Invalid plugin subdirectory path.")
+                    os.makedirs(sub_dir_path, exist_ok=True)
+                    
+                    s_req = urllib.request.Request(sub_dir_url, headers={"User-Agent": "HomePulse-Admin-Agent"})
+                    with urllib.request.urlopen(s_req, timeout=10) as s_res:
+                        sub_contents = json.loads(s_res.read().decode('utf-8'))
+                        
+                    for s_item in sub_contents:
+                        if s_item.get("type") == "file":
+                            s_name = os.path.basename(s_item.get("name", ""))
+                            s_download_url = s_item.get("download_url")
+                            if not s_name or not s_download_url:
+                                continue
+                            sf_req = urllib.request.Request(s_download_url, headers={"User-Agent": "HomePulse-Admin-Agent"})
+                            with urllib.request.urlopen(sf_req, timeout=10) as sf_res:
+                                sf_content = sf_res.read()
+                            s_file_path = os.path.realpath(os.path.join(sub_dir_path, s_name))
+                            if os.path.commonpath([sub_dir_path, s_file_path]) != sub_dir_path:
+                                raise ValueError("Invalid plugin asset file path.")
+                            with open(s_file_path, 'wb') as f:
+                                f.write(sf_content)
+
+        await asyncio.to_thread(_download_plugin_files)
                             
         # Successfully written. Let's read main manifest
         manifest_path = os.path.join(target_dir, "manifest.json")
         if not os.path.isfile(manifest_path):
             raise HTTPException(status_code=400, detail="Plugin missing manifest.json after download.")
             
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
             manifest = json.load(f)
             
         p_name = manifest.get("name", plugin_id)
         p_version = manifest.get("version", "1.0.0")
         
-        # Prepare Venv asynchronously
-        asyncio.create_task(compile_plugin_venv(plugin_id, target_dir))
+        # Compile plugin virtualenv before returning so enabling immediately cannot race with pip install
+        await compile_plugin_venv(plugin_id, target_dir)
         
         # Save to database
         if db_pool:
@@ -732,7 +801,7 @@ async def toggle_plugin(plugin_id: str):
         if not started:
             # Revert DB state
             async with db_pool.acquire() as conn:
-                await conn.execute("UPDATE plugins SET enabled = FALSE WHERE id = $2;", plugin_id)
+                await conn.execute("UPDATE plugins SET enabled = FALSE WHERE id = $1;", plugin_id)
             raise HTTPException(status_code=500, detail="Failed to spawn plugin subprocess.")
     else:
         await stop_plugin(plugin_id)
@@ -763,10 +832,10 @@ async def save_config(plugin_id: str, payload: PluginConfigPayload):
 @plugins_router.post("/uninstall/{plugin_id}")
 async def uninstall_plugin(plugin_id: str):
     """Stops the plugin process and deletes all file resources."""
+    target_dir = _resolve_safe_plugin_dir(plugin_id)
     await stop_plugin(plugin_id)
     
-    target_dir = os.path.join(PLUGINS_DIR, plugin_id)
-    shutil.rmtree(target_dir, ignore_errors=True)
+    await asyncio.to_thread(shutil.rmtree, target_dir, True)
     
     if db_pool:
         async with db_pool.acquire() as conn:
@@ -777,7 +846,7 @@ async def uninstall_plugin(plugin_id: str):
     if entity_states is not None:
         for entity_key in list(entity_states.keys()):
             ent = entity_states[entity_key]
-            if ent.get("node_id") == plugin_id or ent.get("node_id") == f"plugin-{plugin_id}" or entity_key.startswith(f"plugin-{plugin_id}-"):
+            if ent.get("plugin_id") == plugin_id or ent.get("node_id") == plugin_id or ent.get("node_id") == f"plugin-{plugin_id}" or entity_key.startswith(f"plugin-{plugin_id}-"):
                 entity_states.pop(entity_key, None)
                 if ws_manager is not None:
                     await ws_manager.broadcast({
@@ -812,7 +881,7 @@ async def gateway_post_state(payload: Dict[str, Any]):
         new_attrs = payload.get("attributes", {})
         merged_attrs = {**existing_attrs, **new_attrs}
 
-        entity_states[entity_key] = {
+        entity_states[entity_key] = _enrich_plugin_entity({
             "node_id": payload.get("node_id", "plugins"),
             "entity_key": entity_key,
             "name": payload.get("name", entity_key.replace("-", " ").title()) if entity_key != f"plugin-{plugin_id}-status" else f"Plugin: {plugin_id.replace('-', ' ').title()}",
@@ -820,7 +889,7 @@ async def gateway_post_state(payload: Dict[str, Any]):
             "value": payload.get("value"),
             "value_type": payload.get("value_type", "string"),
             "attributes": merged_attrs
-        }
+        }, plugin_id)
         
         if db_pool and plugin_id:
             try:

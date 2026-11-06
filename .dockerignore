@@ -1,0 +1,21 @@
+# Version control and IDE metadata
+.git
+.gitignore
+.agents
+Reference
+brainstorm
+api_documentation
+
+# Python caches and local virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+plugins/
+
+# Local secrets and database backups
+.env
+db_backups/
+*.deb
+.DS_Store

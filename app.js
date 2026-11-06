@@ -326,33 +326,7 @@ function toggleEditMode() {
 }
 window.toggleEditMode = toggleEditMode;
 
-// 3. Tab switching filtering logic
-function switchTab(tabName) {
-  activeTab = tabName;
-
-  // Update view states on tab buttons
-  const tabButtons = document.querySelectorAll('.tab-btn');
-  tabButtons.forEach(btn => {
-    btn.classList.remove('active');
-    const attr = btn.getAttribute('onclick');
-    if (attr && attr.includes(tabName)) {
-      btn.classList.add('active');
-    }
-  });
-
-  // Filter Card Elements visibility based on data-tags attribute
-  const cards = document.querySelectorAll('.dashboard-grid > .card');
-  cards.forEach(card => {
-    if (card.classList.contains('card-placeholder')) return; // Always keep placeholder visible in edit mode
-
-    const tags = card.getAttribute('data-tags');
-    if (tags && (tags.includes(tabName) || tabName === 'all')) {
-      card.style.display = 'flex';
-    } else {
-      card.style.display = 'none';
-    }
-  });
-}
+// (Legacy switchTab definition removed; active switchTab is defined below renderDashboards)
 
 // Help determine backend URL based on how the page is loaded (file:// vs http://)
 function getApiUrls() {
@@ -649,14 +623,15 @@ function buildDashboardCards(entitiesMap) {
         cardEl.setAttribute('data-node-id', item.node_id);
         cardEl.setAttribute('data-entity-key', item.entity_key);
         cardEl.setAttribute('data-value-type', item.value_type || 'float');
-        cardEl.setAttribute('data-unit', widget.options.unit || item.unit || '');
+        const resolvedItemUnit = item.unit || (item.attributes && item.attributes.unit) || '';
+        cardEl.setAttribute('data-unit', widget.options.unit || resolvedItemUnit);
 
         if (item.value === true || item.value === 'true' || item.value >= 1) {
           cardEl.classList.add('highlighted');
         }
 
         const displayName = widget.title || item.name || item.entity_key;
-        const displayUnit = widget.options.unit !== undefined ? widget.options.unit : (item.unit || '');
+        const displayUnit = widget.options.unit !== undefined ? widget.options.unit : resolvedItemUnit;
         const displayColor = widget.options.color || item.color || 'var(--color-optimal)';
         const sensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
 
@@ -771,7 +746,8 @@ function buildDashboardCards(entitiesMap) {
         cardEl.setAttribute('data-entity-id', item.entity_key);
         cardEl.setAttribute('data-scale-min', widget.options.min !== undefined ? widget.options.min : '0');
         cardEl.setAttribute('data-scale-max', widget.options.max !== undefined ? widget.options.max : '100');
-        cardEl.setAttribute('data-unit', widget.options.unit || item.unit || '');
+        const resolvedGaugeUnit = item.unit || (item.attributes && item.attributes.unit) || '';
+        cardEl.setAttribute('data-unit', widget.options.unit || resolvedGaugeUnit);
         cardEl.classList.add('card-gauge');
 
         const min = parseFloat(widget.options.min !== undefined ? widget.options.min : 0);
@@ -780,7 +756,7 @@ function buildDashboardCards(entitiesMap) {
         const pct = Math.max(0, Math.min(1, (numericVal - min) / (max - min)));
         const offset = 110 - (pct * 110);
         const displayColor = widget.options.color || item.color || 'var(--color-optimal)';
-        const unit = widget.options.unit || item.unit || '';
+        const unit = widget.options.unit || resolvedGaugeUnit;
 
         cardEl.innerHTML = `
           <div class="card-header">
@@ -1168,15 +1144,24 @@ function handleIncomingWSEvent(data) {
   else if (data.event === 'entity_update') {
     const ent = data.data;
     if (ent && ent.entity_key) {
-      cachedEntities[ent.entity_key] = ent;
+      if (ent.deleted) {
+        delete cachedEntities[ent.entity_key];
+      } else {
+        cachedEntities[ent.entity_key] = ent;
+        updateCardState(
+          ent.node_id || 'plugins',
+          ent.entity_key,
+          ent.value,
+          ent.status || 'Optimal',
+          ent.status_type || 'optimal'
+        );
+      }
       const pluginsView = document.getElementById('plugins-view');
       if (pluginsView && !pluginsView.classList.contains('hide')) {
-        console.log("WebSocket event entity_update: refreshing installed plugins list.");
         loadInstalledPlugins();
       }
       const hostsView = document.getElementById('hosts-view');
       if (hostsView && !hostsView.classList.contains('hide')) {
-        console.log("WebSocket event entity_update: refreshing hosts manager view.");
         loadHosts();
       }
     }
@@ -6217,26 +6202,42 @@ async function openRuleComposer(rid = null) {
     `;
   });
 
-  // 2. Add plugin daemon status and manifest custom telemetry entities
+  // 2. Add plugin daemon status, manifest entities, and live runtime plugin entities
+  const addedRuleEntityKeys = new Set();
   plugins.forEach(p => {
     const statusKey = `plugin-${p.id}-status`;
+    addedRuleEntityKeys.add(statusKey);
     selectHtml += `
       <label class="rule-target-item" data-key="${statusKey}" style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer; padding: 4px 0;">
         <input type="checkbox" class="rule-target-chk" value="${statusKey}" style="accent-color:var(--accent-orange);">
         <span>Plugin Daemon: <strong>${p.name}</strong> [${statusKey}]</span>
       </label>
     `;
-    if (p.entities) {
-      Object.keys(p.entities).forEach(entityKey => {
-        const ent = p.entities[entityKey];
+    const manifestEntities = (p.entities && typeof p.entities === 'object' && !Array.isArray(p.entities)) ? p.entities : {};
+    Object.keys(manifestEntities).forEach(entityKey => {
+      if (addedRuleEntityKeys.has(entityKey)) return;
+      addedRuleEntityKeys.add(entityKey);
+      const ent = manifestEntities[entityKey];
+      selectHtml += `
+        <label class="rule-target-item" data-key="${entityKey}" style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer; padding: 4px 0;">
+          <input type="checkbox" class="rule-target-chk" value="${entityKey}" style="accent-color:var(--accent-orange);">
+          <span>Plugin Sensor (${p.name}): <strong>${ent.name || entityKey}</strong> [${entityKey}]</span>
+        </label>
+      `;
+    });
+    // Also add live runtime entities reported by this plugin
+    Object.values(cachedEntities || {}).forEach(liveEnt => {
+      if (!liveEnt || !liveEnt.entity_key || addedRuleEntityKeys.has(liveEnt.entity_key)) return;
+      if (liveEnt.plugin_id === p.id || liveEnt.node_id === p.id || liveEnt.node_id === `plugin-${p.id}`) {
+        addedRuleEntityKeys.add(liveEnt.entity_key);
         selectHtml += `
-          <label class="rule-target-item" data-key="${entityKey}" style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer; padding: 4px 0;">
-            <input type="checkbox" class="rule-target-chk" value="${entityKey}" style="accent-color:var(--accent-orange);">
-            <span>Plugin Sensor: <strong>${ent.name || entityKey}</strong> [${entityKey}]</span>
+          <label class="rule-target-item" data-key="${liveEnt.entity_key}" style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer; padding: 4px 0;">
+            <input type="checkbox" class="rule-target-chk" value="${liveEnt.entity_key}" style="accent-color:var(--accent-orange);">
+            <span>Plugin Sensor (${p.name}): <strong>${liveEnt.name || liveEnt.entity_key}</strong> [${liveEnt.entity_key}]</span>
           </label>
         `;
-      });
-    }
+      }
+    });
   });
 
   if (targetsListContainer) {
@@ -6458,7 +6459,13 @@ async function toggleRuleEnabled(rid, enabled, event) {
         name: rule.name,
         rules_json: rule.rules_json,
         channel_ids: rule.channel_ids,
-        enabled: enabled
+        enabled: enabled,
+        target_type: rule.target_type || 'all',
+        monitors_list: rule.monitors_list || [],
+        target_groups: rule.target_groups || [],
+        target_groups_operator: rule.target_groups_operator || 'any',
+        targets_list: rule.targets_list || [],
+        cooldown_interval: rule.cooldown_interval || '5m'
       };
 
       const res = await fetch(`${httpUrl}/api/alerts/rules/${rid}`, {
@@ -7063,14 +7070,12 @@ async function populateHistoryMonitorsDropdown() {
       }
 
       if (nodeId !== 'core-mon' && nodeId !== 'monitors') {
-        let pName = nodeId;
-        if (pName.toLowerCase().includes('proxmox') || key.startsWith('pbs-')) {
-          pName = 'Proxmox Backup';
-        } else if (pName.toLowerCase().includes('truenas') || key.startsWith('truenas-')) {
-          pName = 'TrueNAS';
-        } else {
-          pName = pName.replace(/^plugin-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        let rawPluginId = ent.plugin_id || nodeId;
+        if (rawPluginId === 'plugins' && key.startsWith('plugin-') && key.endsWith('-status')) {
+          rawPluginId = key.slice('plugin-'.length, -'-status'.length);
         }
+        const matchedPlugin = (window.currentActivePluginsData || []).find(pl => pl.id === rawPluginId);
+        let pName = matchedPlugin ? matchedPlugin.name : rawPluginId.replace(/^plugin-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
         if (!pluginGroups[pName]) {
           pluginGroups[pName] = [];
@@ -7926,15 +7931,17 @@ async function loadLayoutHierarchy() {
   `;
 
   try {
-    const [depsRes, hostsRes, monRes] = await Promise.all([
+    const [depsRes, hostsRes, monRes, plugRes] = await Promise.all([
       fetch(`${httpUrl}/api/dependencies`),
       fetch(`${httpUrl}/api/hosts`),
-      fetch(`${httpUrl}/api/monitors`)
+      fetch(`${httpUrl}/api/monitors`),
+      fetch(`${httpUrl}/api/plugins/installed`)
     ]);
 
     const deps = depsRes.ok ? await depsRes.json() : [];
     const hosts = hostsRes.ok ? await hostsRes.json() : [];
     const monitors = monRes.ok ? await monRes.json() : [];
+    const plugins = plugRes.ok ? await plugRes.json() : [];
 
     // Maps for lookups
     const targetMap = {};
@@ -7950,6 +7957,12 @@ async function loadLayoutHierarchy() {
       if (m.host_id && hostMonitorsMap[m.host_id]) {
         hostMonitorsMap[m.host_id].push(m);
       }
+    });
+
+    plugins.forEach(p => {
+      const pTargetInfo = { id: p.id, name: `Plugin: ${p.name}`, type: 'Plugin', target: `v${p.version}`, icon: 'puzzle' };
+      targetMap[`plugin-${p.id}-status`] = pTargetInfo;
+      targetMap[`plugin-${p.id}`] = pTargetInfo;
     });
 
     if (deps.length === 0) {
@@ -8008,7 +8021,7 @@ async function loadLayoutHierarchy() {
 
       childDeps.forEach(dep => {
         const childObj = targetMap[dep.child_target] || { name: dep.child_target, type: 'Node', icon: 'cpu' };
-        const isHost = dep.child_target.startswith ? dep.child_target.startswith('host-') : dep.child_target.indexOf('host-') === 0;
+        const isHost = dep.child_target.startsWith('host-');
         const hostId = isHost ? parseInt(dep.child_target.split('-')[1]) : null;
         const probes = hostId && hostMonitorsMap[hostId] ? hostMonitorsMap[hostId] : [];
 
@@ -8131,13 +8144,15 @@ window.openAddDependencyModal = async function () {
   if (childList) childList.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:0.78rem;">Loading targets...</div>';
 
   try {
-    const [hostsRes, monRes] = await Promise.all([
+    const [hostsRes, monRes, plugRes] = await Promise.all([
       fetch(`${httpUrl}/api/hosts`),
-      fetch(`${httpUrl}/api/monitors`)
+      fetch(`${httpUrl}/api/monitors`),
+      fetch(`${httpUrl}/api/plugins/installed`)
     ]);
 
     const hosts = hostsRes.ok ? await hostsRes.json() : [];
     const monitors = monRes.ok ? await monRes.json() : [];
+    const plugins = plugRes.ok ? await plugRes.json() : [];
 
     // Filter standalone probes only
     const standaloneProbes = monitors.filter(m => {
@@ -8157,6 +8172,18 @@ window.openAddDependencyModal = async function () {
         category: 'Hosts & Hypervisors (Grouped VMs)',
         icon: 'server',
         badge: 'VM / Host'
+      });
+    });
+
+    plugins.forEach(p => {
+      availableTargets.push({
+        id: `plugin-${p.id}-status`,
+        name: `Plugin: ${p.name}`,
+        target: `Local Daemon (v${p.version})`,
+        type: 'plugin',
+        category: 'Installed Plugins & Hypervisor Integrations',
+        icon: 'puzzle',
+        badge: 'PLUGIN'
       });
     });
 
@@ -8649,6 +8676,7 @@ async function loadHosts(forceFetch = false) {
     const pluginsHtmlList = filteredActivePlugins.map(p => {
       // Find all entity values published by this plugin
       const entities = Object.values(cachedEntities || {}).filter(item =>
+        item.plugin_id === p.id ||
         item.node_id === p.id ||
         item.node_id === `plugin-${p.id}` ||
         (item.node_id === 'plugins' && item.entity_key.includes(p.id))
@@ -9124,6 +9152,7 @@ window.openHostDetail = async function (hostId) {
     if (probersList) {
       // Find all custom entities reported by this plugin
       const entities = Object.values(cachedEntities || {}).filter(item =>
+        item.plugin_id === pluginId ||
         item.node_id === pluginId ||
         item.node_id === `plugin-${pluginId}` ||
         (item.node_id === 'plugins' && item.entity_key.includes(pluginId))
@@ -9168,9 +9197,11 @@ window.openHostDetail = async function (hostId) {
                   if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object' && val[0] !== null) {
                     const uniqueId = `table-${m.node_id}-${m.entity_key}-${attr}`.replace(/[^a-zA-Z0-9-]/g, '_');
 
+                    const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                     // Look up parent manifest to see if a schema matches
                     let columns = [];
-                    const p = window.currentActivePluginsData ? window.currentActivePluginsData.find(pl => pl.id === m.node_id) : null;
+                    const lookupPluginId = m.plugin_id || m.node_id;
+                    const p = window.currentActivePluginsData ? window.currentActivePluginsData.find(pl => pl.id === lookupPluginId) : null;
                     if (p && p.entities && p.entities[m.entity_key] && p.entities[m.entity_key].ui_schema && p.entities[m.entity_key].ui_schema.columns) {
                       columns = p.entities[m.entity_key].ui_schema.columns;
                     } else {
@@ -9178,7 +9209,7 @@ window.openHostDetail = async function (hostId) {
                     }
 
                     // Headers
-                    const headersHtml = columns.map(k => `<th style="text-align: left; padding: 6px; font-size: 0.7rem; text-transform: capitalize; border-bottom: 1px solid var(--border-soft); color: var(--text-secondary);">${k.replace(/_/g, ' ')}</th>`).join('');
+                    const headersHtml = columns.map(k => `<th style="text-align: left; padding: 6px; font-size: 0.7rem; text-transform: capitalize; border-bottom: 1px solid var(--border-soft); color: var(--text-secondary);">${escapeHtml(String(k).replace(/_/g, ' '))}</th>`).join('');
 
                     // Rows
                     const rowsHtml = val.map(row => {
@@ -9195,7 +9226,7 @@ window.openHostDetail = async function (hostId) {
                         if (typeof cellVal === 'number' && (k.toLowerCase().includes('bytes') || k.toLowerCase().includes('size'))) {
                           cellVal = formatBytes(cellVal);
                         }
-                        return `<td style="padding: 6px; font-size: 0.72rem; vertical-align: top; border-bottom: 1px dashed rgba(255,255,255,0.05); color: #e2e8f0; font-family: monospace;">${cellVal}</td>`;
+                        return `<td style="padding: 6px; font-size: 0.72rem; vertical-align: top; border-bottom: 1px dashed rgba(255,255,255,0.05); color: #e2e8f0; font-family: monospace;">${escapeHtml(cellVal)}</td>`;
                       }).join('');
                       return `<tr class="table-row" style="transition: background 0.15s;">${cellsHtml}</tr>`;
                     }).join('');
@@ -9225,10 +9256,12 @@ window.openHostDetail = async function (hostId) {
                       </div>
                     `;
                   } else {
-                    val = `<pre style="margin: 2px 0 0 0; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.65rem; color: #fff; background: rgba(0,0,0,0.22); padding: 5px; border-radius: 4px; line-height: 1.3;">${JSON.stringify(val, null, 2)}</pre>`;
+                    const safeJson = String(JSON.stringify(val, null, 2) ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    val = `<pre style="margin: 2px 0 0 0; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.65rem; color: #fff; background: rgba(0,0,0,0.22); padding: 5px; border-radius: 4px; line-height: 1.3;">${safeJson}</pre>`;
                   }
                 } else {
-                  val = `<span style="color:#fff; word-break: break-all;">${val}</span>`;
+                  const safeVal = String(val ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  val = `<span style="color:#fff; word-break: break-all;">${safeVal}</span>`;
                 }
                 const isEmbed = typeof val === 'string' && (val.includes('<pre') || val.includes('<div'));
                 return `<div style="margin-top: 6px; line-height: 1.4;">${attr}: ${isEmbed ? val : val}</div>`;
@@ -9268,9 +9301,24 @@ window.openHostDetail = async function (hostId) {
       }
     }
 
-    // Hide edit button for plugins since configuring is done under Plugins view
+    // Repurpose edit button for plugins to jump directly to the plugin configuration
     const editBtn = document.getElementById('btn-edit-host-from-detail-full');
-    if (editBtn) editBtn.style.display = 'none';
+    if (editBtn) {
+      editBtn.style.display = 'inline-flex';
+      editBtn.innerHTML = '<i data-lucide="settings" style="width:14px; height:14px;"></i> Configure Plugin';
+      editBtn.onclick = () => {
+        showPluginsView();
+        setTimeout(() => {
+          const card = Array.from(document.querySelectorAll('#installed-plugins-list .plugin-card')).find(el => el.innerHTML.includes(`'${pluginId}'`));
+          if (card) {
+            const det = card.querySelector('details');
+            if (det) det.open = true;
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 150);
+      };
+      if (window.lucide) window.lucide.createIcons();
+    }
 
     // Show host detail view full page
     hideAllViews();
@@ -9284,6 +9332,13 @@ window.openHostDetail = async function (hostId) {
   if (!window.currentHosts) return;
   const host = window.currentHosts.find(h => h.id === hostId);
   if (!host) return;
+
+  const editBtnRestore = document.getElementById('btn-edit-host-from-detail-full');
+  if (editBtnRestore) {
+    editBtnRestore.style.display = 'inline-flex';
+    editBtnRestore.innerHTML = '<i data-lucide="edit-2" style="width:14px; height:14px;"></i> Edit Host';
+    editBtnRestore.onclick = () => editHostFromDetail();
+  }
 
   document.getElementById('host-detail-title-full').textContent = host.name;
   document.getElementById('host-detail-target-full').textContent = host.target;
@@ -9740,7 +9795,7 @@ async function loadInstalledPlugins(forceFetch = false) {
         const field = schema[key];
         const savedVal = currentInputValues[`${p.id}:${key}`];
         const val = savedVal !== undefined ? savedVal : (config[key] !== undefined ? config[key] : (field.default !== undefined ? field.default : ''));
-        const label = field.label || key.replace('_', ' ').replace('-', ' ').title();
+        const label = field.label || key.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         const isPassword = field.type === 'password' || field.secret;
         const inputType = isPassword ? 'password' : (field.type === 'integer' ? 'number' : 'text');
 
@@ -9796,6 +9851,7 @@ async function loadInstalledPlugins(forceFetch = false) {
               <div style="display:flex; gap:10px; margin-top:8px; flex-wrap:wrap;">
                 ${updateBtnHTML}
                 <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
+                <button class="btn btn-secondary" onclick="openHostDetail('plugin-${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd;">View Telemetry</button>
                 ${p.has_readme ? `<button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', false)" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Readme</button>` : ''}
                 <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
                 <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>
@@ -9825,6 +9881,7 @@ async function loadInstalledPlugins(forceFetch = false) {
                 <div style="display:flex; gap:10px; margin-top:8px; justify-content:flex-end; flex-wrap:wrap;">
                   ${updateBtnHTML}
                   <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
+                  <button class="btn btn-secondary" onclick="openHostDetail('plugin-${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd;">View Telemetry</button>
                   ${p.has_readme ? `<button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', false)" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Readme</button>` : ''}
                   <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
                   <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>
@@ -10717,18 +10774,41 @@ window.showNodeProperties = function (nodeId) {
     // Custom plugins catalog selection dropdown
     let targetOptions = `<option value="">-- Choose custom entity --</option>`;
 
-    // Gather all entities defined in installed plugin manifests
+    // Gather all entities from installed plugins (daemon status, manifest entities, and live runtime entities)
     const entities = [];
-    window.flowCachedPlugins.forEach(plugin => {
-      if (plugin.manifest && plugin.manifest.entities) {
-        Object.keys(plugin.manifest.entities).forEach(ek => {
-          entities.push({
-            key: ek,
-            name: plugin.manifest.entities[ek].name || ek,
-            plugin: plugin.name
-          });
+    const seenFlowEntityKeys = new Set();
+    (window.flowCachedPlugins || []).forEach(plugin => {
+      const statusKey = `plugin-${plugin.id}-status`;
+      if (!seenFlowEntityKeys.has(statusKey)) {
+        seenFlowEntityKeys.add(statusKey);
+        entities.push({
+          key: statusKey,
+          name: `Plugin Daemon Status`,
+          plugin: plugin.name
         });
       }
+      const manifestEntities = (plugin.entities && typeof plugin.entities === 'object') ? plugin.entities : (plugin.manifest && plugin.manifest.entities ? plugin.manifest.entities : {});
+      Object.keys(manifestEntities).forEach(ek => {
+        if (!seenFlowEntityKeys.has(ek)) {
+          seenFlowEntityKeys.add(ek);
+          entities.push({
+            key: ek,
+            name: manifestEntities[ek].name || ek,
+            plugin: plugin.name
+          });
+        }
+      });
+      Object.values(cachedEntities || {}).forEach(liveEnt => {
+        if (!liveEnt || !liveEnt.entity_key || seenFlowEntityKeys.has(liveEnt.entity_key)) return;
+        if (liveEnt.plugin_id === plugin.id || liveEnt.node_id === plugin.id || liveEnt.node_id === `plugin-${plugin.id}`) {
+          seenFlowEntityKeys.add(liveEnt.entity_key);
+          entities.push({
+            key: liveEnt.entity_key,
+            name: liveEnt.name || liveEnt.entity_key,
+            plugin: plugin.name
+          });
+        }
+      });
     });
 
     entities.forEach(ent => {

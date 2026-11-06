@@ -2350,15 +2350,9 @@ aside.collapsed .nav-group-toggle .group-arrow {
   animation: spin-loader 0.85s linear infinite;
 }
 
-/* Expand plugin grid item on config open */
+/* Expand plugin grid item on config open without hiding other installed plugins */
 .plugin-card:has(details[open]) {
   grid-column: 1 / -1;
-}
-
-/* Hide other non-expanded cards in the list when one plugin is being configured */
-#installed-plugins-list:has(details[open])>.plugin-card:not(:has(details[open])),
-#marketplace-plugins-list:has(details[open])>.plugin-card:not(:has(details[open])) {
-  display: none !important;
 }
 
 /* Custom Infrastructure Dependency Selector & Modal Styling */

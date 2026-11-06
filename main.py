@@ -31,11 +31,14 @@ app = FastAPI(title="HomePulse Backend")
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
     path = request.url.path
+    client_host = request.client.host if request.client else ""
+    is_local_plugin_gateway = path.startswith("/api/plugins/gateway/") and client_host in ("127.0.0.1", "::1", "localhost")
     if path.startswith("/api/") and not (
         path.startswith("/api/settings/keys") or 
         path == "/api/health" or 
         path == "/api/settings" or
-        path == "/api/version"
+        path == "/api/version" or
+        is_local_plugin_gateway
     ):
         token = request.headers.get("X-API-Key")
         if not token:
@@ -425,13 +428,6 @@ async def setup_database_schema(conn):
     except Exception as mig_err:
         logger.warning(f"Error checking system_monitors columns migration: {mig_err}")
 
-    # Clean up duplicate/misspelled lowercase proxmox definitions from system_monitors
-    try:
-        await conn.execute("DELETE FROM system_monitors WHERE name = 'proxmox';")
-        logger.info("Cleaned up duplicate/misspelled proxmox monitor definitions.")
-    except Exception as clean_err:
-        logger.warning(f"Error cleaning up proxmox monitor definitions: {clean_err}")
-
     # Create dashboard_config table
     try:
         await conn.execute("""
@@ -459,7 +455,8 @@ async def setup_database_schema(conn):
     except Exception as nc_err:
         logger.warning(f"Error establishing notification_channels table: {nc_err}")
 
-        # Create alert_rules table
+    # Create alert_rules table
+    try:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS alert_rules (
                 id SERIAL PRIMARY KEY,
@@ -507,8 +504,7 @@ async def setup_database_schema(conn):
             );
         """)
         
-        # Recreate active_alerts to make monitor_id nullable and add entity_key support
-        await conn.execute("DROP TABLE IF EXISTS active_alerts;")
+        # Ensure active_alerts exists with nullable monitor_id and entity_key support
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS active_alerts (
                 id SERIAL PRIMARY KEY,
@@ -519,6 +515,8 @@ async def setup_database_schema(conn):
                 CONSTRAINT uq_active_alerts UNIQUE (rule_id, monitor_id, entity_key)
             );
         """)
+        await conn.execute("ALTER TABLE active_alerts ALTER COLUMN monitor_id DROP NOT NULL;")
+        await conn.execute("ALTER TABLE active_alerts ADD COLUMN IF NOT EXISTS entity_key VARCHAR(255);")
 
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS alert_cooldowns (
@@ -778,6 +776,14 @@ def evaluate_condition(entity_key: str, operator: str, target_val: str) -> bool:
     except ValueError:
         is_numeric = False
         
+    healthy_synonyms = {"ONLINE", "ON", "OK", "RUNNING", "ACTIVE", "HEALTHY", "STARTED", "PASSED", "CONNECTED"}
+    if target_str.upper() == "ONLINE":
+        is_current_healthy = current_str.upper() in healthy_synonyms
+        if operator == "==":
+            return is_current_healthy
+        elif operator == "!=":
+            return not is_current_healthy
+
     if operator == "==":
         return current_str.lower() == target_str.lower()
     elif operator == "!=":
@@ -871,6 +877,17 @@ async def is_ancestor_parent_down(conn, target_key: str, visited=None):
                     return True, host_parent_name
         except Exception:
             pass
+    elif not target_key.startswith("host-"):
+        # If target_key is a plugin child sensor, check if its parent plugin status entity is linked as a child dependency
+        ent_obj = entity_states.get(target_key)
+        if ent_obj:
+            pid = ent_obj.get("plugin_id") or (ent_obj.get("node_id") if ent_obj.get("node_id") not in ("core-mon", "monitors", "plugins") else None)
+            if pid:
+                plugin_status_key = f"plugin-{pid}-status"
+                if plugin_status_key != target_key:
+                    p_down, p_parent_name = await is_ancestor_parent_down(conn, plugin_status_key, visited)
+                    if p_down:
+                        return True, p_parent_name
 
     try:
         rows = await conn.fetch("SELECT parent_target FROM node_dependencies WHERE child_target = $1;", target_key)
@@ -901,8 +918,14 @@ async def is_ancestor_parent_down(conn, target_key: str, visited=None):
                 except Exception:
                     pass
             else:
-                e_val = str(entity_states.get(ptarget, {}).get("value", "")).upper()
-                if e_val in ("OFFLINE", "DOWN", "CRITICAL", "FAILED", "FALSE", "0"):
+                ent_state = entity_states.get(ptarget)
+                if not ent_state and ptarget.startswith("plugin-") and not ptarget.endswith("-status"):
+                    ent_state = entity_states.get(f"{ptarget}-status")
+                if ent_state:
+                    parent_name = ent_state.get("name", ptarget)
+                e_val = str((ent_state or {}).get("value", "")).upper()
+                e_status = str((ent_state or {}).get("attributes", {}).get("status", "")).lower()
+                if e_val in ("OFF", "OFFLINE", "STOPPED", "CRASHED", "DOWN", "CRITICAL", "FAILED", "FALSE", "0") or e_status in ("stopped", "crashed"):
                     is_down = True
                     
             if is_down:
@@ -1182,162 +1205,162 @@ async def alerts_evaluator_task():
                             audit_type, audit_msg
                         )
 
-                    # --- Flow Evaluation Router ---
-                    flows = await conn.fetch("SELECT id, name, enabled, nodes_json, edges_json FROM alert_flows WHERE enabled = TRUE;")
-                    for flow in flows:
-                        fid = flow["id"]
-                        fname = flow["name"]
-                        
-                        try:
-                            nodes = json.loads(flow["nodes_json"]) if isinstance(flow["nodes_json"], str) else flow["nodes_json"]
-                            edges = json.loads(flow["edges_json"]) if isinstance(flow["edges_json"], str) else flow["edges_json"]
-                        except Exception as json_err:
-                            logger.error(f"Flow {fid} JSON parse error: {json_err}")
+                # --- Flow Evaluation Router ---
+                flows = await conn.fetch("SELECT id, name, enabled, nodes_json, edges_json FROM alert_flows WHERE enabled = TRUE;")
+                for flow in flows:
+                    fid = flow["id"]
+                    fname = flow["name"]
+                    
+                    try:
+                        nodes = json.loads(flow["nodes_json"]) if isinstance(flow["nodes_json"], str) else flow["nodes_json"]
+                        edges = json.loads(flow["edges_json"]) if isinstance(flow["edges_json"], str) else flow["edges_json"]
+                    except Exception as json_err:
+                        logger.error(f"Flow {fid} JSON parse error: {json_err}")
+                        continue
+
+                    # Build node map & adjacency lists
+                    nodes_by_id = {n["id"]: n for n in nodes}
+                    out_edges = {}
+                    for edge in edges:
+                        src = edge.get("source")
+                        tgt = edge.get("target")
+                        if src and tgt:
+                            out_edges.setdefault(src, []).append(tgt)
+
+                    # Evaluate triggers to find starting node states
+                    active_flows_firing = {} # action_node_id -> list of firing target_keys
+                    
+                    trigger_nodes = [n for n in nodes if n.get("type") in ("health_trigger", "sensor_trigger")]
+                    for tn in trigger_nodes:
+                        node_id = tn["id"]
+                        ncfg = tn.get("config") or {}
+                        tkey = ncfg.get("target_key")
+                        if not tkey:
                             continue
-
-                        # Build node map & adjacency lists
-                        nodes_by_id = {n["id"]: n for n in nodes}
-                        out_edges = {}
-                        for edge in edges:
-                            src = edge.get("source")
-                            tgt = edge.get("target")
-                            if src and tgt:
-                                out_edges.setdefault(src, []).append(tgt)
-
-                        # Evaluate triggers to find starting node states
-                        active_flows_firing = {} # action_node_id -> list of firing target_keys
-                        
-                        trigger_nodes = [n for n in nodes if n.get("type") in ("health_trigger", "sensor_trigger")]
-                        for tn in trigger_nodes:
-                            node_id = tn["id"]
-                            ncfg = tn.get("config") or {}
-                            tkey = ncfg.get("target_key")
-                            if not tkey:
+                            
+                        is_trigger_active = False
+                        trig_type = ncfg.get("trigger_type", "offline")
+                        if tn.get("type") == "health_trigger":
+                            mid_str = tkey.split("-")[1] if "-" in tkey else tkey
+                            try:
+                                mid = int(mid_str)
+                            except ValueError:
                                 continue
-                                
-                            is_trigger_active = False
-                            trig_type = ncfg.get("trigger_type", "offline")
-                            if tn.get("type") == "health_trigger":
-                                mid_str = tkey.split("-")[1] if "-" in tkey else tkey
-                                try:
-                                    mid = int(mid_str)
-                                except ValueError:
-                                    continue
-                                if trig_type == "offline":
-                                    is_trigger_active = check_monitor_rule_firing(mid, [{"entity_key": "status", "operator": "!=", "value": "ONLINE"}])
-                                elif trig_type == "latency":
-                                    lval = str(ncfg.get("latency_ms", "100"))
-                                    is_trigger_active = check_monitor_rule_firing(mid, [{"entity_key": "latency", "operator": ">", "value": lval}])
-                                elif trig_type == "custom":
-                                    is_trigger_active = check_monitor_rule_firing(mid, [{"entity_key": "status", "operator": ncfg.get("op", "=="), "value": ncfg.get("val", "")}])
-                            else: # sensor_trigger
-                                if trig_type == "offline":
-                                    is_trigger_active = check_entity_rule_firing(tkey, [{"entity_key": "status", "operator": "!=", "value": "ONLINE"}])
-                                elif trig_type == "custom":
-                                    is_trigger_active = check_entity_rule_firing(tkey, [{"entity_key": "status", "operator": ncfg.get("op", "=="), "value": ncfg.get("val", "")}])
+                            if trig_type == "offline":
+                                is_trigger_active = check_monitor_rule_firing(mid, [{"entity_key": "status", "operator": "!=", "value": "ONLINE"}])
+                            elif trig_type == "latency":
+                                lval = str(ncfg.get("latency_ms", "100"))
+                                is_trigger_active = check_monitor_rule_firing(mid, [{"entity_key": "latency", "operator": ">", "value": lval}])
+                            elif trig_type == "custom":
+                                is_trigger_active = check_monitor_rule_firing(mid, [{"entity_key": "status", "operator": ncfg.get("op", "=="), "value": ncfg.get("val", "")}])
+                        else: # sensor_trigger
+                            if trig_type == "offline":
+                                is_trigger_active = check_entity_rule_firing(tkey, [{"entity_key": "status", "operator": "!=", "value": "ONLINE"}])
+                            elif trig_type == "custom":
+                                is_trigger_active = check_entity_rule_firing(tkey, [{"entity_key": "status", "operator": ncfg.get("op", "=="), "value": ncfg.get("val", "")}])
 
-                            if is_trigger_active:
-                                # DFS/BFS to trace active flow signal propagation
-                                queue = [(node_id, tkey)]
-                                visited = set()
-                                while queue:
-                                    curr_id, orig_tkey = queue.pop(0)
-                                    if curr_id in visited:
-                                        continue
-                                    visited.add(curr_id)
+                        if is_trigger_active:
+                            # DFS/BFS to trace active flow signal propagation
+                            queue = [(node_id, tkey)]
+                            visited = set()
+                            while queue:
+                                curr_id, orig_tkey = queue.pop(0)
+                                if curr_id in visited:
+                                    continue
+                                visited.add(curr_id)
+                                
+                                curr_node = nodes_by_id.get(curr_id)
+                                if not curr_node:
+                                    continue
                                     
-                                    curr_node = nodes_by_id.get(curr_id)
-                                    if not curr_node:
+                                if curr_node.get("type") == "notify_action":
+                                    active_flows_firing.setdefault(curr_id, []).append(orig_tkey)
+                                    continue
+                                    
+                                for child_id in out_edges.get(curr_id, []):
+                                    child_node = nodes_by_id.get(child_id)
+                                    if not child_node:
                                         continue
                                         
-                                    if curr_node.get("type") == "notify_action":
-                                        active_flows_firing.setdefault(curr_id, []).append(orig_tkey)
-                                        continue
+                                    if child_node.get("type") == "compare_condition":
+                                        ccfg = child_node.get("config") or {}
+                                        prop = ccfg.get("property", "status")
+                                        op = ccfg.get("operator", "==")
+                                        val = ccfg.get("value", "")
                                         
-                                    for child_id in out_edges.get(curr_id, []):
-                                        child_node = nodes_by_id.get(child_id)
-                                        if not child_node:
+                                        mapped_key = f"{orig_tkey}-{prop}" if orig_tkey.startswith("monitor-") else orig_tkey
+                                        current_val = entity_states.get(mapped_key, {}).get("value", "unknown")
+                                        
+                                        match = False
+                                        try:
+                                            if op == "==":
+                                                match = (str(current_val).strip() == str(val).strip())
+                                            elif op == "!=":
+                                                match = (str(current_val).strip() != str(val).strip())
+                                            elif op == "contains":
+                                                match = (str(val).strip() in str(current_val).strip())
+                                            elif op == ">":
+                                                match = (float(current_val) > float(val))
+                                            elif op == "<":
+                                                match = (float(current_val) < float(val))
+                                        except Exception:
+                                            match = False
+                                            
+                                        if not match:
                                             continue
                                             
-                                        if child_node.get("type") == "compare_condition":
-                                            ccfg = child_node.get("config") or {}
-                                            prop = ccfg.get("property", "status")
-                                            op = ccfg.get("operator", "==")
-                                            val = ccfg.get("value", "")
-                                            
-                                            mapped_key = f"{orig_tkey}-{prop}" if orig_tkey.startswith("monitor-") else orig_tkey
-                                            current_val = entity_states.get(mapped_key, {}).get("value", "unknown")
-                                            
-                                            match = False
-                                            try:
-                                                if op == "==":
-                                                    match = (str(current_val).strip() == str(val).strip())
-                                                elif op == "!=":
-                                                    match = (str(current_val).strip() != str(val).strip())
-                                                elif op == "contains":
-                                                    match = (str(val).strip() in str(current_val).strip())
-                                                elif op == ">":
-                                                    match = (float(current_val) > float(val))
-                                                elif op == "<":
-                                                    match = (float(current_val) < float(val))
-                                            except Exception:
-                                                match = False
-                                                
-                                            if not match:
-                                                continue
-                                                
-                                        queue.append((child_id, orig_tkey))
+                                    queue.append((child_id, orig_tkey))
 
-                        # Compare and trigger notifications
-                        action_nodes = [n for n in nodes if n.get("type") == "notify_action"]
-                        for an in action_nodes:
-                            an_id = an["id"]
-                            an_cfg = an.get("config") or {}
-                            try:
-                                cid = int(an_cfg.get("channel_id"))
-                            except (ValueError, TypeError):
-                                continue
+                    # Compare and trigger notifications
+                    action_nodes = [n for n in nodes if n.get("type") == "notify_action"]
+                    for an in action_nodes:
+                        an_id = an["id"]
+                        an_cfg = an.get("config") or {}
+                        try:
+                            cid = int(an_cfg.get("channel_id"))
+                        except (ValueError, TypeError):
+                            continue
 
-                            firing_tkeys = active_flows_firing.get(an_id, [])
-                            
-                            # Get existing firing flow configurations
-                            db_firing_rows = await conn.fetch("SELECT target_key FROM active_flow_alerts WHERE flow_id = $1 AND action_node_id = $2;", fid, an_id)
-                            db_firing_tkeys = [r["target_key"] for r in db_firing_rows]
-                            
-                            # New firing transitions
-                            for tk in firing_tkeys:
-                                if tk not in db_firing_tkeys:
-                                    await conn.execute("INSERT INTO active_flow_alerts (flow_id, action_node_id, target_key) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;", fid, an_id, tk)
-                                    
-                                    title = f"❗ Flow Alert [FIRING]: {fname}"
-                                    message = f"Advanced Automation Flow '{fname}' has triggered alert on target '{tk}'!\n\nFlow: {fname}\nAction Node: {an_id}\nTarget: {tk}\nStatus: FIRING\n"
-                                    
-                                    chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
-                                    if chan:
-                                        c_type = chan["type"]
-                                        c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
-                                        try:
-                                            await dispatch_notification(c_type, c_cfg, message, title)
-                                            await conn.execute("UPDATE alert_flows SET last_fired = NOW() WHERE id = $1;", fid)
-                                        except Exception as notify_err:
-                                            logger.error(f"Flow notify error via channel {cid}: {notify_err}")
+                        firing_tkeys = active_flows_firing.get(an_id, [])
+                        
+                        # Get existing firing flow configurations
+                        db_firing_rows = await conn.fetch("SELECT target_key FROM active_flow_alerts WHERE flow_id = $1 AND action_node_id = $2;", fid, an_id)
+                        db_firing_tkeys = [r["target_key"] for r in db_firing_rows]
+                        
+                        # New firing transitions
+                        for tk in firing_tkeys:
+                            if tk not in db_firing_tkeys:
+                                await conn.execute("INSERT INTO active_flow_alerts (flow_id, action_node_id, target_key) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;", fid, an_id, tk)
+                                
+                                title = f"❗ Flow Alert [FIRING]: {fname}"
+                                message = f"Advanced Automation Flow '{fname}' has triggered alert on target '{tk}'!\n\nFlow: {fname}\nAction Node: {an_id}\nTarget: {tk}\nStatus: FIRING\n"
+                                
+                                chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
+                                if chan:
+                                    c_type = chan["type"]
+                                    c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
+                                    try:
+                                        await dispatch_notification(c_type, c_cfg, message, title)
+                                        await conn.execute("UPDATE alert_flows SET last_fired = NOW() WHERE id = $1;", fid)
+                                    except Exception as notify_err:
+                                        logger.error(f"Flow notify error via channel {cid}: {notify_err}")
 
-                            # Fired to recovered transitions
-                            for tk in db_firing_tkeys:
-                                if tk not in firing_tkeys:
-                                    await conn.execute("DELETE FROM active_flow_alerts WHERE flow_id = $1 AND action_node_id = $2 AND target_key = $3;", fid, an_id, tk)
-                                    
-                                    title = f"✅ Flow Alert [RESOLVED]: {fname}"
-                                    message = f"Advanced Automation Flow '{fname}' target '{tk}' alert has resolved to normal.\n\nFlow: {fname}\nAction Node: {an_id}\nTarget: {tk}\nStatus: NORMAL\n"
-                                    
-                                    chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
-                                    if chan:
-                                        c_type = chan["type"]
-                                        c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
-                                        try:
-                                            await dispatch_notification(c_type, c_cfg, message, title)
-                                        except Exception as notify_err:
-                                            logger.error(f"Flow resolution notify error: {notify_err}")
+                        # Fired to recovered transitions
+                        for tk in db_firing_tkeys:
+                            if tk not in firing_tkeys:
+                                await conn.execute("DELETE FROM active_flow_alerts WHERE flow_id = $1 AND action_node_id = $2 AND target_key = $3;", fid, an_id, tk)
+                                
+                                title = f"✅ Flow Alert [RESOLVED]: {fname}"
+                                message = f"Advanced Automation Flow '{fname}' target '{tk}' alert has resolved to normal.\n\nFlow: {fname}\nAction Node: {an_id}\nTarget: {tk}\nStatus: NORMAL\n"
+                                
+                                chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
+                                if chan:
+                                    c_type = chan["type"]
+                                    c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
+                                    try:
+                                        await dispatch_notification(c_type, c_cfg, message, title)
+                                    except Exception as notify_err:
+                                        logger.error(f"Flow resolution notify error: {notify_err}")
                                             
         except Exception as eval_err:
             logger.error(f"Error in alerts_evaluator_task iteration: {eval_err}")
@@ -1542,27 +1565,6 @@ async def collect_system_statistics_task():
                     "value": state["value"],
                     "status": state["status"],
                     "status_type": state["status_type"]
-                })
-
-            # Broadcast occasional random audits to frontend list
-            import random
-            if random.random() > 0.90:
-                audit_opt = [
-                    {"type": "info", "msg": "Internal memory footprint optimization cycle completed."},
-                    {"type": "success", "msg": "System cache verified. Uptime metrics remain nominal."},
-                    {"type": "info", "msg": "Network bridge performance parameters diagnostic completed."}
-                ]
-                sel = random.choice(audit_opt)
-                if db_pool and db_status == "CONNECTED":
-                    try:
-                        async with db_pool.acquire() as conn:
-                            await conn.execute("INSERT INTO system_audits (type, message) VALUES ($1, $2);", sel["type"], sel["msg"])
-                    except:
-                        pass
-                await manager.broadcast({
-                    "event": "audit_logged",
-                    "type": sel["type"],
-                    "message": sel["msg"]
                 })
 
         except Exception as loop_err:
@@ -2032,6 +2034,11 @@ async def post_settings(payload: SettingsPayload):
         "type": "info",
         "message": "System settings dynamically updated by administrator."
     })
+    await manager.broadcast({
+        "event": "settings_updated",
+        "settings": app_settings
+    })
+    return JSONResponse(content={"status": "settings_applied", "settings": app_settings})
 
 class ApiKeyCreatePayload(BaseModel):
     name: str
@@ -2150,11 +2157,6 @@ async def delete_api_key(kid: int):
     except Exception as e:
         logger.error(f"Failed to delete API Key: {e}")
         raise HTTPException(status_code=500, detail="Database deletion failed")
-    await manager.broadcast({
-        "event": "settings_updated",
-        "settings": app_settings
-    })
-    return JSONResponse(content={"status": "settings_applied", "settings": app_settings})
 
 
 @app.get("/api/dashboard/config")
@@ -2423,7 +2425,7 @@ async def get_rules():
         return JSONResponse(content=[])
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, last_fired, target_type, monitors_list, target_groups, target_groups_operator FROM alert_rules ORDER BY id ASC;")
+            rows = await conn.fetch("SELECT id, name, rules_json, channel_ids, enabled, status, last_fired, target_type, monitors_list, target_groups, target_groups_operator, targets_list, cooldown_interval FROM alert_rules ORDER BY id ASC;")
             res = []
             for r in rows:
                 d = dict(r)
@@ -2868,8 +2870,6 @@ async def get_hosts():
         raise HTTPException(status_code=503, detail="Database connection not available")
     try:
         async with db_pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval FROM hosts ORDER BY id DESC;")
-            rows = await conn.fetch("SELECT id, name, target, target_internal, target_external, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number, polling_interval FROM hosts ORDER BY id DESC;")
             rows = await conn.fetch("""
                 SELECT id, name, target, target_internal, target_external, 
                        ping_enabled, ping_target, http_enabled, http_target, 
@@ -3019,9 +3019,13 @@ async def get_support_logs():
     try:
         support_pkg = {}
         async with db_pool.acquire() as conn:
-            # 1. Fetch system settings
+            # 1. Fetch system settings (redact sensitive keys)
             settings_rows = await conn.fetch("SELECT key, value FROM system_settings;")
-            support_pkg["settings"] = {r["key"]: r["value"] for r in settings_rows}
+            redacted_keys = {"plugin_encryption_key", "preshared_key", "gateway_webhook_headers"}
+            support_pkg["settings"] = {
+                r["key"]: ("***REDACTED***" if r["key"] in redacted_keys else r["value"])
+                for r in settings_rows
+            }
 
             # 2. Fetch hosts list
             hosts_rows = await conn.fetch("SELECT id, name, target, ping_enabled, http_enabled, https_enabled, ssl_enabled, port_enabled, port_number FROM hosts ORDER BY id DESC;")
