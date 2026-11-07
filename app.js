@@ -1,108 +1,102 @@
-// HomePulse Dashboard Client Interaction Logic
-// Integrates with FastAPI REST endpoints & WebSocket Client Stream APIs
+// ============================================================================
+// AUTO-GENERATED FROM src/*.ts BY scripts/build-ts.mjs — DO NOT EDIT DIRECTLY
+// Run `npm run build` to recompile TypeScript sources into app.js
+// ============================================================================
 
-// Zero-dependency offline fallback for js-yaml
-if (typeof jsyaml === 'undefined') {
+// --- [Module: src/01-core-dashboard.ts] ---
+if (typeof jsyaml === "undefined") {
   window.jsyaml = {
-    dump: function (obj, options) {
+    dump: function(obj, options) {
       function dumpValue(val, indent = 0) {
         const spacing = " ".repeat(indent);
-        if (val === null || val === undefined) return "null";
-        if (typeof val === 'boolean' || typeof val === 'number') return String(val);
-        if (typeof val === 'string') {
+        if (val === null || val === void 0) return "null";
+        if (typeof val === "boolean" || typeof val === "number") return String(val);
+        if (typeof val === "string") {
           return `"${val.replace(/"/g, '\\"')}"`;
         }
         if (Array.isArray(val)) {
           if (val.length === 0) return "[]";
           let lines = [];
-          val.forEach(item => {
-            if (typeof item === 'object' && item !== null) {
+          val.forEach((item) => {
+            if (typeof item === "object" && item !== null) {
               const subLines = [];
               const keys = Object.keys(item);
               keys.forEach((k, idx) => {
                 const prefix = idx === 0 ? "- " : "  ";
                 subLines.push(`${spacing}${prefix}${k}: ${dumpValue(item[k], 0)}`);
               });
-              lines.push(subLines.join('\n'));
+              lines.push(subLines.join("\n"));
             } else {
               lines.push(`${spacing}- ${dumpValue(item, 0)}`);
             }
           });
-          return "\n" + lines.join('\n');
+          return "\n" + lines.join("\n");
         }
-        if (typeof val === 'object') {
+        if (typeof val === "object") {
           let lines = [];
           for (const key in val) {
             if (!val.hasOwnProperty(key)) continue;
             const subVal = val[key];
-            if (subVal === undefined) continue;
-            if (typeof subVal === 'object' && subVal !== null) {
+            if (subVal === void 0) continue;
+            if (typeof subVal === "object" && subVal !== null) {
               lines.push(`${spacing}${key}:${dumpValue(subVal, indent + 2)}`);
             } else {
               lines.push(`${spacing}${key}: ${dumpValue(subVal, 0)}`);
             }
           }
-          return "\n" + lines.join('\n');
+          return "\n" + lines.join("\n");
         }
         return `"${String(val)}"`;
       }
       return dumpValue(obj, 0).trim();
     },
-    load: function (str) {
+    load: function(str) {
       const lines = str.split(/\r?\n/);
       const root = {};
       let currentPath = [];
       let currentArray = null;
       let currentArrayKey = null;
       let arrayItemObj = null;
-
-      lines.forEach(line => {
+      lines.forEach((line) => {
         const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) return;
-
+        if (!trimmed || trimmed.startsWith("#")) return;
         const indent = line.length - line.trimStart().length;
-
-        if (trimmed.startsWith('-')) {
+        if (trimmed.startsWith("-")) {
           if (currentArray) {
             const rest = trimmed.slice(1).trim();
-            const colonIdx = rest.indexOf(':');
-            if (colonIdx !== -1) {
-              const subK = rest.slice(0, colonIdx).trim();
-              const subRawVal = rest.slice(colonIdx + 1).trim();
-              let subVal = subRawVal.replace(/^["']|["']$/g, '');
-              if (subRawVal === 'true') subVal = true;
-              else if (subRawVal === 'false') subVal = false;
-              else if (!isNaN(subRawVal) && subRawVal !== '') subVal = parseFloat(subRawVal);
-
+            const colonIdx2 = rest.indexOf(":");
+            if (colonIdx2 !== -1) {
+              const subK = rest.slice(0, colonIdx2).trim();
+              const subRawVal = rest.slice(colonIdx2 + 1).trim();
+              let subVal = subRawVal.replace(/^["']|["']$/g, "");
+              if (subRawVal === "true") subVal = true;
+              else if (subRawVal === "false") subVal = false;
+              else if (!isNaN(subRawVal) && subRawVal !== "") subVal = parseFloat(subRawVal);
               arrayItemObj = {};
               arrayItemObj[subK] = subVal;
               currentArray.push(arrayItemObj);
             } else {
-              let val = rest.replace(/^["']|["']$/g, '');
-              if (rest === 'true') val = true;
-              else if (rest === 'false') val = false;
-              else if (!isNaN(rest) && rest !== '') val = parseFloat(rest);
+              let val = rest.replace(/^["']|["']$/g, "");
+              if (rest === "true") val = true;
+              else if (rest === "false") val = false;
+              else if (!isNaN(rest) && rest !== "") val = parseFloat(rest);
               currentArray.push(val);
             }
           }
           return;
         }
-
-        const colonIdx = trimmed.indexOf(':');
+        const colonIdx = trimmed.indexOf(":");
         if (colonIdx === -1) return;
-
         const k = trimmed.slice(0, colonIdx).trim();
         const rawVal = trimmed.slice(colonIdx + 1).trim();
-
         if (indent > 2 && arrayItemObj) {
-          let val = rawVal.replace(/^["']|["']$/g, '');
-          if (rawVal === 'true') val = true;
-          else if (rawVal === 'false') val = false;
-          else if (!isNaN(rawVal) && rawVal !== '') val = parseFloat(rawVal);
+          let val = rawVal.replace(/^["']|["']$/g, "");
+          if (rawVal === "true") val = true;
+          else if (rawVal === "false") val = false;
+          else if (!isNaN(rawVal) && rawVal !== "") val = parseFloat(rawVal);
           arrayItemObj[k] = val;
           return;
         }
-
         if (indent === 0) {
           currentPath = [root];
           currentArray = null;
@@ -113,11 +107,9 @@ if (typeof jsyaml === 'undefined') {
             currentPath.pop();
           }
         }
-
         const activeObj = currentPath[currentPath.length - 1] || root;
-
-        if (rawVal === '') {
-          if (k === 'entities' || k === 'widgets' || k === 'dashboards') {
+        if (rawVal === "") {
+          if (k === "entities" || k === "widgets" || k === "dashboards") {
             currentArray = [];
             activeObj[k] = currentArray;
             currentArrayKey = k;
@@ -129,100 +121,72 @@ if (typeof jsyaml === 'undefined') {
             arrayItemObj = null;
           }
         } else {
-          let val = rawVal.replace(/^["']|["']$/g, '');
-          if (rawVal === 'true') val = true;
-          else if (rawVal === 'false') val = false;
-          else if (!isNaN(rawVal) && rawVal !== '') val = parseFloat(rawVal);
-
+          let val = rawVal.replace(/^["']|["']$/g, "");
+          if (rawVal === "true") val = true;
+          else if (rawVal === "false") val = false;
+          else if (!isNaN(rawVal) && rawVal !== "") val = parseFloat(rawVal);
           activeObj[k] = val;
         }
       });
-
       return root;
     }
   };
 }
-
-let activeTab = 'main';
-let token = localStorage.getItem('hp_token') || 'Architect_JWT_String'; // Fallback token
+let activeTab = "main";
+let token = localStorage.getItem("hp_token") || "Architect_JWT_String";
 let socket = null;
 const telemetryHistory = {};
 let cachedEntities = {};
-
-document.addEventListener('DOMContentLoaded', async () => {
-  // Sync dashboard layout and configuration registry from database
+document.addEventListener("DOMContentLoaded", async () => {
   await syncDashboardConfigFromServer();
-
-  // Load and apply system settings immediately on load for initial clock timezone alignment
   await loadInitialSettingsOnStart();
-
-  // Initialize header timestamp
   updateHeaderTime();
-  setInterval(updateHeaderTime, 1000);
-
-  // Initialize UI Collapsible Sidebar
+  setInterval(updateHeaderTime, 1e3);
   initializeSidebar();
-
-  // Load Active Entities & Connect Stream
   loadEntities();
   setupWebSocket();
-
-  // Render Dynamic views/tabs
   renderDashboards();
-
-  // Initialize density mode and bottom audit feed
   initDensityMode();
   initAuditListPlaceholder();
-
-  // Hook global tab navigation from sidebar
-  const navDiscovery = document.getElementById('nav-discovery');
+  const navDiscovery = document.getElementById("nav-discovery");
   if (navDiscovery) {
-    navDiscovery.addEventListener('click', (e) => {
+    navDiscovery.addEventListener("click", (e) => {
       e.preventDefault();
-      // Deactivated per request: let the button do nothing
     });
   }
-
-  // Sync discovery queue badge on load - Deactivated per request
-  // syncDiscoveryBadge();
 });
-
 function initDensityMode() {
-  const saved = localStorage.getItem('hp_layout_compact');
-  const isCompact = (saved === 'true');
-  document.body.classList.toggle('layout-compact', isCompact);
-  const label = document.getElementById('density-mode-label');
-  if (label) label.textContent = isCompact ? 'Spacious' : 'Compact';
-  const icon = document.querySelector('#header-density-toggle i');
+  const saved = localStorage.getItem("hp_layout_compact");
+  const isCompact = saved === "true";
+  document.body.classList.toggle("layout-compact", isCompact);
+  const label = document.getElementById("density-mode-label");
+  if (label) label.textContent = isCompact ? "Spacious" : "Compact";
+  const icon = document.querySelector("#header-density-toggle i");
   if (icon) {
-    icon.setAttribute('data-lucide', isCompact ? 'maximize-2' : 'layout-grid');
+    icon.setAttribute("data-lucide", isCompact ? "maximize-2" : "layout-grid");
     if (window.lucide) window.lucide.createIcons();
   }
 }
-
-window.toggleDensityMode = function () {
-  const isCompact = document.body.classList.toggle('layout-compact');
-  localStorage.setItem('hp_layout_compact', isCompact ? 'true' : 'false');
-  const label = document.getElementById('density-mode-label');
-  if (label) label.textContent = isCompact ? 'Spacious' : 'Compact';
-  const icon = document.querySelector('#header-density-toggle i');
+window.toggleDensityMode = function() {
+  const isCompact = document.body.classList.toggle("layout-compact");
+  localStorage.setItem("hp_layout_compact", isCompact ? "true" : "false");
+  const label = document.getElementById("density-mode-label");
+  if (label) label.textContent = isCompact ? "Spacious" : "Compact";
+  const icon = document.querySelector("#header-density-toggle i");
   if (icon) {
-    icon.setAttribute('data-lucide', isCompact ? 'maximize-2' : 'layout-grid');
+    icon.setAttribute("data-lucide", isCompact ? "maximize-2" : "layout-grid");
     if (window.lucide) window.lucide.createIcons();
   }
-  const settingCompact = document.getElementById('setting-compact');
+  const settingCompact = document.getElementById("setting-compact");
   if (settingCompact) settingCompact.checked = isCompact;
 };
-
 function initAuditListPlaceholder() {
-  const auditList = document.getElementById('audit-list');
+  const auditList = document.getElementById("audit-list");
   if (!auditList || auditList.children.length > 0) return;
-
-  addAuditEntry('success', 'HomePulse telemetry monitoring cluster online and active.');
-  addAuditEntry('info', 'PostgreSQL persistent database connection verified.');
-  addAuditEntry('info', 'WebSocket event router subscription stream initialized.');
+  addAuditEntry("success", "HomePulse telemetry monitoring cluster online and active.");
+  addAuditEntry("info", "PostgreSQL persistent database connection verified.");
+  addAuditEntry("info", "WebSocket event router subscription stream initialized.");
 }
-
 async function loadInitialSettingsOnStart() {
   const { httpUrl } = getApiUrls();
   try {
@@ -236,140 +200,107 @@ async function loadInitialSettingsOnStart() {
     console.warn("Could not load initial settings:", err);
   }
 }
-
-// Active settings state
-let currentTimezone = 'UTC';
-
-// 1. Header refresh time
+let currentTimezone = "UTC";
 function updateHeaderTime() {
-  const timeText = document.getElementById('refresh-time-text');
+  const timeText = document.getElementById("refresh-time-text");
   if (timeText) {
-    const now = new Date();
+    const now = /* @__PURE__ */ new Date();
     let timeStr;
     try {
-      const tz = currentTimezone === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone : currentTimezone;
-      timeStr = now.toLocaleTimeString('en-GB', { timeZone: tz, hour12: false });
-      const tzLabel = currentTimezone === 'local' ? 'LOCAL' : currentTimezone;
-      timeText.textContent = `Last refreshed: ${timeStr} ${tzLabel} • Live connection active`;
+      const tz = currentTimezone === "local" ? Intl.DateTimeFormat().resolvedOptions().timeZone : currentTimezone;
+      timeStr = now.toLocaleTimeString("en-GB", { timeZone: tz, hour12: false });
+      const tzLabel = currentTimezone === "local" ? "LOCAL" : currentTimezone;
+      timeText.textContent = `Last refreshed: ${timeStr} ${tzLabel} \u2022 Live connection active`;
     } catch {
-      const pad = (num) => String(num).padStart(2, '0');
+      const pad = (num) => String(num).padStart(2, "0");
       timeStr = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
-      timeText.textContent = `Last refreshed: ${timeStr} UTC • Live connection active`;
+      timeText.textContent = `Last refreshed: ${timeStr} UTC \u2022 Live connection active`;
     }
   }
 }
-
-
-// 2. Sidebar Collapsible Toggle
 function initializeSidebar() {
-  const sidebar = document.getElementById('sidebar');
-  const toggleSidebarBtn = document.getElementById('toggle-sidebar');
-  const sidebarToggleIcon = document.getElementById('sidebar-toggle-icon');
-
+  const sidebar = document.getElementById("sidebar");
+  const toggleSidebarBtn = document.getElementById("toggle-sidebar");
+  const sidebarToggleIcon = document.getElementById("sidebar-toggle-icon");
   if (toggleSidebarBtn && sidebar) {
-    toggleSidebarBtn.addEventListener('click', () => {
-      sidebar.classList.toggle('collapsed');
-      const isCollapsed = sidebar.classList.contains('collapsed');
-
-      // Update chevron icon direction
+    toggleSidebarBtn.addEventListener("click", () => {
+      sidebar.classList.toggle("collapsed");
+      const isCollapsed = sidebar.classList.contains("collapsed");
       if (sidebarToggleIcon) {
-        sidebarToggleIcon.setAttribute('data-lucide', isCollapsed ? 'chevron-right' : 'chevron-left');
+        sidebarToggleIcon.setAttribute("data-lucide", isCollapsed ? "chevron-right" : "chevron-left");
       }
       if (window.lucide) window.lucide.createIcons();
     });
   }
-
-  // Edit Mode Toggle hooks
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
   if (editToggleBtn) {
-    editToggleBtn.addEventListener('click', toggleEditMode);
+    editToggleBtn.addEventListener("click", toggleEditMode);
   }
 }
-
 let lastToggleTime = 0;
 function toggleEditMode() {
   const now = Date.now();
   if (now - lastToggleTime < 250) return;
   lastToggleTime = now;
-
-  const mainContent = document.getElementById('main-content');
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  const mainContent = document.getElementById("main-content");
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
   if (!mainContent) return;
-
-  const isEditMode = mainContent.classList.toggle('edit-mode');
+  const isEditMode2 = mainContent.classList.toggle("edit-mode");
   if (editToggleBtn) {
-    editToggleBtn.classList.toggle('active', isEditMode);
-    const spanText = editToggleBtn.querySelector('span');
+    editToggleBtn.classList.toggle("active", isEditMode2);
+    const spanText = editToggleBtn.querySelector("span");
     if (spanText) {
-      spanText.textContent = isEditMode ? 'Exit Edit Mode' : 'Edit Dashboard';
+      spanText.textContent = isEditMode2 ? "Exit Edit Mode" : "Edit Dashboard";
     }
-    const icon = editToggleBtn.querySelector('i');
+    const icon = editToggleBtn.querySelector("i");
     if (icon) {
-      icon.setAttribute('data-lucide', isEditMode ? 'check' : 'edit-3');
+      icon.setAttribute("data-lucide", isEditMode2 ? "check" : "edit-3");
     }
   }
-
-  const editBanner = document.getElementById('edit-mode-banner');
+  const editBanner = document.getElementById("edit-mode-banner");
   if (editBanner) {
-    editBanner.style.display = isEditMode ? 'flex' : 'none';
+    editBanner.style.display = isEditMode2 ? "flex" : "none";
   }
-
-  // Update dynamic tab bar and enable/disable drag-and-drop
   renderDashboards();
-  if (isEditMode) {
+  if (isEditMode2) {
     enableDragAndDrop();
   } else {
     disableDragAndDrop();
   }
-
   if (window.lucide) window.lucide.createIcons();
 }
 window.toggleEditMode = toggleEditMode;
-
-// (Legacy switchTab definition removed; active switchTab is defined below renderDashboards)
-
-// Help determine backend URL based on how the page is loaded (file:// vs http://)
 function getApiUrls() {
   let host = window.location.host;
   let protocol = window.location.protocol;
-
-  if (!host || protocol === 'file:') {
-    host = 'localhost:8000';
-    protocol = 'http:';
+  if (!host || protocol === "file:") {
+    host = "localhost:8000";
+    protocol = "http:";
   }
-
-  const httpUrl = protocol.startsWith('http') ? `${protocol}//${host}` : `http://${host}`;
-  const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+  const httpUrl = protocol.startsWith("http") ? `${protocol}//${host}` : `http://${host}`;
+  const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${wsProtocol}//${host}`;
-
   return { httpUrl, wsUrl };
 }
-
-// 4. REST API - Fetch Active Entities & Render
 function loadEntities() {
   console.log("Fetching active entities from server...");
   const { httpUrl } = getApiUrls();
   fetch(`${httpUrl}/api/entities`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`
+      "Authorization": `Bearer ${token}`
     }
-  })
-    .then(res => {
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      return res.json();
-    })
-    .then(data => {
-      buildDashboardCards(data);
-    })
-    .catch(err => {
-      console.error("Could not load entities. Service offline?", err);
-      addAuditEntry('warning', `Failed to sync database entities: REST endpoint unreachable.`);
-      setupFallbackMocks();
-    });
+  }).then((res) => {
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    return res.json();
+  }).then((data) => {
+    buildDashboardCards(data);
+  }).catch((err) => {
+    console.error("Could not load entities. Service offline?", err);
+    addAuditEntry("warning", `Failed to sync database entities: REST endpoint unreachable.`);
+    setupFallbackMocks();
+  });
 }
-
-// Fallback logic for offline integration / local review
 function setupFallbackMocks() {
   console.log("Setting up fallback mock visual nodes.");
   const mockEntities = {
@@ -409,7 +340,7 @@ function setupFallbackMocks() {
       "name": "Host CPU Temperature",
       "type": "sensor",
       "value_type": "float",
-      "unit": "°C",
+      "unit": "\xB0C",
       "value": 41.5,
       "status": "Optimal",
       "status_type": "optimal",
@@ -470,7 +401,7 @@ function setupFallbackMocks() {
       "type": "sensor",
       "value_type": "float",
       "unit": "%",
-      "value": 12.0,
+      "value": 12,
       "status": "Healthy",
       "status_type": "healthy",
       "tags": "main,server",
@@ -481,24 +412,19 @@ function setupFallbackMocks() {
   };
   buildDashboardCards(mockEntities);
 }
-
-// 5. Build dynamic Cards DOM
 function buildDashboardCards(entitiesMap) {
   cachedEntities = entitiesMap;
-  const grid = document.getElementById('dashboard-grid');
+  const grid = document.getElementById("dashboard-grid");
   if (!grid) return;
-
-  // 1. Initialize widgets configuration list if missing
   let widgets = [];
   try {
-    const stored = localStorage.getItem('hp_dashboard_widgets');
+    const stored = localStorage.getItem("hp_dashboard_widgets");
     if (stored) {
       widgets = JSON.parse(stored);
-      // Clean out legacy hardcoded living room widgets or legacy grid-embedded health/audit cards
-      const hadLegacy = widgets.some(w => w.id === 'widget-hp-health' || w.id === 'widget-hp-audits' || (w.entities && w.entities.some(e => e.entityKey === 'power_state' || e.nodeId === 'smart-plug-01')));
+      const hadLegacy = widgets.some((w) => w.id === "widget-hp-health" || w.id === "widget-hp-audits" || w.entities && w.entities.some((e) => e.entityKey === "power_state" || e.nodeId === "smart-plug-01"));
       if (hadLegacy) {
-        widgets = widgets.filter(w => w.id !== 'widget-hp-health' && w.id !== 'widget-hp-audits' && !(w.entities && w.entities.some(e => e.entityKey === 'power_state' || e.nodeId === 'smart-plug-01')));
-        localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
+        widgets = widgets.filter((w) => w.id !== "widget-hp-health" && w.id !== "widget-hp-audits" && !(w.entities && w.entities.some((e) => e.entityKey === "power_state" || e.nodeId === "smart-plug-01")));
+        localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
         syncLocalConfigToServer();
       }
     } else {
@@ -510,35 +436,27 @@ function buildDashboardCards(entitiesMap) {
     widgets = initializeWidgets();
     syncLocalConfigToServer();
   }
-
-  // Normalize widgets: resolve sensor_id strings to { nodeId, entityKey } structures to support HA style entity tags
-  widgets.forEach(widget => {
-    if (widget.entity && typeof widget.entity === 'string') {
+  widgets.forEach((widget) => {
+    if (widget.entity && typeof widget.entity === "string") {
       const ref = window.resolveSensorIdToEntityRef(widget.entity);
       if (ref) {
         widget.entities = [ref];
       }
     }
     if (widget.entities && Array.isArray(widget.entities)) {
-      widget.entities = widget.entities.map(item => {
-        if (typeof item === 'string') {
+      widget.entities = widget.entities.map((item) => {
+        if (typeof item === "string") {
           return window.resolveSensorIdToEntityRef(item) || item;
         }
         return item;
       });
     }
   });
-
-  // Preserve the plus-circle add placeholder
-  const placeholder = grid.querySelector('.card-placeholder');
-
-  // Clear existing cards
-  const existingCards = grid.querySelectorAll('.card:not(.card-placeholder)');
-  existingCards.forEach(c => c.remove());
-
-  // 2. Sort widgets by saved order array
+  const placeholder = grid.querySelector(".card-placeholder");
+  const existingCards = grid.querySelectorAll(".card:not(.card-placeholder)");
+  existingCards.forEach((c) => c.remove());
   try {
-    const savedOrder = JSON.parse(localStorage.getItem('hp_widget_order') || '[]');
+    const savedOrder = JSON.parse(localStorage.getItem("hp_widget_order") || "[]");
     if (savedOrder.length > 0) {
       widgets.sort((a, b) => {
         let idxA = savedOrder.indexOf(`card-${a.id}`);
@@ -551,90 +469,74 @@ function buildDashboardCards(entitiesMap) {
   } catch (err) {
     console.error("Failed to sort dynamic widgets:", err);
   }
-
-  // 3. Render widgets
-  widgets.forEach(widget => {
-    // Check if target tab is active
+  widgets.forEach((widget) => {
     if (widget.tab !== activeTab) return;
-
-    const cardEl = document.createElement('div');
-    cardEl.className = 'card';
+    const cardEl = document.createElement("div");
+    cardEl.className = "card";
     cardEl.id = `card-${widget.id}`;
-
-    // Apply sizing options classes
     const w = widget.options.gridWidth || 1;
     const h = widget.options.gridHeight || 1;
     if (w > 1) cardEl.classList.add(`grid-w-${w}`);
     if (h > 1) cardEl.classList.add(`grid-h-${h}`);
-
-    if (widget.type === 'error') {
-      cardEl.style.background = '#f59e0b';
-      cardEl.style.border = '1px solid #d97706';
-      cardEl.style.color = '#000000';
-      cardEl.style.display = 'flex';
-      cardEl.style.flexDirection = 'column';
-      cardEl.style.justifyContent = 'center';
-      cardEl.style.alignItems = 'center';
-      cardEl.style.minHeight = '140px';
-      cardEl.style.padding = '16px';
-      cardEl.style.borderRadius = '8px';
-      cardEl.style.boxSizing = 'border-box';
-      cardEl.style.textAlign = 'center';
-      cardEl.style.position = 'relative';
-
-      let deleteBtnHtml = '';
-      if (typeof isEditMode !== 'undefined' && isEditMode) {
-        cardEl.setAttribute('draggable', 'true');
-        cardEl.addEventListener('dragstart', handleDragStart);
-        cardEl.addEventListener('dragover', handleDragOver);
-        cardEl.addEventListener('dragleave', handleDragLeave);
-        cardEl.addEventListener('drop', handleDrop);
-        cardEl.addEventListener('dragend', handleDragEnd);
+    if (widget.type === "error") {
+      cardEl.style.background = "#f59e0b";
+      cardEl.style.border = "1px solid #d97706";
+      cardEl.style.color = "#000000";
+      cardEl.style.display = "flex";
+      cardEl.style.flexDirection = "column";
+      cardEl.style.justifyContent = "center";
+      cardEl.style.alignItems = "center";
+      cardEl.style.minHeight = "140px";
+      cardEl.style.padding = "16px";
+      cardEl.style.borderRadius = "8px";
+      cardEl.style.boxSizing = "border-box";
+      cardEl.style.textAlign = "center";
+      cardEl.style.position = "relative";
+      let deleteBtnHtml = "";
+      if (typeof isEditMode !== "undefined" && isEditMode) {
+        cardEl.setAttribute("draggable", "true");
+        cardEl.addEventListener("dragstart", handleDragStart);
+        cardEl.addEventListener("dragover", handleDragOver);
+        cardEl.addEventListener("dragleave", handleDragLeave);
+        cardEl.addEventListener("drop", handleDrop);
+        cardEl.addEventListener("dragend", handleDragEnd);
         cardEl.ondblclick = () => openCardEditor(widget.id);
-
         deleteBtnHtml = `
           <button class="card-action-btn delete-btn" onclick="event.stopPropagation(); deleteWidgetSettings('${widget.id}')" title="Delete Error Card" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.2); border:none; color:#000; border-radius:4px; width:24px; height:24px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
             <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
           </button>
         `;
       }
-
       cardEl.innerHTML = `
         ${deleteBtnHtml}
         <i data-lucide="alert-triangle" style="width: 36px; height: 36px; color: #000; margin-bottom: 8px;"></i>
         <div style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">Configuration Error</div>
-        <div style="font-size: 0.72rem; opacity: 0.85; margin-top: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${widget.options.error_message || 'YAML parsing exception'}">${widget.options.error_message || 'YAML format exception'}</div>
+        <div style="font-size: 0.72rem; opacity: 0.85; margin-top: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${widget.options.error_message || "YAML parsing exception"}">${widget.options.error_message || "YAML format exception"}</div>
       `;
       grid.appendChild(cardEl);
       if (window.lucide) window.lucide.createIcons();
       return;
     }
-
-    // If widget has single primary entity target
-    if (widget.entities && widget.entities.length === 1 && (widget.type === 'sensor' || widget.type === 'control' || widget.type === 'value')) {
+    if (widget.entities && widget.entities.length === 1 && (widget.type === "sensor" || widget.type === "control" || widget.type === "value")) {
       const eRef = widget.entities[0];
-      const matchedKey = Object.keys(entitiesMap).find(key => {
-        const item = entitiesMap[key];
-        return item.node_id === eRef.nodeId && item.entity_key === eRef.entityKey;
+      const matchedKey = Object.keys(entitiesMap).find((key) => {
+        const item2 = entitiesMap[key];
+        return item2.node_id === eRef.nodeId && item2.entity_key === eRef.entityKey;
       });
       const item = matchedKey ? entitiesMap[matchedKey] : null;
-
       if (item) {
-        cardEl.setAttribute('data-node-id', item.node_id);
-        cardEl.setAttribute('data-entity-key', item.entity_key);
-        cardEl.setAttribute('data-value-type', item.value_type || 'float');
-        const resolvedItemUnit = item.unit || (item.attributes && item.attributes.unit) || '';
-        cardEl.setAttribute('data-unit', widget.options.unit || resolvedItemUnit);
-
-        if (item.value === true || item.value === 'true' || item.value >= 1) {
-          cardEl.classList.add('highlighted');
+        cardEl.setAttribute("data-node-id", item.node_id);
+        cardEl.setAttribute("data-entity-key", item.entity_key);
+        cardEl.setAttribute("data-value-type", item.value_type || "float");
+        const resolvedItemUnit = item.unit || item.attributes && item.attributes.unit || "";
+        cardEl.setAttribute("data-unit", widget.options.unit || resolvedItemUnit);
+        if (item.value === true || item.value === "true" || item.value >= 1) {
+          cardEl.classList.add("highlighted");
         }
-
         const displayName = widget.title || item.name || item.entity_key;
-        const displayUnit = widget.options.unit !== undefined ? widget.options.unit : resolvedItemUnit;
-        const displayColor = widget.options.color || item.color || 'var(--color-optimal)';
+        const displayUnit = widget.options.unit !== void 0 ? widget.options.unit : resolvedItemUnit;
+        const displayColor = widget.options.color || item.color || "var(--color-optimal)";
         const sensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
-
         let headerHTML = `
           <div class="card-header">
             <div class="card-title-area">
@@ -642,26 +544,24 @@ function buildDashboardCards(entitiesMap) {
               <span class="card-subtitle">${item.node_id}.local</span>
               <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${sensorId}" onclick="navigator.clipboard?.writeText('${sensorId}'); showToast?.('Copied Entity ID')">Entity ID: ${sensorId}</span>
             </div>
-            <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
+            <span class="status-pill ${item.status_type || "default"}">${item.status || "Stable"}</span>
           </div>
         `;
-
-        let bodyHTML = '';
-        const initialVal = item.value !== undefined ? item.value : '';
-
-        if (widget.type === 'control') {
-          if (item.value_type === 'boolean') {
-            const isChecked = (item.value === true || item.value === 'true' || item.value === 'ON');
+        let bodyHTML = "";
+        const initialVal = item.value !== void 0 ? item.value : "";
+        if (widget.type === "control") {
+          if (item.value_type === "boolean") {
+            const isChecked = item.value === true || item.value === "true" || item.value === "ON";
             bodyHTML = `
               <div class="card-body">
-                <div class="card-value">${isChecked ? 'ON' : 'OFF'}</div>
+                <div class="card-value">${isChecked ? "ON" : "OFF"}</div>
                 <div class="control-row" style="margin-top: 14px;">
                   <div class="status-indicator">
                     <span class="status-dot online"></span>
                     <span>Active</span>
                   </div>
                   <label class="switch">
-                    <input type="checkbox" onchange="onControlChange('${item.node_id}', '${item.entity_key}', this.checked)" ${isChecked ? 'checked' : ''}>
+                    <input type="checkbox" onchange="onControlChange('${item.node_id}', '${item.entity_key}', this.checked)" ${isChecked ? "checked" : ""}>
                     <span class="slider"></span>
                   </label>
                 </div>
@@ -674,7 +574,7 @@ function buildDashboardCards(entitiesMap) {
               <div class="card-body">
                 <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
                 <div class="slider-container" style="margin-top: 10px;">
-                  <i data-lucide="${item.icon || 'sliders'}"></i>
+                  <i data-lucide="${item.icon || "sliders"}"></i>
                   <input type="range" class="range-slider" min="${minVal}" max="${maxVal}" value="${initialVal}" 
                     oninput="onSliderDrag('${item.node_id}', '${item.entity_key}', this.value)" 
                     onchange="onControlChange('${item.node_id}', '${item.entity_key}', parseInt(this.value))">
@@ -682,22 +582,21 @@ function buildDashboardCards(entitiesMap) {
               </div>
             `;
           }
-        } else if (widget.type === 'value') {
+        } else if (widget.type === "value") {
           bodyHTML = `
             <div class="card-body">
               <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
               <div class="flat-bottom-bar blue" style="background-color: ${displayColor}"></div>
             </div>
           `;
-        } else { // sensor
-          const sparklineHTML = widget.options.graphic === 'sparkline' ? `
+        } else {
+          const sparklineHTML = widget.options.graphic === "sparkline" ? `
             <div class="card-graphic-container">
               <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
                 <path d="" fill="none" stroke="${displayColor}" stroke-width="1.5"></path>
               </svg>
             </div>
-          ` : '';
-
+          ` : "";
           bodyHTML = `
             <div class="card-body">
               <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
@@ -705,14 +604,13 @@ function buildDashboardCards(entitiesMap) {
             </div>
           `;
         }
-
         cardEl.innerHTML = headerHTML + bodyHTML + `
           <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
           <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
           <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
         `;
       } else {
-        cardEl.classList.add('unavailable');
+        cardEl.classList.add("unavailable");
         cardEl.innerHTML = `
           <div class="card-header" style="opacity: 0.6;">
             <div class="card-title-area">
@@ -730,41 +628,35 @@ function buildDashboardCards(entitiesMap) {
           <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
         `;
       }
-    }
-
-    // TYPE A: Circular Gauge Card
-    else if (widget.type === 'gauge') {
+    } else if (widget.type === "gauge") {
       const eRef = widget.entities[0];
-      const matchedKey = Object.keys(entitiesMap).find(key => {
-        const item = entitiesMap[key];
-        return item.node_id === eRef.nodeId && item.entity_key === eRef.entityKey;
+      const matchedKey = Object.keys(entitiesMap).find((key) => {
+        const item2 = entitiesMap[key];
+        return item2.node_id === eRef.nodeId && item2.entity_key === eRef.entityKey;
       });
       const item = matchedKey ? entitiesMap[matchedKey] : null;
-
       if (item) {
-        cardEl.setAttribute('data-node-id', item.node_id);
-        cardEl.setAttribute('data-entity-id', item.entity_key);
-        cardEl.setAttribute('data-scale-min', widget.options.min !== undefined ? widget.options.min : '0');
-        cardEl.setAttribute('data-scale-max', widget.options.max !== undefined ? widget.options.max : '100');
-        const resolvedGaugeUnit = item.unit || (item.attributes && item.attributes.unit) || '';
-        cardEl.setAttribute('data-unit', widget.options.unit || resolvedGaugeUnit);
-        cardEl.classList.add('card-gauge');
-
-        const min = parseFloat(widget.options.min !== undefined ? widget.options.min : 0);
-        const max = parseFloat(widget.options.max !== undefined ? widget.options.max : 100);
+        cardEl.setAttribute("data-node-id", item.node_id);
+        cardEl.setAttribute("data-entity-id", item.entity_key);
+        cardEl.setAttribute("data-scale-min", widget.options.min !== void 0 ? widget.options.min : "0");
+        cardEl.setAttribute("data-scale-max", widget.options.max !== void 0 ? widget.options.max : "100");
+        const resolvedGaugeUnit = item.unit || item.attributes && item.attributes.unit || "";
+        cardEl.setAttribute("data-unit", widget.options.unit || resolvedGaugeUnit);
+        cardEl.classList.add("card-gauge");
+        const min = parseFloat(widget.options.min !== void 0 ? widget.options.min : 0);
+        const max = parseFloat(widget.options.max !== void 0 ? widget.options.max : 100);
         const numericVal = parseFloat(item.value) || 0;
         const pct = Math.max(0, Math.min(1, (numericVal - min) / (max - min)));
-        const offset = 110 - (pct * 110);
-        const displayColor = widget.options.color || item.color || 'var(--color-optimal)';
+        const offset = 110 - pct * 110;
+        const displayColor = widget.options.color || item.color || "var(--color-optimal)";
         const unit = widget.options.unit || resolvedGaugeUnit;
-
         cardEl.innerHTML = `
           <div class="card-header">
             <div class="card-title-area">
               <span class="card-title">${widget.title || item.name || item.entity_key}</span>
-              <span class="card-subtitle">${item.node_id}.local • Gauge</span>
+              <span class="card-subtitle">${item.node_id}.local \u2022 Gauge</span>
             </div>
-            <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
+            <span class="status-pill ${item.status_type || "default"}">${item.status || "Stable"}</span>
           </div>
           <div class="card-body" style="padding: 0 16px 16px 16px;">
             <div class="gauge-container">
@@ -781,12 +673,12 @@ function buildDashboardCards(entitiesMap) {
           <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
         `;
       } else {
-        cardEl.classList.add('unavailable');
+        cardEl.classList.add("unavailable");
         cardEl.innerHTML = `
           <div class="card-header" style="opacity: 0.6;">
             <div class="card-title-area">
               <span class="card-title">${widget.title || eRef.entityKey}</span>
-              <span class="card-subtitle">${eRef.nodeId}.local • Gauge</span>
+              <span class="card-subtitle">${eRef.nodeId}.local \u2022 Gauge</span>
             </div>
             <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
           </div>
@@ -799,58 +691,49 @@ function buildDashboardCards(entitiesMap) {
           <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
         `;
       }
-    }
-    // TYPE A.1: Title / Section Header Card
-    else if (widget.type === 'title') {
-      cardEl.classList.add('card-title-type');
-      cardEl.style.minHeight = '50px';
-
-      const titleColor = widget.options.color || 'var(--accent-orange)';
-
+    } else if (widget.type === "title") {
+      cardEl.classList.add("card-title-type");
+      cardEl.style.minHeight = "50px";
+      const titleColor = widget.options.color || "var(--accent-orange)";
       cardEl.innerHTML = `
         <div style="display: flex; align-items: center; width: 100%; height: 100%;">
-          <span style="font-size: 1.05rem; font-weight: 700; color: ${titleColor};">${widget.title || 'Section Title'}</span>
+          <span style="font-size: 1.05rem; font-weight: 700; color: ${titleColor};">${widget.title || "Section Title"}</span>
         </div>
         <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
         <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
         <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
       `;
-    }
-
-    // TYPE B: Multi-Entity Row List Card
-    else if (widget.type === 'entities') {
-      let rowsHTML = '';
-      widget.entities.forEach(ref => {
-        const item = Object.values(entitiesMap).find(e => e.node_id === ref.nodeId && e.entity_key === ref.entityKey);
+    } else if (widget.type === "entities") {
+      let rowsHTML = "";
+      widget.entities.forEach((ref) => {
+        const item = Object.values(entitiesMap).find((e) => e.node_id === ref.nodeId && e.entity_key === ref.entityKey);
         if (item) {
-          const unit = item.unit || '';
-          let stateContent = '';
-
-          if (item.type === 'control' && item.value_type === 'boolean') {
-            const isChecked = (item.value === true || item.value === 'true' || item.value === 'ON');
+          const unit = item.unit || "";
+          let stateContent = "";
+          if (item.type === "control" && item.value_type === "boolean") {
+            const isChecked = item.value === true || item.value === "true" || item.value === "ON";
             stateContent = `
               <div style="display:flex; align-items:center; gap:8px;">
-                <span class="entity-row-state" style="font-size:0.75rem;">${isChecked ? 'ON' : 'OFF'}</span>
+                <span class="entity-row-state" style="font-size:0.75rem;">${isChecked ? "ON" : "OFF"}</span>
                 <label class="switch" style="transform:scale(0.85);">
-                  <input type="checkbox" onchange="onControlChange('${item.node_id}', '${item.entity_key}', this.checked)" ${isChecked ? 'checked' : ''}>
+                  <input type="checkbox" onchange="onControlChange('${item.node_id}', '${item.entity_key}', this.checked)" ${isChecked ? "checked" : ""}>
                   <span class="slider"></span>
                 </label>
               </div>
             `;
-          } else if (item.type === 'control') {
+          } else if (item.type === "control") {
             const min = item.range ? item.range[0] : 0;
             const max = item.range ? item.range[1] : 100;
             stateContent = `
               <div style="display:flex; align-items:center; gap:10px; width:130px;">
                 <input type="range" class="range-slider" min="${min}" max="${max}" value="${item.value}" style="width:70px; margin:0;"
                   onchange="onControlChange('${item.node_id}', '${item.entity_key}', parseInt(this.value))">
-                <span class="entity-row-state" style="min-width:36px; text-align:right;">${item.value}${unit ? ' ' + unit : ''}</span>
+                <span class="entity-row-state" style="min-width:36px; text-align:right;">${item.value}${unit ? " " + unit : ""}</span>
               </div>
             `;
           } else {
-            stateContent = `<span class="entity-row-state">${item.value}${unit ? ' ' + unit : ''}</span>`;
+            stateContent = `<span class="entity-row-state">${item.value}${unit ? " " + unit : ""}</span>`;
           }
-
           rowsHTML += `
             <div class="entity-row" data-node-id="${item.node_id}" data-entity-key="${item.entity_key}" data-unit="${unit}">
               <span class="entity-row-name">${item.name || item.entity_key}</span>
@@ -859,7 +742,6 @@ function buildDashboardCards(entitiesMap) {
           `;
         }
       });
-
       cardEl.innerHTML = `
         <div class="card-header">
           <div class="card-title-area">
@@ -876,29 +758,24 @@ function buildDashboardCards(entitiesMap) {
         <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
         <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
       `;
-    }
-
-    // TYPE C: Glance Grid Icons Card
-    else if (widget.type === 'glance') {
-      let itemsHTML = '';
-      widget.entities.forEach(ref => {
-        const item = Object.values(entitiesMap).find(e => e.node_id === ref.nodeId && e.entity_key === ref.entityKey);
+    } else if (widget.type === "glance") {
+      let itemsHTML = "";
+      widget.entities.forEach((ref) => {
+        const item = Object.values(entitiesMap).find((e) => e.node_id === ref.nodeId && e.entity_key === ref.entityKey);
         if (item) {
-          const unit = item.unit || '';
+          const unit = item.unit || "";
           let displayVal = item.value;
-          if (item.value === true || item.value === 'true' || item.value === 'ON') displayVal = 'ON';
-          else if (item.value === false || item.value === 'false' || item.value === 'OFF') displayVal = 'OFF';
-
+          if (item.value === true || item.value === "true" || item.value === "ON") displayVal = "ON";
+          else if (item.value === false || item.value === "false" || item.value === "OFF") displayVal = "OFF";
           itemsHTML += `
             <div class="glance-item" data-node-id="${item.node_id}" data-entity-key="${item.entity_key}" data-unit="${unit}">
               <span class="glance-item-name">${item.name || item.entity_key}</span>
-              <i data-lucide="${item.icon || 'activity'}"></i>
-              <span class="glance-item-state">${displayVal}${unit ? ' ' + unit : ''}</span>
+              <i data-lucide="${item.icon || "activity"}"></i>
+              <span class="glance-item-state">${displayVal}${unit ? " " + unit : ""}</span>
             </div>
           `;
         }
       });
-
       cardEl.innerHTML = `
         <div class="card-header">
           <div class="card-title-area">
@@ -915,15 +792,9 @@ function buildDashboardCards(entitiesMap) {
         <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
         <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
       `;
-    }
-
-    // TYPE D: Health Snapshot widget
-    else if (widget.type === 'health') {
-      const isEditModeActive = document.getElementById('main-content')?.classList.contains('edit-mode');
-      const snapshotNoticeText = isEditModeActive ?
-        `Configuration mode active: Direct dashboard widgets configuration is unlocked.` :
-        `Observer mode restricted: Manual configuration and control overrides are currently disabled by administrative policy.`;
-
+    } else if (widget.type === "health") {
+      const isEditModeActive = document.getElementById("main-content")?.classList.contains("edit-mode");
+      const snapshotNoticeText = isEditModeActive ? `Configuration mode active: Direct dashboard widgets configuration is unlocked.` : `Observer mode restricted: Manual configuration and control overrides are currently disabled by administrative policy.`;
       cardEl.innerHTML = `
         <div class="card-header">
           <div class="card-title-area">
@@ -969,10 +840,7 @@ function buildDashboardCards(entitiesMap) {
         <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
         <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
       `;
-    }
-
-    // TYPE E: System Audit list panel widget
-    else if (widget.type === 'audit') {
+    } else if (widget.type === "audit") {
       cardEl.innerHTML = `
         <div class="card-header" style="flex-wrap: wrap; gap: 12px; display: flex; justify-content: space-between; align-items: center;">
           <div class="card-title-area">
@@ -1009,107 +877,81 @@ function buildDashboardCards(entitiesMap) {
         <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
       `;
     }
-
-    // Insert card inside the grid
     if (placeholder) {
       grid.insertBefore(cardEl, placeholder);
     } else {
       grid.appendChild(cardEl);
     }
   });
-
-  // Re-render Dynamic SVG icons via CDN
   if (window.lucide) window.lucide.createIcons();
-
-  // Highlight and filter tab state
-  const tabButtons = document.querySelectorAll('.tab-btn');
-  tabButtons.forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('data-tab') === activeTab);
+  const tabButtons = document.querySelectorAll(".tab-btn");
+  tabButtons.forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-tab") === activeTab);
   });
-
-  // Re-sync historical elements (sparklines)
-  widgets.forEach(widget => {
-    if (widget.tab !== activeTab || widget.type !== 'sensor') return;
+  widgets.forEach((widget) => {
+    if (widget.tab !== activeTab || widget.type !== "sensor") return;
     const eRef = widget.entities[0];
     const key = `${eRef.nodeId}-${eRef.entityKey}`;
     const cardEl = document.getElementById(`card-${key}`);
     if (cardEl && telemetryHistory[key] && telemetryHistory[key].length > 0) {
-      const path = cardEl.querySelector('.sparkline path');
+      const path = cardEl.querySelector(".sparkline path");
       if (path) {
-        path.setAttribute('d', getSparklinePath(telemetryHistory[key]));
+        path.setAttribute("d", getSparklinePath(telemetryHistory[key]));
       }
     }
   });
-
-  // Update dynamic Health Snapshot values
   updateHealthSnapshot();
 }
-
-// 6. Action handlers triggered from Card DOM elements
 function onSliderDrag(nodeId, entityId, val) {
   const card = document.getElementById(`card-${nodeId}-${entityId}`);
   if (card) {
-    const valueDisp = card.querySelector('.card-value');
-    const unit = card.getAttribute('data-unit') || '';
+    const valueDisp = card.querySelector(".card-value");
+    const unit = card.getAttribute("data-unit") || "";
     if (valueDisp) {
       valueDisp.innerHTML = `${val}<span class="card-unit"> ${unit}</span>`;
     }
   }
 }
-
 function onControlChange(nodeId, entityId, val) {
   console.log(`Command dispatched: ${nodeId}/${entityId} -> ${val}`);
-
-  // Optimistically toggle class highlights
   const card = document.getElementById(`card-${nodeId}-${entityId}`);
-  if (card && typeof val === 'boolean') {
-    card.classList.toggle('highlighted', val);
-    const valText = card.querySelector('.card-value');
-    if (valText) valText.textContent = val ? 'ON' : 'OFF';
+  if (card && typeof val === "boolean") {
+    card.classList.toggle("highlighted", val);
+    const valText = card.querySelector(".card-value");
+    if (valText) valText.textContent = val ? "ON" : "OFF";
   }
-
   const { httpUrl } = getApiUrls();
   fetch(`${httpUrl}/api/entities/control/${nodeId}/${entityId}`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
     },
     body: JSON.stringify({ value: val })
-  })
-    .then(res => {
-      if (!res.ok) throw new Error(`Server returned HTTP ${res.status}`);
-      return res.json();
-    })
-    .then(data => {
-      console.log("Action response completed status:", data);
-    })
-    .catch(err => {
-      console.error("Endpoint actuator failed:", err);
-      addAuditEntry('warning', `Actuation error on ${nodeId} (${entityId}): REST service unavailable.`);
-    });
+  }).then((res) => {
+    if (!res.ok) throw new Error(`Server returned HTTP ${res.status}`);
+    return res.json();
+  }).then((data) => {
+    console.log("Action response completed status:", data);
+  }).catch((err) => {
+    console.error("Endpoint actuator failed:", err);
+    addAuditEntry("warning", `Actuation error on ${nodeId} (${entityId}): REST service unavailable.`);
+  });
 }
-
-// 7. WebSocket Client Feed Connection
 function setupWebSocket() {
   const { wsUrl } = getApiUrls();
   const wsEndpoint = `${wsUrl}/api/ws/client`;
-
   console.log(`Connecting to WebSocket: ${wsEndpoint}`);
   socket = new WebSocket(wsEndpoint);
-
   socket.onopen = () => {
     console.log("WebSocket stream connected successfully.");
-    addAuditEntry('success', "Active WebSocket live event subscription stream established.");
-
-    // Subscribe to events structure
+    addAuditEntry("success", "Active WebSocket live event subscription stream established.");
     socket.send(JSON.stringify({
       action: "subscribe",
-      token: token,
+      token,
       streams: ["telemetry", "audits", "discovery"]
     }));
   };
-
   socket.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
@@ -1118,30 +960,23 @@ function setupWebSocket() {
       console.warn("Could not parse WS payload:", err);
     }
   };
-
   socket.onclose = (event) => {
     console.warn(`WebSocket closed: Code ${event.code}. Reconnecting in 5 seconds...`);
-    addAuditEntry('warning', "Live connection lost. Streaming disconnected. Retrying...");
-    setTimeout(setupWebSocket, 5000);
+    addAuditEntry("warning", "Live connection lost. Streaming disconnected. Retrying...");
+    setTimeout(setupWebSocket, 5e3);
   };
-
   socket.onerror = (err) => {
     console.error("WS error encountered:", err);
   };
 }
-
-// 8. WS Event router matching protocol specifications
 function handleIncomingWSEvent(data) {
   if (!data) return;
-
-  // A. Telemetry updates
-  if (data.event === 'state_changed') {
+  if (data.event === "state_changed") {
     updateCardState(data.node_id, data.entity_id, data.value, data.status, data.status_type);
-    if (data.node_id === 'monitors') {
+    if (data.node_id === "monitors") {
       handleLiveMonitorWSUpdate(data.entity_id, data.value, data.status, data.status_type);
     }
-  }
-  else if (data.event === 'entity_update') {
+  } else if (data.event === "entity_update") {
     const ent = data.data;
     if (ent && ent.entity_key) {
       if (ent.deleted) {
@@ -1149,98 +984,73 @@ function handleIncomingWSEvent(data) {
       } else {
         cachedEntities[ent.entity_key] = ent;
         updateCardState(
-          ent.node_id || 'plugins',
+          ent.node_id || "plugins",
           ent.entity_key,
           ent.value,
-          ent.status || 'Optimal',
-          ent.status_type || 'optimal'
+          ent.status || "Optimal",
+          ent.status_type || "optimal"
         );
       }
-      const pluginsView = document.getElementById('plugins-view');
-      if (pluginsView && !pluginsView.classList.contains('hide')) {
+      const pluginsView = document.getElementById("plugins-view");
+      if (pluginsView && !pluginsView.classList.contains("hide")) {
         loadInstalledPlugins();
       }
-      const hostsView = document.getElementById('hosts-view');
-      if (hostsView && !hostsView.classList.contains('hide')) {
+      const hostsView = document.getElementById("hosts-view");
+      if (hostsView && !hostsView.classList.contains("hide")) {
         loadHosts();
       }
     }
-  }
-
-  // B. Audit Log updates
-  else if (data.event === 'audit_logged') {
+  } else if (data.event === "audit_logged") {
     addAuditEntry(data.type, data.message);
-  }
-
-  // C. Dynamic mDNS discovery updates
-  else if (data.event === 'device_discovered') {
-    // Deactivated per request
-  }
-
-  // D. Global Settings updates
-  else if (data.event === 'settings_updated') {
+  } else if (data.event === "device_discovered") {
+  } else if (data.event === "settings_updated") {
     applyGlobalSettings(data.settings);
-  }
-
-  // E. Global Dashboard Config updates
-  else if (data.event === 'dashboard_config_updated') {
+  } else if (data.event === "dashboard_config_updated") {
     applyGlobalDashboardConfig(data.widgets, data.order, data.tabs);
   }
 }
-
-// Dynamically sync and apply updated system settings to this browser instance
 function applyGlobalSettings(data) {
   if (!data) return;
   console.log("Applying dynamic settings update broadcast:", data);
-
-  const tzEl = document.getElementById('setting-timezone');
+  const tzEl = document.getElementById("setting-timezone");
   if (tzEl && data.timezone) {
     tzEl.value = data.timezone;
   }
-  currentTimezone = data.timezone || 'UTC';
+  currentTimezone = data.timezone || "UTC";
   updateHeaderTime();
-
-  const retentionEl = document.getElementById('setting-retention');
-  const retentionVal = document.getElementById('setting-retention-val');
+  const retentionEl = document.getElementById("setting-retention");
+  const retentionVal = document.getElementById("setting-retention-val");
   if (retentionEl && data.log_retention) {
     retentionEl.value = data.log_retention;
     if (retentionVal) retentionVal.textContent = `${data.log_retention} days`;
   }
-
-  const intervalEl = document.getElementById('setting-interval');
-  const intervalVal = document.getElementById('setting-interval-val');
+  const intervalEl = document.getElementById("setting-interval");
+  const intervalVal = document.getElementById("setting-interval-val");
   if (intervalEl && data.telemetry_interval) {
     intervalEl.value = data.telemetry_interval;
     if (intervalVal) intervalVal.textContent = `${data.telemetry_interval}s`;
   }
-
-  const pskEl = document.getElementById('setting-psk');
+  const pskEl = document.getElementById("setting-psk");
   if (pskEl && data.preshared_key) pskEl.value = data.preshared_key;
-
-  const compactEl = document.getElementById('setting-compact');
+  const compactEl = document.getElementById("setting-compact");
   if (compactEl) {
-    compactEl.checked = (data.layout_compact === 'true');
-    document.body.classList.toggle('layout-compact', compactEl.checked);
+    compactEl.checked = data.layout_compact === "true";
+    document.body.classList.toggle("layout-compact", compactEl.checked);
   }
-
-  const monitorsToggleEl = document.getElementById('setting-show-service-monitors');
-  if (monitorsToggleEl && data.show_service_monitors !== undefined) {
-    monitorsToggleEl.checked = (data.show_service_monitors === 'true');
-    const navProbes = document.getElementById('nav-probes');
+  const monitorsToggleEl = document.getElementById("setting-show-service-monitors");
+  if (monitorsToggleEl && data.show_service_monitors !== void 0) {
+    monitorsToggleEl.checked = data.show_service_monitors === "true";
+    const navProbes = document.getElementById("nav-probes");
     if (navProbes) {
-      navProbes.style.display = (data.show_service_monitors === 'true') ? '' : 'none';
+      navProbes.style.display = data.show_service_monitors === "true" ? "" : "none";
     }
   }
-
   if (data.theme) {
     applyTheme(data.theme);
   }
 }
-
-// Update DOM elements on Live Socket triggers
 function updateCardState(nodeId, entityId, val, status, statusType) {
-  // Update memory cache for health status compilation (always keep cachedEntities in sync)
-  let matchedKey = Object.keys(cachedEntities).find(key => {
+  let matchedKey = Object.keys(cachedEntities).find((key) => {
     const item = cachedEntities[key];
     return item.node_id === nodeId && item.entity_key === entityId;
   });
@@ -1249,13 +1059,13 @@ function updateCardState(nodeId, entityId, val, status, statusType) {
     cachedEntities[newKey] = {
       node_id: nodeId,
       entity_key: entityId,
-      name: entityId.replace(/-/g, ' '),
-      type: 'sensor',
-      value_type: entityId.includes('latency') ? 'float' : 'string',
-      unit: entityId.includes('latency') ? 'ms' : '',
+      name: entityId.replace(/-/g, " "),
+      type: "sensor",
+      value_type: entityId.includes("latency") ? "float" : "string",
+      unit: entityId.includes("latency") ? "ms" : "",
       value: val,
-      status: status || '',
-      status_type: statusType || 'default'
+      status: status || "",
+      status_type: statusType || "default"
     };
     matchedKey = newKey;
   } else {
@@ -1263,410 +1073,329 @@ function updateCardState(nodeId, entityId, val, status, statusType) {
     if (status) cachedEntities[matchedKey].status = status;
     if (statusType) cachedEntities[matchedKey].status_type = statusType;
   }
-
   const card = document.querySelector(`[data-node-id="${nodeId}"][data-entity-key="${entityId}"]`);
   if (!card) return;
-
-  const valueType = card.getAttribute('data-value-type');
-  const unit = card.getAttribute('data-unit') || '';
-
-  // Update status pill dynamically
+  const valueType = card.getAttribute("data-value-type");
+  const unit = card.getAttribute("data-unit") || "";
   if (status && statusType) {
-    const pill = card.querySelector('.status-pill');
+    const pill = card.querySelector(".status-pill");
     if (pill) {
       pill.textContent = status;
       pill.className = `status-pill ${statusType}`;
     }
   }
-
-  // Update state indicators
-  const valText = card.querySelector('.card-value');
+  const valText = card.querySelector(".card-value");
   if (valText) {
-    if (valueType === 'boolean') {
-      const isTrue = (val === true || val === 'true' || val === 'ON');
-      valText.textContent = isTrue ? 'ON' : 'OFF';
-      card.classList.toggle('highlighted', isTrue);
-
-      const toggle = card.querySelector('.switch input');
+    if (valueType === "boolean") {
+      const isTrue = val === true || val === "true" || val === "ON";
+      valText.textContent = isTrue ? "ON" : "OFF";
+      card.classList.toggle("highlighted", isTrue);
+      const toggle = card.querySelector(".switch input");
       if (toggle) toggle.checked = isTrue;
     } else {
       valText.innerHTML = `${val}<span class="card-unit"> ${unit}</span>`;
-
-      const slider = card.querySelector('.range-slider');
+      const slider = card.querySelector(".range-slider");
       if (slider) slider.value = val;
     }
   }
-
-  // Update dynamic telemetry sparklines
-  const path = card.querySelector('.sparkline path');
+  const path = card.querySelector(".sparkline path");
   if (path) {
     const key = `${nodeId}-${entityId}`;
     if (!telemetryHistory[key]) telemetryHistory[key] = [];
-
-    // Keep last 12 data points
     telemetryHistory[key].push(parseFloat(val));
     if (telemetryHistory[key].length > 12) {
       telemetryHistory[key].shift();
     }
-
     const dAttr = getSparklinePath(telemetryHistory[key]);
-    path.setAttribute('d', dAttr);
+    path.setAttribute("d", dAttr);
   }
-
-  // Update Health Snapshot metrics dynamically
   updateHealthSnapshot();
 }
-
-// Dynamically compute SVG graph coordinates
 function getSparklinePath(values) {
-  if (!values) return '';
-  const validValues = values.filter(val => typeof val === 'number' && !isNaN(val) && isFinite(val));
-  if (validValues.length < 2) return '';
+  if (!values) return "";
+  const validValues = values.filter((val) => typeof val === "number" && !isNaN(val) && isFinite(val));
+  if (validValues.length < 2) return "";
   const min = Math.min(...validValues);
   const max = Math.max(...validValues);
-  const range = (max - min === 0) ? 1 : (max - min);
-
+  const range = max - min === 0 ? 1 : max - min;
   const width = 100;
-  const height = 30; // Max height inside viewBox
+  const height = 30;
   const padding = 5;
-
   return validValues.map((val, idx) => {
-    const x = (idx / (validValues.length - 1)) * width;
-    const y = height + padding - ((val - min) / range) * height;
-    return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+    const x = idx / (validValues.length - 1) * width;
+    const y = height + padding - (val - min) / range * height;
+    return `${idx === 0 ? "M" : "L"} ${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
 }
-
-// 9. Audit event list builder
 function addAuditEntry(type, message) {
-  const auditList = document.getElementById('audit-list');
+  const auditList = document.getElementById("audit-list");
   if (!auditList) return;
-
-  const now = new Date();
-  const pad = (num) => String(num).padStart(2, '0');
+  const now = /* @__PURE__ */ new Date();
+  const pad = (num) => String(num).padStart(2, "0");
   const timestamp = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-
   if (!window.latestAuditLogs) window.latestAuditLogs = [];
   window.latestAuditLogs.unshift({ timestamp, type, message });
   if (window.latestAuditLogs.length > 25) {
     window.latestAuditLogs.pop();
   }
-
-  const auditRow = document.createElement('div');
+  const auditRow = document.createElement("div");
   auditRow.className = `audit-row`;
   auditRow.dataset.severity = type;
-
-  let iconName = 'info';
-  let iconClass = 'info';
-  if (type === 'success') { iconName = 'check-circle-2'; iconClass = 'success'; }
-  else if (type === 'warning') { iconName = 'alert-triangle'; iconClass = 'warning'; }
-  else if (type === 'security') { iconName = 'key-round'; iconClass = 'security'; }
-  else if (type === 'error') { iconName = 'x-circle'; iconClass = 'error'; }
-
+  let iconName = "info";
+  let iconClass = "info";
+  if (type === "success") {
+    iconName = "check-circle-2";
+    iconClass = "success";
+  } else if (type === "warning") {
+    iconName = "alert-triangle";
+    iconClass = "warning";
+  } else if (type === "security") {
+    iconName = "key-round";
+    iconClass = "security";
+  } else if (type === "error") {
+    iconName = "x-circle";
+    iconClass = "error";
+  }
   auditRow.innerHTML = `
     <span class="audit-time">${timestamp}</span>
     <span class="audit-icon ${iconClass}"><i data-lucide="${iconName}" style="width: 14px; height: 14px;"></i></span>
     <span class="audit-msg">${message}</span>
   `;
-
-  if (window.activeAuditFilter && window.activeAuditFilter !== 'all' && type !== window.activeAuditFilter) {
-    auditRow.style.display = 'none';
+  if (window.activeAuditFilter && window.activeAuditFilter !== "all" && type !== window.activeAuditFilter) {
+    auditRow.style.display = "none";
   }
-
   auditList.insertBefore(auditRow, auditList.firstChild);
   if (window.lucide) window.lucide.createIcons();
-
-  // Enforce scroll history item limit
   while (auditList.children.length > 25) {
     auditList.removeChild(auditList.lastChild);
   }
 }
-
-window.exportAuditLogs = function (format) {
+window.exportAuditLogs = function(format) {
   const logs = window.latestAuditLogs || [];
   if (logs.length === 0) {
     showToast("No audit logs available to export.", "warning");
     return;
   }
-
-  const filter = window.activeAuditFilter || 'all';
-  const filteredLogs = logs.filter(log => filter === 'all' || log.type === filter);
+  const filter = window.activeAuditFilter || "all";
+  const filteredLogs = logs.filter((log) => filter === "all" || log.type === filter);
   if (filteredLogs.length === 0) {
     showToast(`No audit logs of severity "${filter}" available to export.`, "warning");
     return;
   }
-
-  let content = '';
+  let content = "";
   let filename = `audit_logs_${Date.now()}`;
-  let mimeType = 'text/plain';
-
-  if (format === 'json') {
+  let mimeType = "text/plain";
+  if (format === "json") {
     content = JSON.stringify(filteredLogs, null, 2);
-    filename += '.json';
-    mimeType = 'application/json';
-  } else if (format === 'csv') {
-    content = 'Timestamp,Level,Message\n';
-    filteredLogs.forEach(log => {
-      const safeMsg = (log.message || '').replace(/"/g, '""');
-      content += `"${log.timestamp}","${log.type}","${safeMsg}"\n`;
+    filename += ".json";
+    mimeType = "application/json";
+  } else if (format === "csv") {
+    content = "Timestamp,Level,Message\n";
+    filteredLogs.forEach((log) => {
+      const safeMsg = (log.message || "").replace(/"/g, '""');
+      content += `"${log.timestamp}","${log.type}","${safeMsg}"
+`;
     });
-    filename += '.csv';
-    mimeType = 'text/csv';
+    filename += ".csv";
+    mimeType = "text/csv";
   }
-
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-  showToast(`Successfully exported audit logs to ${format.toUpperCase()}`, 'success');
+  showToast(`Successfully exported audit logs to ${format.toUpperCase()}`, "success");
 };
-
-// 10. mDNS Node Discovery Handlers
 function showDiscoveryAlert(nodeId, name, ip) {
-  const banner = document.getElementById('discovery-banner');
-  const title = document.getElementById('discovery-title');
-  const subtitle = document.getElementById('discovery-subtitle');
-  const badge = document.getElementById('discovery-badge');
-
+  const banner = document.getElementById("discovery-banner");
+  const title = document.getElementById("discovery-title");
+  const subtitle = document.getElementById("discovery-subtitle");
+  const badge = document.getElementById("discovery-badge");
   if (!banner) return;
-
-  // Stash target node identifying tokens
   banner.dataset.nodeId = nodeId;
-
-  // Display details
   if (title) title.textContent = `New Endpoint Discovered: ${name}`;
   if (subtitle) subtitle.innerHTML = `mDNS broadcast detected: <strong>${nodeId}.local</strong> (IP: ${ip})`;
-
-  // Show banner alert
-  banner.classList.remove('hide');
-  banner.style.display = 'flex';
-
-  // Increment badge notification
+  banner.classList.remove("hide");
+  banner.style.display = "flex";
   if (badge) {
-    let count = parseInt(badge.textContent || '0');
+    let count = parseInt(badge.textContent || "0");
     count++;
-    badge.textContent = count;
-    badge.style.opacity = '1';
-    badge.style.pointerEvents = 'auto';
+    badge.textContent = String(count);
+    badge.style.opacity = "1";
+    badge.style.pointerEvents = "auto";
   }
-
-  addAuditEntry('info', `Local mDNS broadcast identified new node target: ${nodeId}`);
+  addAuditEntry("info", `Local mDNS broadcast identified new node target: ${nodeId}`);
 }
-
 function dismissDiscovery() {
-  const banner = document.getElementById('discovery-banner');
+  const banner = document.getElementById("discovery-banner");
   if (banner) {
-    const nodeId = banner.dataset.nodeId || 'unknown';
-    banner.classList.add('hide');
-    banner.style.display = 'none';
-    addAuditEntry('info', `mDNS discovery alert for ${nodeId}.local dismissed by admin.`);
+    const nodeId = banner.dataset.nodeId || "unknown";
+    banner.classList.add("hide");
+    banner.style.display = "none";
+    addAuditEntry("info", `mDNS discovery alert for ${nodeId}.local dismissed by admin.`);
     decrementDiscoveryBadge();
   }
 }
-
 function approveDiscovery() {
-  const banner = document.getElementById('discovery-banner');
+  const banner = document.getElementById("discovery-banner");
   if (!banner) return;
-
   const nodeId = banner.dataset.nodeId;
   if (!nodeId) return;
-
-  // Request token key as specified under PSK approvals
   const pin = prompt(`Enter Presign PIN / Access Token to authenticate "${nodeId}":`, "device_pin_12345");
-  if (pin === null) return; // Administrator canceled prompt
-
+  if (pin === null) return;
   const { httpUrl } = getApiUrls();
   fetch(`${httpUrl}/api/discovery/approve/${nodeId}`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
     },
     body: JSON.stringify({ preshared_key: pin })
-  })
-    .then(res => {
-      if (!res.ok) throw new Error(`HTTP rejection status ${res.status}`);
-      return res.json();
-    })
-    .then(data => {
-      banner.classList.add('hide');
-      banner.style.display = 'none';
-      decrementDiscoveryBadge();
-
-      // Reload state layout to render the new approved device card
-      loadEntities();
-      addAuditEntry('success', `mDNS node approval complete. Added "${nodeId}" to monitoring registry.`);
-    })
-    .catch(err => {
-      console.error("Device verification failed:", err);
-      alert(`Registration verification failed: ${err.message}`);
-      addAuditEntry('warning', `Failed to approve node connection "${nodeId}": ${err.message}`);
-    });
+  }).then((res) => {
+    if (!res.ok) throw new Error(`HTTP rejection status ${res.status}`);
+    return res.json();
+  }).then((data) => {
+    banner.classList.add("hide");
+    banner.style.display = "none";
+    decrementDiscoveryBadge();
+    loadEntities();
+    addAuditEntry("success", `mDNS node approval complete. Added "${nodeId}" to monitoring registry.`);
+  }).catch((err) => {
+    console.error("Device verification failed:", err);
+    alert(`Registration verification failed: ${err.message}`);
+    addAuditEntry("warning", `Failed to approve node connection "${nodeId}": ${err.message}`);
+  });
 }
-
 function decrementDiscoveryBadge() {
-  const badge = document.getElementById('discovery-badge');
+  const badge = document.getElementById("discovery-badge");
   if (!badge) return;
-
-  let count = parseInt(badge.textContent || '0');
+  let count = parseInt(badge.textContent || "0");
   count = Math.max(0, count - 1);
-  badge.textContent = count;
-
+  badge.textContent = String(count);
   if (count <= 0) {
-    badge.style.opacity = '0';
-    badge.style.pointerEvents = 'none';
+    badge.style.opacity = "0";
+    badge.style.pointerEvents = "none";
   }
 }
-
-// Fetch active discovery queue on manual navigation click
 function fetchDiscoveryQueue() {
   const { httpUrl } = getApiUrls();
   fetch(`${httpUrl}/api/discovery/queue`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`
+      "Authorization": `Bearer ${token}`
     }
-  })
-    .then(res => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    })
-    .then(data => {
-      if (data && data.length > 0) {
-        const topDevice = data[0];
-        showDiscoveryAlert(topDevice.id, topDevice.name, topDevice.manifest?.hardware?.mac || 'N/A');
-      } else {
-        alert("Discovery Queue is currently empty. No pending mDNS nodes identified.");
-      }
-    })
-    .catch(err => {
-      console.warn("Failed to check active discovery queue:", err);
-      alert("Could not load discovery queue. System REST service offline.");
-    });
+  }).then((res) => {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }).then((data) => {
+    if (data && data.length > 0) {
+      const topDevice = data[0];
+      showDiscoveryAlert(topDevice.id, topDevice.name, topDevice.manifest?.hardware?.mac || "N/A");
+    } else {
+      alert("Discovery Queue is currently empty. No pending mDNS nodes identified.");
+    }
+  }).catch((err) => {
+    console.warn("Failed to check active discovery queue:", err);
+    alert("Could not load discovery queue. System REST service offline.");
+  });
 }
-
 function syncDiscoveryBadge() {
   const { httpUrl } = getApiUrls();
   fetch(`${httpUrl}/api/discovery/queue`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`
+      "Authorization": `Bearer ${token}`
     }
-  })
-    .then(res => res.ok ? res.json() : [])
-    .then(data => {
-      const badge = document.getElementById('discovery-badge');
-      if (badge) {
-        const count = (data && data.length) ? data.length : 0;
-        badge.textContent = count;
-        if (count > 0) {
-          badge.style.opacity = '1';
-          badge.style.pointerEvents = 'auto';
-        } else {
-          badge.style.opacity = '0';
-          badge.style.pointerEvents = 'none';
-        }
+  }).then((res) => res.ok ? res.json() : []).then((data) => {
+    const badge = document.getElementById("discovery-badge");
+    if (badge) {
+      const count = data && data.length ? data.length : 0;
+      badge.textContent = count;
+      if (count > 0) {
+        badge.style.opacity = "1";
+        badge.style.pointerEvents = "auto";
+      } else {
+        badge.style.opacity = "0";
+        badge.style.pointerEvents = "none";
       }
-    })
-    .catch(err => {
-      console.warn("Failed to sync discovery badge:", err);
-    });
+    }
+  }).catch((err) => {
+    console.warn("Failed to sync discovery badge:", err);
+  });
 }
-
-// 11. Dynamic Health Snapshot calculations compiler
 function updateHealthSnapshot() {
   let cpuVal = 0;
   let memVal = 0;
   let dbConnected = true;
-
   const entityList = Object.values(cachedEntities);
   let hasCpu = false;
   let hasMem = false;
-
-  entityList.forEach(item => {
-    if (item.entity_key === 'cpu-utilization') {
+  entityList.forEach((item) => {
+    if (item.entity_key === "cpu-utilization") {
       cpuVal = parseFloat(item.value) || 0;
       hasCpu = true;
-    } else if (item.entity_key === 'memory-saturation') {
+    } else if (item.entity_key === "memory-saturation") {
       memVal = parseFloat(item.value) || 0;
       hasMem = true;
-    } else if (item.entity_key === 'database-status') {
-      dbConnected = (item.value === 'CONNECTED' || item.value === 'Connected' || item.value === 'healthy');
+    } else if (item.entity_key === "database-status") {
+      dbConnected = item.value === "CONNECTED" || item.value === "Connected" || item.value === "healthy";
     }
   });
-
-  const saturation = (hasCpu && hasMem) ? Math.round((cpuVal + memVal) / 2) : (hasCpu ? Math.round(cpuVal) : 28);
+  const saturation = hasCpu && hasMem ? Math.round((cpuVal + memVal) / 2) : hasCpu ? Math.round(cpuVal) : 28;
   const availability = dbConnected ? 100 : 0;
-
-  // A. Global Availability
-  const availText = document.getElementById('snapshot-availability');
-  const availBar = document.getElementById('snapshot-availability-bar');
+  const availText = document.getElementById("snapshot-availability");
+  const availBar = document.getElementById("snapshot-availability-bar");
   if (availText) availText.textContent = `${availability}%`;
   if (availBar) availBar.style.width = `${availability}%`;
-
-  // B. Resource Saturation
-  const satText = document.getElementById('snapshot-saturation');
-  const satBar = document.getElementById('snapshot-saturation-bar');
+  const satText = document.getElementById("snapshot-saturation");
+  const satBar = document.getElementById("snapshot-saturation-bar");
   if (satText) {
     satText.textContent = `${saturation}%`;
-    satText.className = `snapshot-value ${saturation > 85 ? 'red' : (saturation > 65 ? 'orange' : 'green')}`;
+    satText.className = `snapshot-value ${saturation > 85 ? "red" : saturation > 65 ? "orange" : "green"}`;
   }
   if (satBar) {
     satBar.style.width = `${saturation}%`;
-    satBar.className = `snapshot-progress-fill ${saturation > 85 ? 'red' : (saturation > 65 ? 'orange' : 'green')}`;
+    satBar.className = `snapshot-progress-fill ${saturation > 85 ? "red" : saturation > 65 ? "orange" : "green"}`;
   }
-
-  // C. Security Posture
-  const secText = document.getElementById('snapshot-security');
-  const secBar = document.getElementById('snapshot-security-bar');
+  const secText = document.getElementById("snapshot-security");
+  const secBar = document.getElementById("snapshot-security-bar");
   if (secText) {
-    secText.textContent = dbConnected ? 'Hardened' : 'Degraded';
-    secText.className = `snapshot-value ${dbConnected ? 'green' : 'red'}`;
+    secText.textContent = dbConnected ? "Hardened" : "Degraded";
+    secText.className = `snapshot-value ${dbConnected ? "green" : "red"}`;
   }
   if (secBar) {
-    secBar.style.width = dbConnected ? '100%' : '30%';
-    secBar.className = `snapshot-progress-fill ${dbConnected ? 'green' : 'red'}`;
+    secBar.style.width = dbConnected ? "100%" : "30%";
+    secBar.className = `snapshot-progress-fill ${dbConnected ? "green" : "red"}`;
   }
-
-  // Overall status pill
-  const overallPill = document.getElementById('snapshot-overall-status');
+  const overallPill = document.getElementById("snapshot-overall-status");
   if (overallPill) {
     if (!dbConnected) {
-      overallPill.textContent = 'Degraded';
-      overallPill.className = 'status-pill caution';
+      overallPill.textContent = "Degraded";
+      overallPill.className = "status-pill caution";
     } else if (saturation > 85) {
-      overallPill.textContent = 'Warning';
-      overallPill.className = 'status-pill caution';
+      overallPill.textContent = "Warning";
+      overallPill.className = "status-pill caution";
     } else {
-      overallPill.textContent = 'Healthy';
-      overallPill.className = 'status-pill optimal';
+      overallPill.textContent = "Healthy";
+      overallPill.className = "status-pill optimal";
     }
   }
-
-
 }
-
-// ─────────────────────────────────────────
-// SERVER-SIDE DASHBOARD CONFIGURATION SYNC
-// ─────────────────────────────────────────
-
 async function syncLocalConfigToServer() {
   const { httpUrl } = getApiUrls();
   try {
-    const widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
-    const order = JSON.parse(localStorage.getItem('hp_widget_order') || '[]');
-    const tabs = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-
+    const widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+    const order = JSON.parse(localStorage.getItem("hp_widget_order") || "[]");
+    const tabs = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
     await fetch(`${httpUrl}/api/dashboard/config`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
       },
       body: JSON.stringify({ widgets, order, tabs })
     });
@@ -1674,43 +1403,38 @@ async function syncLocalConfigToServer() {
     console.error("Failed to sync local layout configuration to database:", err);
   }
 }
-
 async function syncDashboardConfigFromServer() {
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/dashboard/config`, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'Authorization': `Bearer ${token}`
+        "Authorization": `Bearer ${token}`
       }
     });
     if (res.ok) {
       const data = await res.json();
       let hasData = false;
-
       window.isSyncingFromServer = true;
       if (data.widgets && data.widgets.length > 0) {
-        localStorage.setItem('hp_dashboard_widgets', JSON.stringify(data.widgets));
+        localStorage.setItem("hp_dashboard_widgets", JSON.stringify(data.widgets));
         hasData = true;
       }
       if (data.order && data.order.length > 0) {
-        localStorage.setItem('hp_widget_order', JSON.stringify(data.order));
+        localStorage.setItem("hp_widget_order", JSON.stringify(data.order));
       }
       if (data.tabs && data.tabs.length > 0) {
-        localStorage.setItem('hp_dashboards', JSON.stringify(data.tabs));
+        localStorage.setItem("hp_dashboards", JSON.stringify(data.tabs));
         hasData = true;
       }
       window.isSyncingFromServer = false;
-
       if (!hasData) {
         window.isSyncingFromServer = true;
-        localStorage.removeItem('hp_dashboard_widgets');
-        localStorage.removeItem('hp_widget_order');
-        localStorage.removeItem('hp_dashboards');
+        localStorage.removeItem("hp_dashboard_widgets");
+        localStorage.removeItem("hp_widget_order");
+        localStorage.removeItem("hp_dashboards");
         window.isSyncingFromServer = false;
-
-        // Initialize default tabs; widgets will be initialized once entities load
-        localStorage.setItem('hp_dashboards', JSON.stringify([
+        localStorage.setItem("hp_dashboards", JSON.stringify([
           { id: "main", name: "Main" }
         ]));
       }
@@ -1720,27 +1444,23 @@ async function syncDashboardConfigFromServer() {
     window.isSyncingFromServer = false;
   }
 }
-
 function applyGlobalDashboardConfig(widgets, order, tabs) {
   console.log("Applying live dynamically-received global dashboard configurations.");
   window.isSyncingFromServer = true;
-  if (widgets) localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
-  if (order) localStorage.setItem('hp_widget_order', JSON.stringify(order));
-  if (tabs) localStorage.setItem('hp_dashboards', JSON.stringify(tabs));
+  if (widgets) localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
+  if (order) localStorage.setItem("hp_widget_order", JSON.stringify(order));
+  if (tabs) localStorage.setItem("hp_dashboards", JSON.stringify(tabs));
   window.isSyncingFromServer = false;
-
   renderDashboards();
   if (cachedEntities && Object.keys(cachedEntities).length > 0) {
     buildDashboardCards(cachedEntities);
   }
 }
-
-// Global Proxy to auto-sync local storage updates to the database
-(function () {
+(function() {
   const originalSetItem = localStorage.setItem;
-  localStorage.setItem = function (key, value) {
+  localStorage.setItem = function(key, value) {
     originalSetItem.apply(this, arguments);
-    if (key === 'hp_dashboard_widgets' || key === 'hp_widget_order' || key === 'hp_dashboards') {
+    if (key === "hp_dashboard_widgets" || key === "hp_widget_order" || key === "hp_dashboards") {
       if (!window.isSyncingFromServer) {
         syncLocalConfigToServer();
       }
@@ -1748,592 +1468,471 @@ function applyGlobalDashboardConfig(widgets, order, tabs) {
   };
 })();
 
-// ─────────────────────────────────────────
-// SETTINGS PAGE LOGIC
-// ─────────────────────────────────────────
-
-// Navigation: hook Settings and Dashboard sidebar links
-document.addEventListener('DOMContentLoaded', () => {
-  const navSettings = document.getElementById('nav-settings');
+// --- [Module: src/02-settings-and-views.ts] ---
+document.addEventListener("DOMContentLoaded", () => {
+  const navSettings = document.getElementById("nav-settings");
   if (navSettings) {
-    navSettings.addEventListener('click', (e) => {
+    navSettings.addEventListener("click", (e) => {
       e.preventDefault();
       showSettingsView();
     });
   }
-
-  const navDashboard = document.getElementById('nav-dashboard');
+  const navDashboard = document.getElementById("nav-dashboard");
   if (navDashboard) {
-    navDashboard.addEventListener('click', (e) => {
+    navDashboard.addEventListener("click", (e) => {
       e.preventDefault();
       showDashboardView();
-      // Highlight nav item
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      navDashboard.classList.add('active');
+      document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+      navDashboard.classList.add("active");
     });
   }
 });
-
 function hideAllViews() {
-  const dashContent = document.querySelector('.dashboard-content');
-  const dashGrid = document.getElementById('dashboard-grid');
-  const bottomSection = document.querySelector('.bottom-section');
-  const settingsView = document.getElementById('settings-view');
-  const probesView = document.getElementById('probes-view');
-  const automationsView = document.getElementById('automations-view');
-  const channelsView = document.getElementById('channels-view');
-  const devtoolsView = document.getElementById('developer-tools-view');
-  const uptimeHistoryView = document.getElementById('uptime-history-view');
-  const hostsView = document.getElementById('hosts-view');
-  const hostDetailView = document.getElementById('host-detail-view');
-  const pluginsView = document.getElementById('plugins-view');
-  const layoutView = document.getElementById('layout-view');
-
-  if (dashContent) dashContent.style.display = 'none';
-  if (dashGrid) dashGrid.style.display = 'none';
-  if (bottomSection) bottomSection.style.display = 'none';
-  if (settingsView) settingsView.classList.add('hide');
-  if (probesView) probesView.classList.add('hide');
-  if (automationsView) automationsView.classList.add('hide');
-  if (channelsView) channelsView.classList.add('hide');
-  if (devtoolsView) devtoolsView.classList.add('hide');
-  if (uptimeHistoryView) uptimeHistoryView.classList.add('hide');
-  if (hostsView) hostsView.classList.add('hide');
-  if (hostDetailView) hostDetailView.classList.add('hide');
-  if (pluginsView) pluginsView.classList.add('hide');
-  if (layoutView) layoutView.classList.add('hide');
-
-  const tabBar = document.getElementById('tab-bar');
-  if (tabBar) tabBar.style.display = 'none';
-
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const dashContent = document.querySelector(".dashboard-content");
+  const dashGrid = document.getElementById("dashboard-grid");
+  const bottomSection = document.querySelector(".bottom-section");
+  const settingsView = document.getElementById("settings-view");
+  const probesView = document.getElementById("probes-view");
+  const automationsView = document.getElementById("automations-view");
+  const channelsView = document.getElementById("channels-view");
+  const devtoolsView = document.getElementById("developer-tools-view");
+  const uptimeHistoryView = document.getElementById("uptime-history-view");
+  const hostsView = document.getElementById("hosts-view");
+  const hostDetailView = document.getElementById("host-detail-view");
+  const pluginsView = document.getElementById("plugins-view");
+  const layoutView = document.getElementById("layout-view");
+  if (dashContent) dashContent.style.display = "none";
+  if (dashGrid) dashGrid.style.display = "none";
+  if (bottomSection) bottomSection.style.display = "none";
+  if (settingsView) settingsView.classList.add("hide");
+  if (probesView) probesView.classList.add("hide");
+  if (automationsView) automationsView.classList.add("hide");
+  if (channelsView) channelsView.classList.add("hide");
+  if (devtoolsView) devtoolsView.classList.add("hide");
+  if (uptimeHistoryView) uptimeHistoryView.classList.add("hide");
+  if (hostsView) hostsView.classList.add("hide");
+  if (hostDetailView) hostDetailView.classList.add("hide");
+  if (pluginsView) pluginsView.classList.add("hide");
+  if (layoutView) layoutView.classList.add("hide");
+  const tabBar = document.getElementById("tab-bar");
+  if (tabBar) tabBar.style.display = "none";
+  document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
 }
-
 function showSettingsView() {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent && mainContent.classList.contains('edit-mode')) {
-    const editToggleBtn = document.getElementById('edit-toggle-btn');
-    if (editToggleBtn) editToggleBtn.click();
+  const mainContent = document.getElementById("main-content");
+  if (mainContent && mainContent.classList.contains("edit-mode")) {
+    const editToggleBtn2 = document.getElementById("edit-toggle-btn");
+    if (editToggleBtn2) editToggleBtn2.click();
   }
-
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'none';
-
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
+  if (editToggleBtn) editToggleBtn.style.display = "none";
   hideAllViews();
-
-  const settingsView = document.getElementById('settings-view');
-  if (settingsView) settingsView.classList.remove('hide');
-
-  const navSettings = document.getElementById('nav-settings');
-  if (navSettings) navSettings.classList.add('active');
-
+  const settingsView = document.getElementById("settings-view");
+  if (settingsView) settingsView.classList.remove("hide");
+  const navSettings = document.getElementById("nav-settings");
+  if (navSettings) navSettings.classList.add("active");
   loadSettings();
 }
-
 function showDashboardView() {
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'flex';
-
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
+  if (editToggleBtn) editToggleBtn.style.display = "flex";
   hideAllViews();
-
-  const dashContent = document.querySelector('.dashboard-content');
-  const dashGrid = document.getElementById('dashboard-grid');
-  const bottomSection = document.querySelector('.bottom-section');
-  if (dashContent) dashContent.style.display = '';
-  if (dashGrid) dashGrid.style.display = '';
-  if (bottomSection) bottomSection.style.display = '';
-
-  const tabBar = document.getElementById('tab-bar');
-  if (tabBar) tabBar.style.display = 'flex';
-
-  const navDashboard = document.getElementById('nav-dashboard');
-  if (navDashboard) navDashboard.classList.add('active');
+  const dashContent = document.querySelector(".dashboard-content");
+  const dashGrid = document.getElementById("dashboard-grid");
+  const bottomSection = document.querySelector(".bottom-section");
+  if (dashContent) dashContent.style.display = "";
+  if (dashGrid) dashGrid.style.display = "";
+  if (bottomSection) bottomSection.style.display = "";
+  const tabBar = document.getElementById("tab-bar");
+  if (tabBar) tabBar.style.display = "flex";
+  const navDashboard = document.getElementById("nav-dashboard");
+  if (navDashboard) navDashboard.classList.add("active");
 }
-
 function showProbesView() {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent && mainContent.classList.contains('edit-mode')) {
-    const editToggleBtn = document.getElementById('edit-toggle-btn');
-    if (editToggleBtn) editToggleBtn.click();
+  const mainContent = document.getElementById("main-content");
+  if (mainContent && mainContent.classList.contains("edit-mode")) {
+    const editToggleBtn2 = document.getElementById("edit-toggle-btn");
+    if (editToggleBtn2) editToggleBtn2.click();
   }
-
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'none';
-
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
+  if (editToggleBtn) editToggleBtn.style.display = "none";
   hideAllViews();
-
-  const probesView = document.getElementById('probes-view');
-  if (probesView) probesView.classList.remove('hide');
-
-  const navProbes = document.getElementById('nav-probes');
-  if (navProbes) navProbes.classList.add('active');
-
+  const probesView = document.getElementById("probes-view");
+  if (probesView) probesView.classList.remove("hide");
+  const navProbes = document.getElementById("nav-probes");
+  if (navProbes) navProbes.classList.add("active");
   navigateProbesLevel(1);
 }
-
-window.switchAlertRouterTab = function (subTab) {
+window.switchAlertRouterTab = function(subTab) {
   const cards = {
-    rules: document.getElementById('alert-router-rules-card'),
-    channels: document.getElementById('alert-router-channels-card'),
-    groups: document.getElementById('alert-router-groups-card'),
-    flows: document.getElementById('alert-router-flows-card')
+    rules: document.getElementById("alert-router-rules-card"),
+    channels: document.getElementById("alert-router-channels-card"),
+    groups: document.getElementById("alert-router-groups-card"),
+    flows: document.getElementById("alert-router-flows-card")
   };
   const btns = {
-    rules: document.getElementById('alert-tab-rules'),
-    channels: document.getElementById('alert-tab-channels'),
-    groups: document.getElementById('alert-tab-groups'),
-    flows: document.getElementById('alert-tab-flows')
+    rules: document.getElementById("alert-tab-rules"),
+    channels: document.getElementById("alert-tab-channels"),
+    groups: document.getElementById("alert-tab-groups"),
+    flows: document.getElementById("alert-tab-flows")
   };
-
-  if (subTab === 'flows') {
-    if (typeof loadFlowsList === 'function') loadFlowsList();
+  if (subTab === "flows") {
+    if (typeof loadFlowsList === "function") loadFlowsList();
   }
-
-  Object.keys(cards).forEach(key => {
+  Object.keys(cards).forEach((key) => {
     if (cards[key]) {
-      cards[key].style.display = (key === subTab) ? 'block' : 'none';
+      cards[key].style.display = key === subTab ? "block" : "none";
     }
   });
-
-  Object.keys(btns).forEach(key => {
+  Object.keys(btns).forEach((key) => {
     const btn = btns[key];
     if (btn) {
       if (key === subTab) {
-        btn.classList.add('active');
-        btn.style.borderBottom = '2px solid var(--accent-orange)';
-        btn.style.color = 'var(--text-primary)';
-        btn.style.fontWeight = '700';
+        btn.classList.add("active");
+        btn.style.borderBottom = "2px solid var(--accent-orange)";
+        btn.style.color = "var(--text-primary)";
+        btn.style.fontWeight = "700";
       } else {
-        btn.classList.remove('active');
-        btn.style.borderBottom = 'none';
-        btn.style.color = 'var(--text-secondary)';
-        btn.style.fontWeight = '500';
+        btn.classList.remove("active");
+        btn.style.borderBottom = "none";
+        btn.style.color = "var(--text-secondary)";
+        btn.style.fontWeight = "500";
       }
     }
   });
-
-  if (subTab === 'rules') {
+  if (subTab === "rules") {
     const { httpUrl } = getApiUrls();
-    fetch(`${httpUrl}/api/monitor-groups`)
-      .then(res => res.ok ? res.json() : [])
-      .then(grps => {
-        window.cachedGroups = grps;
-        loadAlertRules();
-      })
-      .catch(() => loadAlertRules());
-  } else if (subTab === 'channels') {
+    fetch(`${httpUrl}/api/monitor-groups`).then((res) => res.ok ? res.json() : []).then((grps) => {
+      window.cachedGroups = grps;
+      loadAlertRules();
+    }).catch(() => loadAlertRules());
+  } else if (subTab === "channels") {
     loadNotificationChannels();
-  } else if (subTab === 'groups') {
+  } else if (subTab === "groups") {
     loadMonitorGroups();
   }
 };
-
 function showAutomationsView() {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent && mainContent.classList.contains('edit-mode')) {
-    const editToggleBtn = document.getElementById('edit-toggle-btn');
-    if (editToggleBtn) editToggleBtn.click();
+  const mainContent = document.getElementById("main-content");
+  if (mainContent && mainContent.classList.contains("edit-mode")) {
+    const editToggleBtn2 = document.getElementById("edit-toggle-btn");
+    if (editToggleBtn2) editToggleBtn2.click();
   }
-
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'none';
-
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
+  if (editToggleBtn) editToggleBtn.style.display = "none";
   hideAllViews();
-
-  const automationsView = document.getElementById('automations-view');
-  if (automationsView) automationsView.classList.remove('hide');
-
-  const navAutomations = document.getElementById('nav-automations');
-  if (navAutomations) navAutomations.classList.add('active');
-
-  switchAlertRouterTab('rules');
+  const automationsView = document.getElementById("automations-view");
+  if (automationsView) automationsView.classList.remove("hide");
+  const navAutomations = document.getElementById("nav-automations");
+  if (navAutomations) navAutomations.classList.add("active");
+  switchAlertRouterTab("rules");
 }
-
 function showChannelsView() {
   showAutomationsView();
-  switchAlertRouterTab('channels');
+  switchAlertRouterTab("channels");
 }
-
-// Bind nav triggers during initialization
-document.addEventListener('DOMContentLoaded', () => {
-  const navDashboard = document.getElementById('nav-dashboard');
+document.addEventListener("DOMContentLoaded", () => {
+  const navDashboard = document.getElementById("nav-dashboard");
   if (navDashboard) {
-    navDashboard.addEventListener('click', (e) => {
+    navDashboard.addEventListener("click", (e) => {
       e.preventDefault();
       showDashboardView();
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      navDashboard.classList.add('active');
+      document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+      navDashboard.classList.add("active");
     });
   }
-
-  const navProbes = document.getElementById('nav-probes');
+  const navProbes = document.getElementById("nav-probes");
   if (navProbes) {
-    navProbes.addEventListener('click', (e) => {
+    navProbes.addEventListener("click", (e) => {
       e.preventDefault();
       showProbesView();
     });
   }
-
-  const navAutomations = document.getElementById('nav-automations');
+  const navAutomations = document.getElementById("nav-automations");
   if (navAutomations) {
-    navAutomations.addEventListener('click', (e) => {
+    navAutomations.addEventListener("click", (e) => {
       e.preventDefault();
       showAutomationsView();
     });
   }
-
-
-
-  const navHistory = document.getElementById('nav-history');
+  const navHistory = document.getElementById("nav-history");
   if (navHistory) {
-    navHistory.addEventListener('click', (e) => {
+    navHistory.addEventListener("click", (e) => {
       e.preventDefault();
       showUptimeHistoryView();
     });
   }
-
-  const navHosts = document.getElementById('nav-hosts');
+  const navHosts = document.getElementById("nav-hosts");
   if (navHosts) {
-    navHosts.addEventListener('click', (e) => {
+    navHosts.addEventListener("click", (e) => {
       e.preventDefault();
       showHostsView();
     });
   }
-
-  const navLayout = document.getElementById('nav-layout');
+  const navLayout = document.getElementById("nav-layout");
   if (navLayout) {
-    navLayout.addEventListener('click', (e) => {
+    navLayout.addEventListener("click", (e) => {
       e.preventDefault();
       showLayoutView();
     });
   }
-
-  const navPlugins = document.getElementById('nav-plugins');
+  const navPlugins = document.getElementById("nav-plugins");
   if (navPlugins) {
-    navPlugins.addEventListener('click', (e) => {
+    navPlugins.addEventListener("click", (e) => {
       e.preventDefault();
       showPluginsView();
     });
   }
-
-  // Bind catalog search box input listener
-  const catalogSearch = document.getElementById('catalog-search');
+  const catalogSearch = document.getElementById("catalog-search");
   if (catalogSearch) {
-    catalogSearch.addEventListener('input', (e) => {
+    catalogSearch.addEventListener("input", (e) => {
       renderCatalogBlocks(e.target.value);
     });
   }
-
-  // Bind Service Monitors launcher buttons
-  const btnConfigProbe = document.getElementById('btn-configure-new-probe');
+  const btnConfigProbe = document.getElementById("btn-configure-new-probe");
   if (btnConfigProbe) {
-    btnConfigProbe.addEventListener('click', (e) => {
+    btnConfigProbe.addEventListener("click", (e) => {
       e.preventDefault();
       openAddMonitorModal();
     });
   }
-
-  const btnInstallMonitors = document.getElementById('btn-install-custom-monitors-hosts');
+  const btnInstallMonitors = document.getElementById("btn-install-custom-monitors-hosts");
   if (btnInstallMonitors) {
-    btnInstallMonitors.addEventListener('click', (e) => {
+    btnInstallMonitors.addEventListener("click", (e) => {
       e.preventDefault();
       openMarketplaceModal();
     });
   }
 });
-
 async function toggleMonitorEnabled(id, enabled, event) {
   if (event) event.stopPropagation();
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/monitors/${id}/toggle`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    // Reload local engine states list
     loadProbesLevel2(activeProbeEngineType);
   } catch (err) {
     console.error("Failed to toggle monitor:", err);
     alert(`Failed to update monitor status: ${err.message}`);
   }
 }
-
-window.openMarketplaceModal = function () {
+window.openMarketplaceModal = function() {
   console.log("openMarketplaceModal triggered");
-  openModal('marketplace-modal');
+  openModal("marketplace-modal");
   if (window.lucide) window.lucide.createIcons();
 };
-
-// Fetch settings from API and populate UI controls
 async function loadSettings() {
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/settings`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-
-    // Cache settings globally for header theme sync checks
     window.currentSettingsData = data;
-
-    const tzEl = document.getElementById('setting-timezone');
+    const tzEl = document.getElementById("setting-timezone");
     if (tzEl && data.timezone) {
       tzEl.value = data.timezone;
       currentTimezone = data.timezone;
     }
-
-    const pskEl = document.getElementById('setting-psk');
+    const pskEl = document.getElementById("setting-psk");
     if (pskEl && data.preshared_key) pskEl.value = data.preshared_key;
-
-    const compactEl = document.getElementById('setting-compact');
-    if (compactEl) compactEl.checked = (data.layout_compact === 'true');
-
-    const monitorsToggleEl = document.getElementById('setting-show-service-monitors');
-    if (monitorsToggleEl && data.show_service_monitors !== undefined) {
-      monitorsToggleEl.checked = (data.show_service_monitors === 'true');
+    const compactEl = document.getElementById("setting-compact");
+    if (compactEl) compactEl.checked = data.layout_compact === "true";
+    const monitorsToggleEl = document.getElementById("setting-show-service-monitors");
+    if (monitorsToggleEl && data.show_service_monitors !== void 0) {
+      monitorsToggleEl.checked = data.show_service_monitors === "true";
     }
-
-    // Bind Telemetry Interval
-    const telemetryIntervalEl = document.getElementById('setting-telemetry-interval');
-    const telemetryIntervalBadge = document.getElementById('setting-telemetry-interval-val');
-    const currentInterval = (data.telemetry_interval !== undefined && data.telemetry_interval !== null) ? parseInt(data.telemetry_interval) : 3;
+    const telemetryIntervalEl = document.getElementById("setting-telemetry-interval");
+    const telemetryIntervalBadge = document.getElementById("setting-telemetry-interval-val");
+    const currentInterval = data.telemetry_interval !== void 0 && data.telemetry_interval !== null ? parseInt(data.telemetry_interval) : 3;
     if (telemetryIntervalEl) telemetryIntervalEl.value = currentInterval;
     if (telemetryIntervalBadge) telemetryIntervalBadge.textContent = `${currentInterval}s`;
-
-    // Bind Gateway Settings
-    const gwModeEl = document.getElementById('setting-gateway-mode');
-    if (gwModeEl) gwModeEl.checked = (data.gateway_mode === 'true');
-
-    const gwDbEl = document.getElementById('setting-gateway-db-enabled');
-    if (gwDbEl) gwDbEl.checked = (data.gateway_db_enabled !== 'false'); // defaults to true
-
-    const gwUrlEl = document.getElementById('setting-gateway-webhook-url');
-    if (gwUrlEl) gwUrlEl.value = data.gateway_webhook_url || '';
-
-    const gwHeadersEl = document.getElementById('setting-gateway-webhook-headers');
-    if (gwHeadersEl) gwHeadersEl.value = data.gateway_webhook_headers || '';
-
-    // Apply theme
+    const gwModeEl = document.getElementById("setting-gateway-mode");
+    if (gwModeEl) gwModeEl.checked = data.gateway_mode === "true";
+    const gwDbEl = document.getElementById("setting-gateway-db-enabled");
+    if (gwDbEl) gwDbEl.checked = data.gateway_db_enabled !== "false";
+    const gwUrlEl = document.getElementById("setting-gateway-webhook-url");
+    if (gwUrlEl) gwUrlEl.value = data.gateway_webhook_url || "";
+    const gwHeadersEl = document.getElementById("setting-gateway-webhook-headers");
+    if (gwHeadersEl) gwHeadersEl.value = data.gateway_webhook_headers || "";
     if (data.theme) applyTheme(data.theme);
-
-    // Load API Keys
     loadApiKeysList();
-
   } catch (err) {
-    console.warn('Could not load settings from API:', err);
+    console.warn("Could not load settings from API:", err);
   }
-
-  // Always initialize interactive bindings
   initSettingsControls();
   loadPruneDropdowns();
   updateGatewayUIVisibilities();
 }
-
-// Bind all interactive settings controls
 function initSettingsControls() {
-  // Timezone dropdown: instantly update header clock
-  const tzEl = document.getElementById('setting-timezone');
+  const tzEl = document.getElementById("setting-timezone");
   if (tzEl) {
-    tzEl.addEventListener('change', () => {
+    tzEl.addEventListener("change", () => {
       currentTimezone = tzEl.value;
       updateHeaderTime();
     });
   }
-
-  // Theme picker
-  document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      applyTheme(btn.getAttribute('data-theme'));
+  document.querySelectorAll(".theme-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".theme-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      applyTheme(btn.getAttribute("data-theme"));
     });
   });
-
-  // Compact layout toggle
-  const compactEl = document.getElementById('setting-compact');
+  const compactEl = document.getElementById("setting-compact");
   if (compactEl) {
-    compactEl.addEventListener('change', () => {
-      document.body.classList.toggle('layout-compact', compactEl.checked);
+    compactEl.addEventListener("change", () => {
+      document.body.classList.toggle("layout-compact", compactEl.checked);
     });
   }
-
-  // Show service monitors toggle
-  const monitorsToggleEl = document.getElementById('setting-show-service-monitors');
+  const monitorsToggleEl = document.getElementById("setting-show-service-monitors");
   if (monitorsToggleEl) {
-    monitorsToggleEl.addEventListener('change', () => {
-      const navProbes = document.getElementById('nav-probes');
+    monitorsToggleEl.addEventListener("change", () => {
+      const navProbes = document.getElementById("nav-probes");
       if (navProbes) {
-        navProbes.style.display = monitorsToggleEl.checked ? '' : 'none';
+        navProbes.style.display = monitorsToggleEl.checked ? "" : "none";
       }
     });
   }
-
-  // Save settings button
-  const saveBtn = document.getElementById('btn-save-settings');
+  const saveBtn = document.getElementById("btn-save-settings");
   if (saveBtn) {
-    saveBtn.addEventListener('click', async () => {
+    saveBtn.addEventListener("click", async () => {
       const { httpUrl } = getApiUrls();
       const payload = {
-        timezone: document.getElementById('setting-timezone')?.value || 'UTC',
-        preshared_key: document.getElementById('setting-psk')?.value || 'device_pin_12345',
-        theme: document.querySelector('.theme-btn.active')?.getAttribute('data-theme') || 'midnight',
-        layout_compact: String(document.getElementById('setting-compact')?.checked || false),
-        show_service_monitors: String(document.getElementById('setting-show-service-monitors')?.checked || false),
-        telemetry_interval: parseInt(document.getElementById('setting-telemetry-interval')?.value || '3'),
+        timezone: document.getElementById("setting-timezone")?.value || "UTC",
+        preshared_key: document.getElementById("setting-psk")?.value || "device_pin_12345",
+        theme: document.querySelector(".theme-btn.active")?.getAttribute("data-theme") || "midnight",
+        layout_compact: String(document.getElementById("setting-compact")?.checked || false),
+        show_service_monitors: String(document.getElementById("setting-show-service-monitors")?.checked || false),
+        telemetry_interval: parseInt(document.getElementById("setting-telemetry-interval")?.value || "3"),
         // Gateway settings
-        gateway_mode: String(document.getElementById('setting-gateway-mode')?.checked || false),
-        gateway_db_enabled: String(document.getElementById('setting-gateway-db-enabled')?.checked || false),
-        gateway_webhook_url: document.getElementById('setting-gateway-webhook-url')?.value || '',
-        gateway_webhook_headers: document.getElementById('setting-gateway-webhook-headers')?.value || ''
+        gateway_mode: String(document.getElementById("setting-gateway-mode")?.checked || false),
+        gateway_db_enabled: String(document.getElementById("setting-gateway-db-enabled")?.checked || false),
+        gateway_webhook_url: document.getElementById("setting-gateway-webhook-url")?.value || "",
+        gateway_webhook_headers: document.getElementById("setting-gateway-webhook-headers")?.value || ""
       };
-
-      // Preserve current background telemetry settings if they exist
       if (window.currentSettingsData) {
-        if (window.currentSettingsData.telemetry_interval !== undefined) {
+        if (window.currentSettingsData.telemetry_interval !== void 0) {
           payload.telemetry_interval = parseInt(window.currentSettingsData.telemetry_interval);
         }
-        if (window.currentSettingsData.log_retention !== undefined) {
+        if (window.currentSettingsData.log_retention !== void 0) {
           payload.log_retention = parseInt(window.currentSettingsData.log_retention);
         }
-        if (window.currentSettingsData.auto_prune_enabled !== undefined) {
+        if (window.currentSettingsData.auto_prune_enabled !== void 0) {
           payload.auto_prune_enabled = String(window.currentSettingsData.auto_prune_enabled);
         }
       }
-
       try {
         const res = await fetch(`${httpUrl}/api/settings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
         if (res.ok) {
-          showToast('Settings saved successfully', 'success');
+          showToast("Settings saved successfully", "success");
           if (!window.currentSettingsData) window.currentSettingsData = {};
           Object.assign(window.currentSettingsData, payload);
-          // Navigate back to dashboard
           setTimeout(showDashboardView, 800);
         } else {
-          alert('Failed to save settings. Server error.');
+          alert("Failed to save settings. Server error.");
         }
       } catch (err) {
-        console.error('Save settings error:', err);
+        console.error("Save settings error:", err);
       }
     });
   }
 }
-
-// Apply a theme skin to the <body>
 function applyTheme(theme) {
-  document.body.classList.remove('theme-glass', 'theme-cozy', 'theme-cyber');
-  if (theme && theme !== 'midnight') {
+  document.body.classList.remove("theme-glass", "theme-cozy", "theme-cyber");
+  if (theme && theme !== "midnight") {
     document.body.classList.add(`theme-${theme}`);
   }
-  // Sync active button
-  document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('data-theme') === theme);
+  document.querySelectorAll(".theme-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-theme") === theme);
   });
 }
-
-// --- Gateway and API Key management ---
-window.openGatewayInfoModal = function () {
-  openModal('gateway-info-modal');
+window.openGatewayInfoModal = function() {
+  openModal("gateway-info-modal");
 };
-
 let gatewayHeadersVisible = false;
-window.toggleGatewayHeadersVisibility = function () {
-  const el = document.getElementById('setting-gateway-webhook-headers');
-  const btn = document.getElementById('btn-toggle-gateway-headers');
+window.toggleGatewayHeadersVisibility = function() {
+  const el = document.getElementById("setting-gateway-webhook-headers");
+  const btn = document.getElementById("btn-toggle-gateway-headers");
   if (!el || !btn) return;
   gatewayHeadersVisible = !gatewayHeadersVisible;
   if (gatewayHeadersVisible) {
-    el.style.webkitTextSecurity = 'none';
+    el.style.webkitTextSecurity = "none";
     btn.innerHTML = '<i data-lucide="eye-off" style="width:12px; height:12px;"></i> Hide Headers';
   } else {
-    el.style.webkitTextSecurity = 'disc';
+    el.style.webkitTextSecurity = "disc";
     btn.innerHTML = '<i data-lucide="eye" style="width:12px; height:12px;"></i> Show/Hide Headers';
   }
   if (window.lucide) window.lucide.createIcons();
 };
-
-window.updateGatewayUIVisibilities = function () {
-  const gwModeEl = document.getElementById('setting-gateway-mode');
+window.updateGatewayUIVisibilities = function() {
+  const gwModeEl = document.getElementById("setting-gateway-mode");
   const isGw = gwModeEl && gwModeEl.checked;
-
-  const gwDbGroup = document.getElementById('gateway-db-group');
-  const gwUrlGroup = document.getElementById('gateway-url-group');
-  const gwHeadersGroup = document.getElementById('gateway-headers-group');
-
-  if (gwDbGroup) gwDbGroup.style.display = isGw ? '' : 'none';
-  if (gwUrlGroup) gwUrlGroup.style.display = isGw ? '' : 'none';
-  if (gwHeadersGroup) gwHeadersGroup.style.display = isGw ? '' : 'none';
-
-  // Toggle navigation tabs display based on Repeater Mode
-  const sidebarItemsToToggle = ['nav-dashboard', 'nav-history', 'nav-automations', 'nav-discovery', 'nav-probes'];
-  sidebarItemsToToggle.forEach(id => {
+  const gwDbGroup = document.getElementById("gateway-db-group");
+  const gwUrlGroup = document.getElementById("gateway-url-group");
+  const gwHeadersGroup = document.getElementById("gateway-headers-group");
+  if (gwDbGroup) gwDbGroup.style.display = isGw ? "" : "none";
+  if (gwUrlGroup) gwUrlGroup.style.display = isGw ? "" : "none";
+  if (gwHeadersGroup) gwHeadersGroup.style.display = isGw ? "" : "none";
+  const sidebarItemsToToggle = ["nav-dashboard", "nav-history", "nav-automations", "nav-discovery", "nav-probes"];
+  sidebarItemsToToggle.forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
       if (isGw) {
-        el.style.display = 'none';
+        el.style.display = "none";
       } else {
-        if (id === 'nav-probes') {
-          const isShowMonitors = window.currentSettingsData?.show_service_monitors === 'true' ||
-            (document.getElementById('setting-show-service-monitors')?.checked || false);
-          el.style.display = isShowMonitors ? '' : 'none';
+        if (id === "nav-probes") {
+          const isShowMonitors = window.currentSettingsData?.show_service_monitors === "true" || (document.getElementById("setting-show-service-monitors")?.checked || false);
+          el.style.display = isShowMonitors ? "" : "none";
         } else {
-          el.style.display = '';
+          el.style.display = "";
         }
       }
     }
   });
-
-  // Switch tab if current tab is hidden under gateway mode
   if (isGw) {
-    const activeNav = document.querySelector('.nav-item.active');
+    const activeNav = document.querySelector(".nav-item.active");
     if (activeNav && sidebarItemsToToggle.includes(activeNav.id)) {
-      // route to Hosts tab by default
-      const navHosts = document.getElementById('nav-hosts');
+      const navHosts = document.getElementById("nav-hosts");
       if (navHosts) navHosts.click();
     }
   }
 };
-
-// Bind checkbox listeners
-document.addEventListener('DOMContentLoaded', () => {
-  const gwModeEl = document.getElementById('setting-gateway-mode');
+document.addEventListener("DOMContentLoaded", () => {
+  const gwModeEl = document.getElementById("setting-gateway-mode");
   if (gwModeEl) {
-    gwModeEl.addEventListener('change', window.updateGatewayUIVisibilities);
+    gwModeEl.addEventListener("change", window.updateGatewayUIVisibilities);
   }
 });
-
-// Back up listener trigger (in case DOMContentLoaded already fired)
 setTimeout(() => {
-  const gwModeEl = document.getElementById('setting-gateway-mode');
+  const gwModeEl = document.getElementById("setting-gateway-mode");
   if (gwModeEl && !gwModeEl.dataset.listenerBound) {
-    gwModeEl.addEventListener('change', window.updateGatewayUIVisibilities);
-    gwModeEl.dataset.listenerBound = 'true';
+    gwModeEl.addEventListener("change", window.updateGatewayUIVisibilities);
+    gwModeEl.dataset.listenerBound = "true";
   }
 }, 500);
-
-window.loadApiKeysList = async function () {
+window.loadApiKeysList = async function() {
   const { httpUrl } = getApiUrls();
-  const container = document.getElementById('api-keys-list-container');
+  const container = document.getElementById("api-keys-list-container");
   if (!container) return;
-
   try {
     const res = await fetch(`${httpUrl}/api/settings/keys`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const keys = await res.json();
-
     if (keys.length === 0) {
       container.innerHTML = `<div style="font-size:0.75rem; color:var(--text-secondary); text-align:center; padding:12px; background:rgba(255,255,255,0.02); border:1px dashed var(--border-soft); border-radius:6px;">No API keys generated yet.</div>`;
       return;
     }
-
-    container.innerHTML = keys.map(k => {
-      const createdStr = k.created_at ? new Date(k.created_at).toLocaleString() : 'N/A';
-      const lastUsedStr = k.last_used ? new Date(k.last_used).toLocaleString() : 'Never';
+    container.innerHTML = keys.map((k) => {
+      const createdStr = k.created_at ? new Date(k.created_at).toLocaleString() : "N/A";
+      const lastUsedStr = k.last_used ? new Date(k.last_used).toLocaleString() : "Never";
       return `
         <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); border-radius:6px; padding:10px 12px; gap:12px;">
           <div style="flex:1; min-width:0;">
@@ -2349,172 +1948,147 @@ window.loadApiKeysList = async function () {
           </button>
         </div>
       `;
-    }).join('');
+    }).join("");
     if (window.lucide) window.lucide.createIcons();
   } catch (err) {
-    console.error('Failed to load API keys:', err);
+    console.error("Failed to load API keys:", err);
     container.innerHTML = `<div style="font-size:0.75rem; color:#fca5a5; text-align:center; padding:12px;">Failed to load API keys.</div>`;
   }
 };
-
-window.createNewApiKey = async function () {
-  const nameEl = document.getElementById('new-api-key-name');
-  const name = nameEl ? nameEl.value.trim() : '';
+window.createNewApiKey = async function() {
+  const nameEl = document.getElementById("new-api-key-name");
+  const name = nameEl ? nameEl.value.trim() : "";
   if (!name) {
-    alert('Please enter a descriptive name for the API Key.');
+    alert("Please enter a descriptive name for the API Key.");
     return;
   }
-
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/settings/keys`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const keyData = await res.json();
-
-    if (nameEl) nameEl.value = '';
-
-    // Populate display key modal
-    const keyDisplay = document.getElementById('displayed-raw-api-key');
+    if (nameEl) nameEl.value = "";
+    const keyDisplay = document.getElementById("displayed-raw-api-key");
     if (keyDisplay) keyDisplay.innerText = keyData.key;
-
-    const copyBtn = document.getElementById('btn-copy-generated-api-key');
+    const copyBtn = document.getElementById("btn-copy-generated-api-key");
     if (copyBtn) {
       copyBtn.onclick = () => {
         navigator.clipboard.writeText(keyData.key);
-        copyBtn.innerText = 'Copied!';
-        setTimeout(() => { copyBtn.innerText = 'Copy'; }, 2000);
+        copyBtn.innerText = "Copied!";
+        setTimeout(() => {
+          copyBtn.innerText = "Copy";
+        }, 2e3);
       };
     }
-
-    openModal('api-key-display-modal');
+    openModal("api-key-display-modal");
     loadApiKeysList();
   } catch (err) {
-    console.error('Failed to generate key:', err);
-    alert('Failed to generate API Key: ' + err.message);
+    console.error("Failed to generate key:", err);
+    alert("Failed to generate API Key: " + err.message);
   }
 };
-
-window.deleteApiKey = async function (kid) {
-  if (!confirm('Are you sure you want to revoke this API Key? Any scripts using this key will immediately fail authentication.')) {
+window.deleteApiKey = async function(kid) {
+  if (!confirm("Are you sure you want to revoke this API Key? Any scripts using this key will immediately fail authentication.")) {
     return;
   }
-
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/settings/keys/${kid}`, {
-      method: 'DELETE'
+      method: "DELETE"
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    showToast('API Key revoked successfully', 'info');
+    showToast("API Key revoked successfully", "info");
     loadApiKeysList();
   } catch (err) {
-    console.error('Failed to revoke API key:', err);
-    alert('Failed to revoke API Key: ' + err.message);
+    console.error("Failed to revoke API key:", err);
+    alert("Failed to revoke API Key: " + err.message);
   }
 };
-
 function escapeHtml(str) {
-  if (!str) return '';
+  if (!str) return "";
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-
 function updateRetentionVisualizer(days) {
-  const bar = document.getElementById('visualizer-bar');
-  const pctText = document.getElementById('visualizer-load-pct');
-  const desc = document.getElementById('visualizer-desc');
+  const bar = document.getElementById("visualizer-bar");
+  const pctText = document.getElementById("visualizer-load-pct");
+  const desc = document.getElementById("visualizer-desc");
   if (!bar || !pctText || !desc) return;
-
-  const pct = Math.min(100, Math.round((days / 30) * 100));
+  const pct = Math.min(100, Math.round(days / 30 * 100));
   bar.style.width = `${pct}%`;
-
-  let scale = 'Low';
-  let color = 'var(--color-optimal)';
-  let impact = 'Minimal';
+  let scale = "Low";
+  let color = "var(--color-optimal)";
+  let impact = "Minimal";
   let mb = Math.round(days * 6.5);
-
   if (pct > 75) {
-    scale = 'High';
-    color = '#ef4444';
-    impact = 'Moderate impact on query speed';
-    bar.style.background = 'linear-gradient(90deg, #10b981, #f59e0b, #ef4444)';
+    scale = "High";
+    color = "#ef4444";
+    impact = "Moderate impact on query speed";
+    bar.style.background = "linear-gradient(90deg, #10b981, #f59e0b, #ef4444)";
   } else if (pct > 35) {
-    scale = 'Medium';
-    color = '#f59e0b';
-    impact = 'Negligible';
-    bar.style.background = 'linear-gradient(90deg, #10b981, #f59e0b)';
+    scale = "Medium";
+    color = "#f59e0b";
+    impact = "Negligible";
+    bar.style.background = "linear-gradient(90deg, #10b981, #f59e0b)";
   } else {
-    scale = 'Optimized';
-    color = 'var(--color-optimal)';
-    impact = 'None';
-    bar.style.background = 'var(--color-optimal)';
+    scale = "Optimized";
+    color = "var(--color-optimal)";
+    impact = "None";
+    bar.style.background = "var(--color-optimal)";
   }
-
   pctText.textContent = `${scale} (${pct}%)`;
   pctText.style.color = color;
   desc.textContent = `Storing logs for ${days} days. Estimated database storage requirement: ~${mb} MB. Performance impact: ${impact}.`;
 }
-
-window.triggerManualPrune = async function (options) {
+window.triggerManualPrune = async function(options) {
   const { httpUrl } = getApiUrls();
-  const formatText = options.age === 'all' ? 'All historical logs (TRUNCATE)' : `logs older than ${options.age === 'year' ? '1 Year' : '30 Days'}`;
-
+  const formatText = options.age === "all" ? "All historical logs (TRUNCATE)" : `logs older than ${options.age === "year" ? "1 Year" : "30 Days"}`;
   try {
-    // 1. Dry run check
     const checkRes = await fetch(`${httpUrl}/api/support/prune`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...options, dry_run: true })
     });
     if (!checkRes.ok) throw new Error(`HTTP ${checkRes.status}`);
     const dryData = await checkRes.json();
-
     const count = parseInt(dryData.deleted_logs) + parseInt(dryData.deleted_audits);
-    if (count === 0 && options.age !== 'all') {
-      showToast('Dry run check: No matching logs found to prune.', 'info');
+    if (count === 0 && options.age !== "all") {
+      showToast("Dry run check: No matching logs found to prune.", "info");
       return;
     }
-
-    // 2. Warn user with detailed information
     const userMsg = `Dry run estimation: This will delete approximately ${dryData.deleted_logs} telemetry logs and ${dryData.deleted_audits} system audits. Are you sure you want to permanently prune this data?`;
     if (!await showConfirm(userMsg, "Confirm Manual Database Pruning")) {
       return;
     }
-
-    // 3. Execution
-    showToast('Executing manual database pruning...', 'info');
+    showToast("Executing manual database pruning...", "info");
     const pruneRes = await fetch(`${httpUrl}/api/support/prune`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...options, dry_run: false })
     });
     if (!pruneRes.ok) throw new Error(`HTTP ${pruneRes.status}`);
     const pruneData = await pruneRes.json();
-    showToast(`Prune completed. Cleaned ${pruneData.deleted_logs} logs and ${pruneData.deleted_audits} audits.`, 'success');
+    showToast(`Prune completed. Cleaned ${pruneData.deleted_logs} logs and ${pruneData.deleted_audits} audits.`, "success");
   } catch (err) {
     alert(`Failed to execute manual database check or prune: ${err.message}`);
   }
 };
-
-// Dynamic host/entity loading for Advanced DB Pruning
 async function loadPruneDropdowns() {
-  const hostSelect = document.getElementById('prune-host-select');
-  const entitySelect = document.getElementById('prune-entity-select');
+  const hostSelect = document.getElementById("prune-host-select");
+  const entitySelect = document.getElementById("prune-entity-select");
   if (!hostSelect || !entitySelect) return;
-
   hostSelect.innerHTML = '<option value="">-- All Hosts --</option>';
   entitySelect.innerHTML = '<option value="">-- All Entities --</option>';
-
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/hosts`);
     if (res.ok) {
       const hosts = await res.json();
-      hosts.forEach(h => {
-        const opt = document.createElement('option');
+      hosts.forEach((h) => {
+        const opt = document.createElement("option");
         opt.value = h.id;
         opt.textContent = `${h.name} (${h.target})`;
         hostSelect.appendChild(opt);
@@ -2523,101 +2097,85 @@ async function loadPruneDropdowns() {
   } catch (err) {
     console.error("Failed to load hosts for pruning:", err);
   }
-
-  // Populate entities
   if (window.cachedEntities) {
-    Object.keys(window.cachedEntities).forEach(key => {
+    Object.keys(window.cachedEntities).forEach((key) => {
       const ent = window.cachedEntities[key];
-      const opt = document.createElement('option');
+      const opt = document.createElement("option");
       opt.value = ent.entity_key;
       opt.textContent = `${ent.name || ent.entity_key} [${ent.node_id}]`;
       entitySelect.appendChild(opt);
     });
   }
 }
-
-window.clearPruneFilters = function () {
-  const hostSel = document.getElementById('prune-host-select');
-  const entSel = document.getElementById('prune-entity-select');
-  const startD = document.getElementById('prune-start-date');
-  const endD = document.getElementById('prune-end-date');
+window.clearPruneFilters = function() {
+  const hostSel = document.getElementById("prune-host-select");
+  const entSel = document.getElementById("prune-entity-select");
+  const startD = document.getElementById("prune-start-date");
+  const endD = document.getElementById("prune-end-date");
   if (hostSel) hostSel.value = "";
   if (entSel) entSel.value = "";
   if (startD) startD.value = "";
   if (endD) endD.value = "";
 };
-
-window.executeAdvancedPrune = async function () {
-  const hostId = document.getElementById('prune-host-select')?.value;
-  const entityKey = document.getElementById('prune-entity-select')?.value;
-  const startDate = document.getElementById('prune-start-date')?.value;
-  const endDate = document.getElementById('prune-end-date')?.value;
-
+window.executeAdvancedPrune = async function() {
+  const hostId = document.getElementById("prune-host-select")?.value;
+  const entityKey = document.getElementById("prune-entity-select")?.value;
+  const startDate = document.getElementById("prune-start-date")?.value;
+  const endDate = document.getElementById("prune-end-date")?.value;
   const payload = {};
   if (hostId) payload.host_id = parseInt(hostId);
   if (entityKey) payload.entity_key = entityKey;
   if (startDate) payload.start_date = startDate;
   if (endDate) payload.end_date = endDate;
-
   if (Object.keys(payload).length === 0) {
     alert("Please select at least one filter (Host, Entity metric, Start date, or End date). To clean the whole DB, please use the TRUNCATE preset button.");
     return;
   }
-
   const { httpUrl } = getApiUrls();
   try {
-    // 1. Dry run confirmation
     const checkRes = await fetch(`${httpUrl}/api/support/prune`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...payload, dry_run: true })
     });
     if (!checkRes.ok) throw new Error(`HTTP ${checkRes.status}`);
     const dryData = await checkRes.json();
-
     const count = parseInt(dryData.deleted_logs) + parseInt(dryData.deleted_audits);
     if (count === 0) {
-      showToast('Dry run check: No matching records found for these pruning filters.', 'info');
+      showToast("Dry run check: No matching records found for these pruning filters.", "info");
       return;
     }
-
     const userMsg = `Dry run estimation: This will delete approximately ${dryData.deleted_logs} telemetry logs and ${dryData.deleted_audits} audits. Are you sure you want to permanently prune this data?`;
     if (!await showConfirm(userMsg, "Confirm Filtered Database Pruning")) {
       return;
     }
-
-    // 2. Real prune execution
-    showToast('Executing custom database pruning...', 'info');
+    showToast("Executing custom database pruning...", "info");
     const pruneRes = await fetch(`${httpUrl}/api/support/prune`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...payload, dry_run: false })
     });
     if (!pruneRes.ok) throw new Error(`HTTP ${pruneRes.status}`);
     const pruneData = await pruneRes.json();
-    showToast(`Prune completed. Cleaned ${pruneData.deleted_logs} logs and ${pruneData.deleted_audits} audits.`, 'success');
+    showToast(`Prune completed. Cleaned ${pruneData.deleted_logs} logs and ${pruneData.deleted_audits} audits.`, "success");
     clearPruneFilters();
   } catch (err) {
     alert(`Failed to execute custom database prune: ${err.message}`);
   }
 };
-
-window.cycleTheme = async function () {
-  const themes = ['midnight', 'glass', 'cozy', 'cyber'];
-  let currentTheme = 'midnight';
-  if (document.body.classList.contains('theme-glass')) {
-    currentTheme = 'glass';
-  } else if (document.body.classList.contains('theme-cozy')) {
-    currentTheme = 'cozy';
-  } else if (document.body.classList.contains('theme-cyber')) {
-    currentTheme = 'cyber';
+window.cycleTheme = async function() {
+  const themes = ["midnight", "glass", "cozy", "cyber"];
+  let currentTheme = "midnight";
+  if (document.body.classList.contains("theme-glass")) {
+    currentTheme = "glass";
+  } else if (document.body.classList.contains("theme-cozy")) {
+    currentTheme = "cozy";
+  } else if (document.body.classList.contains("theme-cyber")) {
+    currentTheme = "cyber";
   }
-
   const currentIndex = themes.indexOf(currentTheme);
   const nextTheme = themes[(currentIndex + 1) % themes.length];
-
   applyTheme(nextTheme);
-
   const { httpUrl } = getApiUrls();
   try {
     let settings = {};
@@ -2629,198 +2187,158 @@ window.cycleTheme = async function () {
         settings = await res.json();
       }
     }
-
     settings.theme = nextTheme;
-    // ensure defaults are met for backend schema validation
     if (!settings.telemetry_interval) settings.telemetry_interval = 3;
     if (!settings.log_retention) settings.log_retention = 7;
-    if (!settings.timezone) settings.timezone = 'UTC';
-    if (!settings.preshared_key) settings.preshared_key = 'device_pin_12345';
-    if (!settings.layout_compact) settings.layout_compact = 'false';
-    if (!settings.auto_prune_enabled) settings.auto_prune_enabled = 'false';
-
+    if (!settings.timezone) settings.timezone = "UTC";
+    if (!settings.preshared_key) settings.preshared_key = "device_pin_12345";
+    if (!settings.layout_compact) settings.layout_compact = "false";
+    if (!settings.auto_prune_enabled) settings.auto_prune_enabled = "false";
     await fetch(`${httpUrl}/api/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings)
     });
     window.currentSettingsData = settings;
-    showToast(`Theme switched to ${nextTheme}`, 'info');
+    showToast(`Theme switched to ${nextTheme}`, "info");
   } catch (err) {
-    console.error('Failed to auto-save cycled theme:', err);
+    console.error("Failed to auto-save cycled theme:", err);
   }
 };
 
-// ─────────────────────────────────────────
-// DRAG-AND-DROP & CARD EDITOR IMPLEMENTATION
-// ─────────────────────────────────────────
-
+// --- [Module: src/03-widget-editor.ts] ---
 let draggedCard = null;
-
 function enableDragAndDrop() {
-  const cards = document.querySelectorAll('#dashboard-grid > .card');
-  cards.forEach(card => {
-    card.setAttribute('draggable', 'true');
-    card.addEventListener('dragstart', handleDragStart);
-    card.addEventListener('dragover', handleDragOver);
-    card.addEventListener('dragleave', handleDragLeave);
-    card.addEventListener('drop', handleDrop);
-    card.addEventListener('dragend', handleDragEnd);
+  const cards = document.querySelectorAll("#dashboard-grid > .card");
+  cards.forEach((card) => {
+    card.setAttribute("draggable", "true");
+    card.addEventListener("dragstart", handleDragStart);
+    card.addEventListener("dragover", handleDragOver);
+    card.addEventListener("dragleave", handleDragLeave);
+    card.addEventListener("drop", handleDrop);
+    card.addEventListener("dragend", handleDragEnd);
   });
 }
-
 function disableDragAndDrop() {
-  const cards = document.querySelectorAll('#dashboard-grid > .card');
-  cards.forEach(card => {
-    card.removeAttribute('draggable');
-    card.removeEventListener('dragstart', handleDragStart);
-    card.removeEventListener('dragover', handleDragOver);
-    card.removeEventListener('dragleave', handleDragLeave);
-    card.removeEventListener('drop', handleDrop);
-    card.removeEventListener('dragend', handleDragEnd);
-    card.classList.remove('drag-over');
+  const cards = document.querySelectorAll("#dashboard-grid > .card");
+  cards.forEach((card) => {
+    card.removeAttribute("draggable");
+    card.removeEventListener("dragstart", handleDragStart);
+    card.removeEventListener("dragover", handleDragOver);
+    card.removeEventListener("dragleave", handleDragLeave);
+    card.removeEventListener("drop", handleDrop);
+    card.removeEventListener("dragend", handleDragEnd);
+    card.classList.remove("drag-over");
   });
 }
-
 function handleDragStart(e) {
   draggedCard = this;
-  this.style.opacity = '0.5';
-  e.dataTransfer.effectAllowed = 'move';
+  this.style.opacity = "0.5";
+  e.dataTransfer.effectAllowed = "move";
 }
-
 function handleDragOver(e) {
   e.preventDefault();
-  this.classList.add('drag-over');
+  this.classList.add("drag-over");
   return false;
 }
-
 function handleDragLeave(e) {
-  this.classList.remove('drag-over');
+  this.classList.remove("drag-over");
 }
-
 function handleDrop(e) {
   e.preventDefault();
-  this.classList.remove('drag-over');
+  this.classList.remove("drag-over");
   if (draggedCard !== this) {
-    const grid = document.getElementById('dashboard-grid');
+    const grid = document.getElementById("dashboard-grid");
     const kids = Array.from(grid.children);
     const draggedIdx = kids.indexOf(draggedCard);
     const targetIdx = kids.indexOf(this);
-
     if (draggedIdx < targetIdx) {
       grid.insertBefore(draggedCard, this.nextSibling);
     } else {
       grid.insertBefore(draggedCard, this);
     }
-
     saveWidgetOrder();
   }
 }
-
 function handleDragEnd(e) {
-  this.style.opacity = '1';
-  document.querySelectorAll('#dashboard-grid > .card').forEach(c => c.classList.remove('drag-over'));
+  this.style.opacity = "1";
+  document.querySelectorAll("#dashboard-grid > .card").forEach((c) => c.classList.remove("drag-over"));
 }
-
 function saveWidgetOrder() {
-  const grid = document.getElementById('dashboard-grid');
-  const cards = grid.querySelectorAll('.card:not(.card-placeholder)');
-  const orderList = Array.from(cards).map(card => card.id);
-  localStorage.setItem('hp_widget_order', JSON.stringify(orderList));
+  const grid = document.getElementById("dashboard-grid");
+  const cards = grid.querySelectorAll(".card:not(.card-placeholder)");
+  const orderList = Array.from(cards).map((card) => card.id);
+  localStorage.setItem("hp_widget_order", JSON.stringify(orderList));
 }
-
-// ─────────────────────────────────────────
-// DYNAMIC DASHBOARDS (TABS) ENGINE
-// ─────────────────────────────────────────
-
 function renderDashboards() {
-  const container = document.getElementById('tab-bar');
+  const container = document.getElementById("tab-bar");
   if (!container) return;
-  container.innerHTML = '';
-
-  // Initialize main defaults if missing
-  if (!localStorage.getItem('hp_dashboards')) {
-    localStorage.setItem('hp_dashboards', JSON.stringify([
+  container.innerHTML = "";
+  if (!localStorage.getItem("hp_dashboards")) {
+    localStorage.setItem("hp_dashboards", JSON.stringify([
       { id: "main", name: "Main", icon: "layout-dashboard" }
     ]));
   }
-
   let dashboards = [];
   try {
-    dashboards = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
+    dashboards = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
   } catch (err) {
     dashboards = [{ id: "main", name: "Main", icon: "layout-dashboard" }];
   }
-
-  const isEditMode = document.getElementById('main-content')?.classList.contains('edit-mode');
-
-  dashboards.forEach(tab => {
-    const btn = document.createElement('button');
-    btn.className = 'tab-btn';
-    btn.setAttribute('data-tab', tab.id);
+  const isEditMode = document.getElementById("main-content")?.classList.contains("edit-mode");
+  dashboards.forEach((tab) => {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn";
+    btn.setAttribute("data-tab", tab.id);
     btn.onclick = () => switchTab(tab.id);
     btn.ondblclick = () => openManageDashboardsModal(tab.id);
-
-    const iconName = tab.icon || 'layout-dashboard';
+    const iconName = tab.icon || "layout-dashboard";
     btn.innerHTML = `<i data-lucide="${iconName}"></i><span>${tab.name}</span>`;
-    btn.title = isEditMode ? "Click to view • Double-click to manage" : `View ${tab.name}`;
-
+    btn.title = isEditMode ? "Click to view \u2022 Double-click to manage" : `View ${tab.name}`;
     if (tab.id === activeTab) {
-      btn.classList.add('active');
+      btn.classList.add("active");
     }
     container.appendChild(btn);
   });
-
-  // Appends Add / Manage Views button
-  const plusBtn = document.createElement('button');
-  plusBtn.className = 'add-tab-btn';
+  const plusBtn = document.createElement("button");
+  plusBtn.className = "add-tab-btn";
   plusBtn.onclick = () => openNewDashboardModal();
   plusBtn.title = "Add or Manage Dashboard Views";
   plusBtn.innerHTML = '<i data-lucide="plus" style="width:13px; height:13px;"></i>';
   container.appendChild(plusBtn);
-
   if (window.lucide) window.lucide.createIcons();
 }
-
 function switchTab(tabId) {
   activeTab = tabId;
   buildDashboardCards(cachedEntities);
   renderDashboards();
-  if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
+  if (document.getElementById("main-content")?.classList.contains("edit-mode")) {
     enableDragAndDrop();
   }
 }
-
-// ─────────────────────────────────────────
-// DASHBOARD VIEWS MODAL & MANAGEMENT API
-// ─────────────────────────────────────────
-
 const DASHBOARD_ICONS = [
-  { id: 'layout-dashboard', label: 'Dashboard' },
-  { id: 'server', label: 'Server' },
-  { id: 'cpu', label: 'Compute' },
-  { id: 'activity', label: 'Activity' },
-  { id: 'wifi', label: 'Network' },
-  { id: 'shield', label: 'Security' },
-  { id: 'home', label: 'Home' },
-  { id: 'database', label: 'Database' },
-  { id: 'hard-drive', label: 'Storage' },
-  { id: 'zap', label: 'Power' },
-  { id: 'gauge', label: 'Telemetry' },
-  { id: 'terminal', label: 'System' }
+  { id: "layout-dashboard", label: "Dashboard" },
+  { id: "server", label: "Server" },
+  { id: "cpu", label: "Compute" },
+  { id: "activity", label: "Activity" },
+  { id: "wifi", label: "Network" },
+  { id: "shield", label: "Security" },
+  { id: "home", label: "Home" },
+  { id: "database", label: "Database" },
+  { id: "hard-drive", label: "Storage" },
+  { id: "zap", label: "Power" },
+  { id: "gauge", label: "Telemetry" },
+  { id: "terminal", label: "System" }
 ];
-
-let selectedViewIcon = 'layout-dashboard';
-
+let selectedViewIcon = "layout-dashboard";
 function renderViewIconChips() {
-  const container = document.getElementById('view-icon-chips-grid');
+  const container = document.getElementById("view-icon-chips-grid");
   if (!container) return;
-
-  let html = '';
-  DASHBOARD_ICONS.forEach(item => {
+  let html = "";
+  DASHBOARD_ICONS.forEach((item) => {
     const isActive = item.id === selectedViewIcon;
     html += `
-      <div class="view-icon-chip ${isActive ? 'active' : ''}" onclick="selectViewIcon('${item.id}')" title="${item.label}">
+      <div class="view-icon-chip ${isActive ? "active" : ""}" onclick="selectViewIcon('${item.id}')" title="${item.label}">
         <i data-lucide="${item.id}"></i>
         <span>${item.label}</span>
       </div>`;
@@ -2828,241 +2346,201 @@ function renderViewIconChips() {
   container.innerHTML = html;
   if (window.lucide) window.lucide.createIcons();
 }
-
 function selectViewIcon(iconId) {
   selectedViewIcon = iconId;
-  const input = document.getElementById('new-dash-icon');
+  const input = document.getElementById("new-dash-icon");
   if (input) input.value = iconId;
-
   renderViewIconChips();
   updateDashboardPreview();
 }
-
 function updateDashboardPreview() {
-  const nameInput = document.getElementById('new-dash-name');
-  const labelEl = document.getElementById('preview-tab-label');
-  const iconEl = document.getElementById('preview-tab-icon');
-
-  const val = (nameInput?.value.trim()) || 'New View';
+  const nameInput = document.getElementById("new-dash-name");
+  const labelEl = document.getElementById("preview-tab-label");
+  const iconEl = document.getElementById("preview-tab-icon");
+  const val = nameInput?.value.trim() || "New View";
   if (labelEl) labelEl.textContent = val;
-  if (iconEl) iconEl.setAttribute('data-lucide', selectedViewIcon);
-
+  if (iconEl) iconEl.setAttribute("data-lucide", selectedViewIcon);
   if (window.lucide) window.lucide.createIcons();
 }
-
 function openNewDashboardModal() {
-  const modal = document.getElementById('dashboard-view-modal');
+  const modal = document.getElementById("dashboard-view-modal");
   if (!modal) return;
-
-  const nameInput = document.getElementById('new-dash-name');
+  const nameInput = document.getElementById("new-dash-name");
   if (nameInput) {
-    nameInput.value = '';
-    nameInput.style.borderColor = '';
+    nameInput.value = "";
+    nameInput.style.borderColor = "";
   }
-
-  selectedViewIcon = 'layout-dashboard';
-  const iconInput = document.getElementById('new-dash-icon');
-  if (iconInput) iconInput.value = 'layout-dashboard';
-
+  selectedViewIcon = "layout-dashboard";
+  const iconInput = document.getElementById("new-dash-icon");
+  if (iconInput) iconInput.value = "layout-dashboard";
   renderViewIconChips();
   updateDashboardPreview();
-  switchDashboardModalTab('create');
-
-  modal.style.display = 'flex';
+  switchDashboardModalTab("create");
+  modal.style.display = "flex";
   setTimeout(() => {
-    modal.classList.add('active');
+    modal.classList.add("active");
     if (nameInput) nameInput.focus();
   }, 10);
 }
-
 function openManageDashboardsModal(tabId) {
   openNewDashboardModal();
-  switchDashboardModalTab('manage');
+  switchDashboardModalTab("manage");
 }
-
 function switchDashboardModalTab(mode) {
-  const createPane = document.getElementById('dash-create-pane');
-  const managePane = document.getElementById('dash-manage-pane');
-  const btnCreate = document.getElementById('tab-dash-create');
-  const btnManage = document.getElementById('tab-dash-manage');
-  const footerBtn = document.getElementById('btn-save-dashboard-view');
-
-  if (btnCreate) btnCreate.classList.toggle('active', mode === 'create');
-  if (btnManage) btnManage.classList.toggle('active', mode === 'manage');
-
-  if (mode === 'create') {
-    if (createPane) createPane.style.display = 'flex';
-    if (managePane) managePane.style.display = 'none';
-    if (footerBtn) footerBtn.style.display = 'inline-flex';
+  const createPane = document.getElementById("dash-create-pane");
+  const managePane = document.getElementById("dash-manage-pane");
+  const btnCreate = document.getElementById("tab-dash-create");
+  const btnManage = document.getElementById("tab-dash-manage");
+  const footerBtn = document.getElementById("btn-save-dashboard-view");
+  if (btnCreate) btnCreate.classList.toggle("active", mode === "create");
+  if (btnManage) btnManage.classList.toggle("active", mode === "manage");
+  if (mode === "create") {
+    if (createPane) createPane.style.display = "flex";
+    if (managePane) managePane.style.display = "none";
+    if (footerBtn) footerBtn.style.display = "inline-flex";
   } else {
-    if (createPane) createPane.style.display = 'none';
-    if (managePane) managePane.style.display = 'flex';
-    if (footerBtn) footerBtn.style.display = 'none';
+    if (createPane) createPane.style.display = "none";
+    if (managePane) managePane.style.display = "flex";
+    if (footerBtn) footerBtn.style.display = "none";
     renderDashboardsManageList();
   }
 }
-
 function renderDashboardsManageList() {
-  const container = document.getElementById('dashboards-list-container');
+  const container = document.getElementById("dashboards-list-container");
   if (!container) return;
-
   let list = [];
   try {
-    list = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-  } catch (e) { }
-
+    list = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
+  } catch (e) {
+  }
   let widgets = [];
   try {
-    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
-  } catch (e) { }
-
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+  }
   if (list.length === 0) {
     container.innerHTML = '<span style="font-size:0.75rem; color:var(--text-secondary);">No views configured.</span>';
     return;
   }
-
-  let html = '';
-  list.forEach(tab => {
-    const cardCount = widgets.filter(w => w.tab === tab.id).length;
+  let html = "";
+  list.forEach((tab) => {
+    const cardCount = widgets.filter((w) => w.tab === tab.id).length;
     const isOnlyOne = list.length <= 1;
     const isCurrent = tab.id === activeTab;
-
     html += `
       <div class="manage-view-item" id="manage-item-${tab.id}">
         <div class="manage-view-info">
-          <i data-lucide="${tab.icon || 'layout-dashboard'}"></i>
+          <i data-lucide="${tab.icon || "layout-dashboard"}"></i>
           <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
             <div style="display:flex; align-items:center; gap:8px;">
               <input type="text" class="modal-input" id="manage-input-${tab.id}" value="${tab.name}" style="padding:4px 8px; font-size:0.8rem; font-weight:600; width:150px; background:var(--bg-primary);">
-              ${isCurrent ? '<span style="font-size:0.6rem; color:var(--color-optimal); background:rgba(16,185,129,0.12); padding:1px 6px; border-radius:4px; font-weight:600;">ACTIVE</span>' : ''}
+              ${isCurrent ? '<span style="font-size:0.6rem; color:var(--color-optimal); background:rgba(16,185,129,0.12); padding:1px 6px; border-radius:4px; font-weight:600;">ACTIVE</span>' : ""}
             </div>
-            <span class="manage-view-count">${cardCount} card${cardCount === 1 ? '' : 's'} assigned</span>
+            <span class="manage-view-count">${cardCount} card${cardCount === 1 ? "" : "s"} assigned</span>
           </div>
         </div>
         <div class="manage-view-actions">
           <button class="btn btn-secondary" style="padding:5px 10px; font-size:0.75rem;" onclick="saveDashboardName('${tab.id}')" title="Save name change">
             <i data-lucide="check" style="width:12px; height:12px;"></i> Save
           </button>
-          <button class="btn btn-danger" style="padding:5px 8px; font-size:0.75rem; ${isOnlyOne ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${isOnlyOne ? 'disabled' : `onclick="deleteDashboardTab('${tab.id}')"`} title="${isOnlyOne ? 'Cannot delete the only remaining view' : 'Delete View'}">
+          <button class="btn btn-danger" style="padding:5px 8px; font-size:0.75rem; ${isOnlyOne ? "opacity:0.4; cursor:not-allowed;" : ""}" ${isOnlyOne ? "disabled" : `onclick="deleteDashboardTab('${tab.id}')"`} title="${isOnlyOne ? "Cannot delete the only remaining view" : "Delete View"}">
             <i data-lucide="trash-2" style="width:12px; height:12px;"></i>
           </button>
         </div>
       </div>
     `;
   });
-
   container.innerHTML = html;
   if (window.lucide) window.lucide.createIcons();
 }
-
 function saveDashboardName(tabId) {
   const input = document.getElementById(`manage-input-${tabId}`);
   if (!input) return;
   const newName = input.value.trim();
   if (!newName) {
-    input.style.borderColor = '#f43f5e';
+    input.style.borderColor = "#f43f5e";
     return;
   }
-
   renameDashboardTab(tabId, newName);
-  input.style.borderColor = 'var(--color-optimal)';
+  input.style.borderColor = "var(--color-optimal)";
   setTimeout(() => {
-    input.style.borderColor = '';
-  }, 1000);
-  addAuditEntry('info', `Renamed dashboard view to "${newName}".`);
+    input.style.borderColor = "";
+  }, 1e3);
+  addAuditEntry("info", `Renamed dashboard view to "${newName}".`);
 }
-
 function submitNewDashboardView() {
-  const nameInput = document.getElementById('new-dash-name');
+  const nameInput = document.getElementById("new-dash-name");
   if (!nameInput) return;
-
   const tabName = nameInput.value.trim();
   if (!tabName) {
-    nameInput.style.borderColor = '#f43f5e';
+    nameInput.style.borderColor = "#f43f5e";
     nameInput.focus();
     return;
   }
-
-  const iconName = selectedViewIcon || 'layout-dashboard';
-  const id = 'tab_' + Date.now();
-
+  const iconName = selectedViewIcon || "layout-dashboard";
+  const id = "tab_" + Date.now();
   let list = [];
   try {
-    list = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-  } catch (e) { }
-
+    list = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
+  } catch (e) {
+  }
   list.push({ id, name: tabName, icon: iconName });
-  localStorage.setItem('hp_dashboards', JSON.stringify(list));
-
-  closeModal('dashboard-view-modal');
+  localStorage.setItem("hp_dashboards", JSON.stringify(list));
+  closeModal("dashboard-view-modal");
   renderDashboards();
   switchTab(id);
-  addAuditEntry('success', `Created new dashboard view "${tabName}".`);
+  addAuditEntry("success", `Created new dashboard view "${tabName}".`);
 }
-
 function addNewDashboardTab() {
   openNewDashboardModal();
 }
-
 function renameDashboardTab(tabId, newName) {
   let list = [];
   try {
-    list = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-  } catch (e) { }
-
-  const tab = list.find(t => t.id === tabId);
+    list = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
+  } catch (e) {
+  }
+  const tab = list.find((t) => t.id === tabId);
   if (tab) {
     tab.name = newName;
-    localStorage.setItem('hp_dashboards', JSON.stringify(list));
+    localStorage.setItem("hp_dashboards", JSON.stringify(list));
     renderDashboards();
   }
 }
-
 async function deleteDashboardTab(tabId) {
   let list = [];
   try {
-    list = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-  } catch (e) { }
-
+    list = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
+  } catch (e) {
+  }
   if (list.length <= 1) {
     alert("Cannot delete the only remaining dashboard tab.");
     return;
   }
   if (!await showConfirm("Are you sure you want to delete this tab? All cards inside it will be reassigned to the main dashboard tab.", "Delete Dashboard Tab")) return;
-
-  list = list.filter(t => t.id !== tabId);
-  localStorage.setItem('hp_dashboards', JSON.stringify(list));
-
+  list = list.filter((t) => t.id !== tabId);
+  localStorage.setItem("hp_dashboards", JSON.stringify(list));
   const primaryTab = list[0].id;
   let widgets = [];
   try {
-    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
-  } catch (e) { }
-
-  widgets.forEach(w => {
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+  }
+  widgets.forEach((w) => {
     if (w.tab === tabId) w.tab = primaryTab;
   });
-  localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
-
+  localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
   renderDashboards();
   renderDashboardsManageList();
   if (activeTab === tabId) {
     switchTab(primaryTab);
   }
-  addAuditEntry('warning', `Deleted dashboard view "${tabId}".`);
+  addAuditEntry("warning", `Deleted dashboard view "${tabId}".`);
 }
-
-// ─────────────────────────────────────────
-// WIDGET CONFIGURATION & CATALOG MANAGERS
-// ─────────────────────────────────────────
-
 function initializeWidgets() {
   let widgets = [];
-
   const entityKeys = Object.keys(cachedEntities);
-  const hasDbEntities = entityKeys.some(k => cachedEntities[k].entity_key === 'database-status');
-
-  // Consolidated Database card
+  const hasDbEntities = entityKeys.some((k) => cachedEntities[k].entity_key === "database-status");
   if (hasDbEntities) {
     widgets.push({
       id: "widget-hp-db-engine",
@@ -3077,14 +2555,11 @@ function initializeWidgets() {
       options: { gridWidth: 2, gridHeight: 1 }
     });
   }
-
-  // Add all detected entities dynamically
-  entityKeys.forEach(key => {
+  entityKeys.forEach((key) => {
     const item = cachedEntities[key];
-    if (hasDbEntities && (item.entity_key === 'database-status' || item.entity_key === 'database-latency' || item.entity_key === 'database-storage-pct')) return;
-
+    if (hasDbEntities && (item.entity_key === "database-status" || item.entity_key === "database-latency" || item.entity_key === "database-storage-pct")) return;
     const widgetId = `widget-${item.node_id}-${item.entity_key}`;
-    if (item.type === 'control') {
+    if (item.type === "control") {
       widgets.push({
         id: widgetId,
         type: "control",
@@ -3093,14 +2568,14 @@ function initializeWidgets() {
         entities: [{ nodeId: item.node_id, entityKey: item.entity_key }],
         options: { gridWidth: 1, gridHeight: 1 }
       });
-    } else if (item.type === 'value') {
+    } else if (item.type === "value") {
       widgets.push({
         id: widgetId,
         type: "value",
         title: item.name || item.entity_key,
         tab: "main",
         entities: [{ nodeId: item.node_id, entityKey: item.entity_key }],
-        options: { gridWidth: 1, gridHeight: 1, color: item.color || 'var(--accent-blue)' }
+        options: { gridWidth: 1, gridHeight: 1, color: item.color || "var(--accent-blue)" }
       });
     } else {
       widgets.push({
@@ -3109,144 +2584,117 @@ function initializeWidgets() {
         title: item.name || item.entity_key,
         tab: "main",
         entities: [{ nodeId: item.node_id, entityKey: item.entity_key }],
-        options: { gridWidth: 1, gridHeight: 1, graphic: item.graphic || 'sparkline' }
+        options: { gridWidth: 1, gridHeight: 1, graphic: item.graphic || "sparkline" }
       });
     }
   });
-
-  // Fallback defaults if no entities loaded yet
   if (widgets.length === 0) {
     widgets.push(
       { id: "widget-core-cpu", type: "sensor", title: "Core CPU Cycles", tab: "main", entities: [{ nodeId: "core-mon", entityKey: "cpu-utilization" }], options: { gridWidth: 1, gridHeight: 1, graphic: "sparkline", color: "var(--color-optimal)", unit: "%" } },
       { id: "widget-core-mem", type: "sensor", title: "Memory Pool Usage", tab: "main", entities: [{ nodeId: "core-mon", entityKey: "memory-saturation" }], options: { gridWidth: 1, gridHeight: 1, graphic: "sparkline", color: "var(--accent-blue)", unit: "%" } },
-      { id: "widget-core-temp", type: "sensor", title: "Host CPU Temperature", tab: "main", entities: [{ nodeId: "core-mon", entityKey: "server-room-temp" }], options: { gridWidth: 1, gridHeight: 1, graphic: "sparkline", color: "var(--color-optimal)", unit: "°C" } },
+      { id: "widget-core-temp", type: "sensor", title: "Host CPU Temperature", tab: "main", entities: [{ nodeId: "core-mon", entityKey: "server-room-temp" }], options: { gridWidth: 1, gridHeight: 1, graphic: "sparkline", color: "var(--color-optimal)", unit: "\xB0C" } },
       { id: "widget-core-net", type: "sensor", title: "Network Throughput", tab: "main", entities: [{ nodeId: "core-mon", entityKey: "network-throughput" }], options: { gridWidth: 1, gridHeight: 1, graphic: "sparkline", color: "var(--color-optimal)", unit: "MB/s" } }
     );
   }
-
-  localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
+  localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
   return widgets;
 }
-
-window.openModal = function (modalId) {
+window.openModal = function(modalId) {
   console.log("openModal triggered for:", modalId);
   let modal = document.getElementById(modalId);
   if (!modal) {
     console.error("Modal not found:", modalId);
     return;
   }
-
-  // Move modal to document.body to escape any stacking context
   if (modal.parentNode !== document.body) {
     document.body.appendChild(modal);
   }
-
-  modal.style.cssText = 'display:flex !important; opacity:1 !important; pointer-events:auto !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; z-index:999999 !important; background:rgba(0,0,0,0.75) !important; align-items:center !important; justify-content:center !important;';
-  modal.classList.add('active');
+  modal.style.cssText = "display:flex !important; opacity:1 !important; pointer-events:auto !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; z-index:999999 !important; background:rgba(0,0,0,0.75) !important; align-items:center !important; justify-content:center !important;";
+  modal.classList.add("active");
   if (window.lucide) window.lucide.createIcons();
 };
-
-window.closeModal = function (modalId) {
+window.closeModal = function(modalId) {
   console.log("closeModal triggered for:", modalId);
   const modal = document.getElementById(modalId);
   if (modal) {
-    modal.classList.remove('active');
-    modal.style.display = 'none';
-    modal.style.opacity = '0';
-    modal.style.pointerEvents = 'none';
+    modal.classList.remove("active");
+    modal.style.display = "none";
+    modal.style.opacity = "0";
+    modal.style.pointerEvents = "none";
   }
 };
-
-function openCardEditor(widgetId, initialMode = 'ui') {
+function openCardEditor(widgetId, initialMode = "ui") {
   let widgets = [];
   try {
-    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
-  } catch (e) { }
-
-  const widget = widgets.find(w => w.id === widgetId);
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+  }
+  const widget = widgets.find((w) => w.id === widgetId);
   if (!widget) return;
-
-  document.getElementById('edit-widget-id').value = widgetId;
-  document.getElementById('edit-widget-title').value = widget.title || '';
-  document.getElementById('edit-widget-unit').value = widget.options.unit || '';
-  document.getElementById('edit-widget-color').value = widget.options.color || 'var(--color-optimal)';
-  document.getElementById('edit-widget-width').value = widget.options.gridWidth || 1;
-  document.getElementById('edit-widget-height').value = widget.options.gridHeight || 1;
-  document.getElementById('edit-scale-min').value = widget.options.min !== undefined ? widget.options.min : 0;
-  document.getElementById('edit-scale-max').value = widget.options.max !== undefined ? widget.options.max : 100;
-
-  // Render tab selects
-  const tabSelect = document.getElementById('edit-widget-tab');
+  document.getElementById("edit-widget-id").value = widgetId;
+  document.getElementById("edit-widget-title").value = widget.title || "";
+  document.getElementById("edit-widget-unit").value = widget.options.unit || "";
+  document.getElementById("edit-widget-color").value = widget.options.color || "var(--color-optimal)";
+  document.getElementById("edit-widget-width").value = widget.options.gridWidth || 1;
+  document.getElementById("edit-widget-height").value = widget.options.gridHeight || 1;
+  document.getElementById("edit-scale-min").value = widget.options.min !== void 0 ? widget.options.min : 0;
+  document.getElementById("edit-scale-max").value = widget.options.max !== void 0 ? widget.options.max : 100;
+  const tabSelect = document.getElementById("edit-widget-tab");
   if (tabSelect) {
-    tabSelect.innerHTML = '';
-    const tabs = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-    tabs.forEach(t => {
-      const opt = document.createElement('option');
+    tabSelect.innerHTML = "";
+    const tabs = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
+    tabs.forEach((t) => {
+      const opt = document.createElement("option");
       opt.value = t.id;
       opt.textContent = t.name;
       tabSelect.appendChild(opt);
     });
     tabSelect.value = widget.tab;
   }
-
-  // Toggle scales visibility based on types
-  const scaleGroup = document.querySelector('.edit-scale-group');
+  const scaleGroup = document.querySelector(".edit-scale-group");
   if (scaleGroup) {
-    scaleGroup.style.display = (widget.type === 'gauge' || widget.type === 'sensor') ? 'flex' : 'none';
+    scaleGroup.style.display = widget.type === "gauge" || widget.type === "sensor" ? "flex" : "none";
   }
-
-  const modal = document.getElementById('widget-editor-modal');
+  const modal = document.getElementById("widget-editor-modal");
   if (modal) {
-    modal.style.display = 'flex';
-    setTimeout(() => modal.classList.add('active'), 10);
+    modal.style.display = "flex";
+    setTimeout(() => modal.classList.add("active"), 10);
   }
-
-  // Bind initial tab state to UI
   toggleWidgetEditorMode(initialMode);
   updateEditorVisualPreview();
-
-  // Initialize and bind YAML Live Preview
-  const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+  const yamlTextarea = document.getElementById("edit-widget-yaml-textarea");
   if (yamlTextarea) {
     setupYamlTextareaTabKey(yamlTextarea);
     updateYamlPreview(yamlTextarea.value);
-
     const onYamlInput = () => {
       updateYamlPreview(yamlTextarea.value);
     };
-    yamlTextarea.removeEventListener('input', onYamlInput);
-    yamlTextarea.addEventListener('input', onYamlInput);
+    yamlTextarea.removeEventListener("input", onYamlInput);
+    yamlTextarea.addEventListener("input", onYamlInput);
   }
 }
-
 function saveWidgetSettings() {
-  const id = document.getElementById('edit-widget-id').value;
-  const errorBanner = document.getElementById('edit-widget-yaml-error');
-  if (errorBanner) errorBanner.style.display = 'none';
-
+  const id = document.getElementById("edit-widget-id").value;
+  const errorBanner = document.getElementById("edit-widget-yaml-error");
+  if (errorBanner) errorBanner.style.display = "none";
   let widgets = [];
   try {
-    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
-  } catch (e) { }
-
-  const widgetIdx = widgets.findIndex(w => w.id === id);
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+  }
+  const widgetIdx = widgets.findIndex((w) => w.id === id);
   if (widgetIdx === -1) return;
-
-  // Sync UI form editor fields to YAML representation if saving from form editor
-  if (widgetEditorMode === 'ui') {
+  if (widgetEditorMode === "ui") {
     syncFormFieldsToYAML();
   }
-
-  const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+  const yamlTextarea = document.getElementById("edit-widget-yaml-textarea");
   if (!yamlTextarea) return;
-
   let parsedWidget = null;
   try {
     parsedWidget = jsyaml.load(yamlTextarea.value);
-    if (!parsedWidget || typeof parsedWidget !== 'object') {
+    if (!parsedWidget || typeof parsedWidget !== "object") {
       throw new Error("YAML must represent a valid Lovelace card object structure.");
     }
-    // Auto-preserve or assign id and tab so user is not penalized if omitted
     if (!parsedWidget.id) {
       parsedWidget.id = id;
     }
@@ -3254,13 +2702,11 @@ function saveWidgetSettings() {
       parsedWidget.tab = widgets[widgetIdx].tab || activeTab;
     }
     if (!parsedWidget.type) {
-      parsedWidget.type = widgets[widgetIdx].type || 'sensor';
+      parsedWidget.type = widgets[widgetIdx].type || "sensor";
     }
-    // Normalize name/title
     if (!parsedWidget.title && parsedWidget.name) {
       parsedWidget.title = parsedWidget.name;
     }
-    // Normalize entities
     if (parsedWidget.entity && (!parsedWidget.entities || parsedWidget.entities.length === 0)) {
       const norm = normalizeEntityRef(parsedWidget.entity);
       if (norm) parsedWidget.entities = [norm];
@@ -3270,15 +2716,12 @@ function saveWidgetSettings() {
     if (!parsedWidget.options) parsedWidget.options = {};
   } catch (e) {
     console.warn("Card YAML editor parse warning, saving as error widget: ", e);
-    // Parse tab from string via regex, defaulting to activeTab
     const tabMatch = yamlTextarea.value.match(/tab:\s*['"]?([a-zA-Z0-9_\-]+)['"]?/);
-    const tab = tabMatch ? tabMatch[1] : (widgets[widgetIdx].tab || activeTab);
-
-    // Construct error config object fallback
+    const tab = tabMatch ? tabMatch[1] : widgets[widgetIdx].tab || activeTab;
     parsedWidget = {
-      id: id,
+      id,
       type: "error",
-      tab: tab,
+      tab,
       title: "Misconfigured Card",
       options: {
         gridWidth: 1,
@@ -3288,207 +2731,172 @@ function saveWidgetSettings() {
       }
     };
   }
-
   widgets[widgetIdx] = parsedWidget;
-  localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
-
-  // Sync updated layout to backend database
-  syncLocalConfigToServer().catch(err => console.error("Failed to sync card to server:", err));
-
-  closeModal('widget-editor-modal');
+  localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
+  syncLocalConfigToServer().catch((err) => console.error("Failed to sync card to server:", err));
+  closeModal("widget-editor-modal");
   buildDashboardCards(cachedEntities);
-  if (document.getElementById('main-content').classList.contains('edit-mode')) {
+  if (document.getElementById("main-content").classList.contains("edit-mode")) {
     enableDragAndDrop();
   }
 }
-
-// --- Card-Level Lovelace Code Editor Helper Tabs API ---
-
-let widgetEditorMode = 'ui';
-
+let widgetEditorMode = "ui";
 function toggleWidgetEditorMenu(e) {
   if (e) e.stopPropagation();
-  const dropdown = document.getElementById('widget-editor-menu-dropdown');
+  const dropdown = document.getElementById("widget-editor-menu-dropdown");
   if (!dropdown) return;
-  const isShown = dropdown.style.display === 'block';
-  dropdown.style.display = isShown ? 'none' : 'block';
+  const isShown = dropdown.style.display === "block";
+  dropdown.style.display = isShown ? "none" : "block";
 }
-
 function clickedToggleEditorMode(e) {
   if (e) e.preventDefault();
-  const newMode = (widgetEditorMode === 'ui') ? 'yaml' : 'ui';
+  const newMode = widgetEditorMode === "ui" ? "yaml" : "ui";
   toggleWidgetEditorMode(newMode);
-  const dropdown = document.getElementById('widget-editor-menu-dropdown');
-  if (dropdown) dropdown.style.display = 'none';
+  const dropdown = document.getElementById("widget-editor-menu-dropdown");
+  if (dropdown) dropdown.style.display = "none";
 }
-
-// Close 3-dots widget editor menu when clicking outside
-document.addEventListener('click', function (e) {
-  const dropdown = document.getElementById('widget-editor-menu-dropdown');
-  if (dropdown && dropdown.style.display === 'block') {
-    const parentContainer = e.target.closest('#widget-editor-modal');
-    if (parentContainer && !e.target.closest('.btn-icon')) {
-      dropdown.style.display = 'none';
+document.addEventListener("click", function(e) {
+  const dropdown = document.getElementById("widget-editor-menu-dropdown");
+  if (dropdown && dropdown.style.display === "block") {
+    const parentContainer = e.target.closest("#widget-editor-modal");
+    if (parentContainer && !e.target.closest(".btn-icon")) {
+      dropdown.style.display = "none";
     }
   }
 });
-
 function toggleWidgetEditorMode(mode) {
   widgetEditorMode = mode;
-  const uiFields = document.getElementById('editor-ui-fields');
-  const yamlContainer = document.getElementById('editor-yaml-container');
-  const yamlError = document.getElementById('edit-widget-yaml-error');
-  const tabUi = document.getElementById('editor-tab-ui');
-  const tabYaml = document.getElementById('editor-tab-yaml');
-  const menuLink = document.getElementById('menu-toggle-editor-mode');
-
-  if (yamlError) yamlError.style.display = 'none';
-
-  if (tabUi) tabUi.classList.toggle('active', mode === 'ui');
-  if (tabYaml) tabYaml.classList.toggle('active', mode === 'yaml');
-
+  const uiFields = document.getElementById("editor-ui-fields");
+  const yamlContainer = document.getElementById("editor-yaml-container");
+  const yamlError = document.getElementById("edit-widget-yaml-error");
+  const tabUi = document.getElementById("editor-tab-ui");
+  const tabYaml = document.getElementById("editor-tab-yaml");
+  const menuLink = document.getElementById("menu-toggle-editor-mode");
+  if (yamlError) yamlError.style.display = "none";
+  if (tabUi) tabUi.classList.toggle("active", mode === "ui");
+  if (tabYaml) tabYaml.classList.toggle("active", mode === "yaml");
   if (menuLink) {
-    menuLink.textContent = (mode === 'ui') ? 'Edit in YAML' : 'Edit in visual editor';
+    menuLink.textContent = mode === "ui" ? "Edit in YAML" : "Edit in visual editor";
   }
-
-  if (mode === 'ui') {
-    if (uiFields) uiFields.style.display = 'flex';
-    if (yamlContainer) yamlContainer.style.display = 'none';
-
-    // Sync structural form fields values from YAML draft code parameters
+  if (mode === "ui") {
+    if (uiFields) uiFields.style.display = "flex";
+    if (yamlContainer) yamlContainer.style.display = "none";
     syncYAMLToFormFields();
     updateEditorVisualPreview();
   } else {
-    if (uiFields) uiFields.style.display = 'none';
-    if (yamlContainer) yamlContainer.style.display = 'flex';
-
-    // Dump active form field settings into YAML textarea value
+    if (uiFields) uiFields.style.display = "none";
+    if (yamlContainer) yamlContainer.style.display = "flex";
     syncFormFieldsToYAML();
   }
 }
-
 function syncFormFieldsToYAML() {
-  const widgetId = document.getElementById('edit-widget-id').value;
-  const widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
-  const widget = widgets.find(w => w.id === widgetId);
+  const widgetId = document.getElementById("edit-widget-id").value;
+  const widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  const widget = widgets.find((w) => w.id === widgetId);
   if (!widget) return;
-
-  const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
-  if (widget.type === 'error' && widget.options && widget.options.yaml_error_config) {
+  const yamlTextarea = document.getElementById("edit-widget-yaml-textarea");
+  if (widget.type === "error" && widget.options && widget.options.yaml_error_config) {
     if (yamlTextarea) yamlTextarea.value = widget.options.yaml_error_config;
     return;
   }
-
   const draftWidget = {
     id: widget.id,
     type: widget.type,
-    title: document.getElementById('edit-widget-title').value,
-    tab: document.getElementById('edit-widget-tab').value,
+    title: document.getElementById("edit-widget-title").value,
+    tab: document.getElementById("edit-widget-tab").value,
     entities: widget.entities || [],
     options: {
-      ...(widget.options || {}),
-      unit: document.getElementById('edit-widget-unit').value,
-      color: document.getElementById('edit-widget-color').value,
-      gridWidth: parseInt(document.getElementById('edit-widget-width').value),
-      gridHeight: parseInt(document.getElementById('edit-widget-height').value)
+      ...widget.options || {},
+      unit: document.getElementById("edit-widget-unit").value,
+      color: document.getElementById("edit-widget-color").value,
+      gridWidth: parseInt(document.getElementById("edit-widget-width").value),
+      gridHeight: parseInt(document.getElementById("edit-widget-height").value)
     }
   };
-
-  const minInput = document.getElementById('edit-scale-min');
-  const maxInput = document.getElementById('edit-scale-max');
-  if (minInput && maxInput && (widget.type === 'gauge' || widget.type === 'sensor')) {
+  const minInput = document.getElementById("edit-scale-min");
+  const maxInput = document.getElementById("edit-scale-max");
+  if (minInput && maxInput && (widget.type === "gauge" || widget.type === "sensor")) {
     draftWidget.options.min = parseFloat(minInput.value);
     draftWidget.options.max = parseFloat(maxInput.value);
   }
-
   try {
     const yamlVal = jsyaml.dump(draftWidget, { indent: 2, noRefs: true });
-    const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
-    if (yamlTextarea) yamlTextarea.value = yamlVal;
+    const yamlTextarea2 = document.getElementById("edit-widget-yaml-textarea");
+    if (yamlTextarea2) yamlTextarea2.value = yamlVal;
   } catch (err) {
     console.error("Widget YAML dump failed: ", err);
   }
 }
-
 function syncYAMLToFormFields() {
-  const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+  const yamlTextarea = document.getElementById("edit-widget-yaml-textarea");
   if (!yamlTextarea) return;
-
   try {
     const parsed = jsyaml.load(yamlTextarea.value);
-    if (parsed && typeof parsed === 'object') {
-      if (parsed.title !== undefined) document.getElementById('edit-widget-title').value = parsed.title;
-      if (parsed.tab !== undefined) document.getElementById('edit-widget-tab').value = parsed.tab;
+    if (parsed && typeof parsed === "object") {
+      if (parsed.title !== void 0) document.getElementById("edit-widget-title").value = parsed.title;
+      if (parsed.tab !== void 0) document.getElementById("edit-widget-tab").value = parsed.tab;
       if (parsed.options) {
-        if (parsed.options.unit !== undefined) document.getElementById('edit-widget-unit').value = parsed.options.unit;
-        if (parsed.options.color !== undefined) document.getElementById('edit-widget-color').value = parsed.options.color;
-        if (parsed.options.gridWidth !== undefined) document.getElementById('edit-widget-width').value = parsed.options.gridWidth;
-        if (parsed.options.gridHeight !== undefined) document.getElementById('edit-widget-height').value = parsed.options.gridHeight;
-        if (parsed.options.min !== undefined && document.getElementById('edit-scale-min')) {
-          document.getElementById('edit-scale-min').value = parsed.options.min;
+        if (parsed.options.unit !== void 0) document.getElementById("edit-widget-unit").value = parsed.options.unit;
+        if (parsed.options.color !== void 0) document.getElementById("edit-widget-color").value = parsed.options.color;
+        if (parsed.options.gridWidth !== void 0) document.getElementById("edit-widget-width").value = parsed.options.gridWidth;
+        if (parsed.options.gridHeight !== void 0) document.getElementById("edit-widget-height").value = parsed.options.gridHeight;
+        if (parsed.options.min !== void 0 && document.getElementById("edit-scale-min")) {
+          document.getElementById("edit-scale-min").value = parsed.options.min;
         }
-        if (parsed.options.max !== undefined && document.getElementById('edit-scale-max')) {
-          document.getElementById('edit-scale-max').value = parsed.options.max;
+        if (parsed.options.max !== void 0 && document.getElementById("edit-scale-max")) {
+          document.getElementById("edit-scale-max").value = parsed.options.max;
         }
       }
     }
   } catch (err) {
-    // Ignore draft parse errors during typing switches
   }
 }
-
 function updateYamlPreview(yamlStr) {
-  const errBanner = document.getElementById('edit-widget-yaml-error');
-  const linterStatus = document.getElementById('yaml-linter-status');
+  const errBanner = document.getElementById("edit-widget-yaml-error");
+  const linterStatus = document.getElementById("yaml-linter-status");
   if (!linterStatus) return;
-
   try {
     const parsed = jsyaml.load(yamlStr);
-    if (!parsed || typeof parsed !== 'object') {
+    if (!parsed || typeof parsed !== "object") {
       throw new Error("YAML must represent a valid Lovelace card object structure.");
     }
     if (!parsed.type) {
       throw new Error("Card configuration is missing a 'type' field.");
     }
-
-    if (errBanner) errBanner.style.display = 'none';
-    linterStatus.style.color = '#10b981';
+    if (errBanner) errBanner.style.display = "none";
+    linterStatus.style.color = "#10b981";
     linterStatus.innerHTML = `
       <i data-lucide="check-circle" style="width: 14px; height: 14px; color: #10b981;"></i>
       <span>YAML Format Valid</span>
     `;
     if (window.lucide) window.lucide.createIcons();
   } catch (e) {
-    linterStatus.style.color = '#ef4444';
+    linterStatus.style.color = "#ef4444";
     linterStatus.innerHTML = `
       <i data-lucide="alert-triangle" style="width: 14px; height: 14px; color: #ef4444;"></i>
       <span>YAML Format Error</span>
     `;
     if (window.lucide) window.lucide.createIcons();
-
     if (errBanner) {
       errBanner.textContent = "Live Parse Warning: " + e.message;
-      errBanner.style.display = 'block';
+      errBanner.style.display = "block";
     }
   }
 }
-
 function renderMockCardHTML(widget) {
   const title = widget.title || "Untitled Card";
   const type = widget.type || "sensor";
-  const unit = (widget.options && widget.options.unit) || "";
-  const color = (widget.options && widget.options.color) || "var(--color-optimal)";
-
-  if (type === 'title') {
+  const unit = widget.options && widget.options.unit || "";
+  const color = widget.options && widget.options.color || "var(--color-optimal)";
+  if (type === "title") {
     return `
       <div class="card card-title-type" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:10px 14px; display:flex; align-items:center; min-height:48px;">
         <span style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">${title}</span>
       </div>
     `;
   }
-
-  let body = '';
-  if (type === 'gauge') {
+  let body = "";
+  if (type === "gauge") {
     body = `
       <div class="card-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1;">
         <div style="width:70px; height:35px; background:rgba(255,255,255,0.05); border-radius:35px 35px 0 0; position:relative; overflow:hidden; border:1px solid var(--border-soft);">
@@ -3497,7 +2905,7 @@ function renderMockCardHTML(widget) {
         <div style="font-size:0.8rem; font-weight:bold; margin-top:6px;">50<span style="font-size:0.55rem;"> ${unit}</span></div>
       </div>
     `;
-  } else if (type === 'control') {
+  } else if (type === "control") {
     body = `
       <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
         <div style="font-size:0.8rem; font-weight:bold; margin-bottom:4px;">ON</div>
@@ -3507,14 +2915,14 @@ function renderMockCardHTML(widget) {
         </div>
       </div>
     `;
-  } else if (type === 'value') {
+  } else if (type === "value") {
     body = `
       <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
         <div style="font-size:0.9rem; font-weight:bold;">84.2<span style="font-size:0.6rem;"> ${unit}</span></div>
         <div style="height:3px; background:${color}; margin-top:8px; border-radius:1px;"></div>
       </div>
     `;
-  } else if (type === 'entities') {
+  } else if (type === "entities") {
     body = `
       <div class="card-body" style="display:flex; flex-direction:column; gap:6px; flex:1; justify-content:center;">
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem;">
@@ -3523,11 +2931,11 @@ function renderMockCardHTML(widget) {
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem;">
           <span style="color:var(--text-primary);">Load Rate</span>
-          <span style="font-weight:600;">142${unit ? ' ' + unit : ' req/s'}</span>
+          <span style="font-weight:600;">142${unit ? " " + unit : " req/s"}</span>
         </div>
       </div>
     `;
-  } else if (type === 'glance') {
+  } else if (type === "glance") {
     body = `
       <div class="card-body" style="display:flex; justify-content:space-around; align-items:center; flex:1;">
         <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
@@ -3543,7 +2951,6 @@ function renderMockCardHTML(widget) {
       </div>
     `;
   } else {
-    // sensor
     body = `
       <div class="card-body" style="padding-bottom: 0; flex:1; display:flex; flex-direction:column; justify-content:flex-end;">
         <div style="font-size:0.9rem; font-weight:bold; margin-bottom:6px;">32<span style="font-size:0.6rem;"> ${unit}</span></div>
@@ -3557,7 +2964,6 @@ function renderMockCardHTML(widget) {
       </div>
     `;
   }
-
   return `
     <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); pointer-events:none; display:flex; flex-direction:column; min-height:95px; box-sizing:border-box; margin:0; width: 100%;">
       <div class="card-header" style="padding:6px 10px; border-bottom:1px solid var(--border-soft); display:flex; justify-content:space-between; align-items:center;">
@@ -3572,21 +2978,20 @@ function renderMockCardHTML(widget) {
     </div>
   `;
 }
-
 function updateEditorVisualPreview() {
-  const container = document.getElementById('editor-visual-preview-container');
+  const container = document.getElementById("editor-visual-preview-container");
   if (!container) return;
-  const widgetId = document.getElementById('edit-widget-id')?.value;
+  const widgetId = document.getElementById("edit-widget-id")?.value;
   let widgets = [];
   try {
-    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
-  } catch (e) { }
-  const widget = widgets.find(w => w.id === widgetId);
-  const type = widget ? widget.type : 'sensor';
-  const title = document.getElementById('edit-widget-title')?.value || (widget ? widget.title : 'Widget');
-  const unit = document.getElementById('edit-widget-unit')?.value || '';
-  const color = document.getElementById('edit-widget-color')?.value || 'var(--color-optimal)';
-
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+  }
+  const widget = widgets.find((w) => w.id === widgetId);
+  const type = widget ? widget.type : "sensor";
+  const title = document.getElementById("edit-widget-title")?.value || (widget ? widget.title : "Widget");
+  const unit = document.getElementById("edit-widget-unit")?.value || "";
+  const color = document.getElementById("edit-widget-color")?.value || "var(--color-optimal)";
   container.innerHTML = renderMockCardHTML({
     type,
     title,
@@ -3594,15 +2999,13 @@ function updateEditorVisualPreview() {
   });
   if (window.lucide) window.lucide.createIcons();
 }
-
 function updateCreatorVisualPreview() {
-  const container = document.getElementById('creator-visual-preview-container');
+  const container = document.getElementById("creator-visual-preview-container");
   if (!container) return;
-  const type = document.getElementById('catalog-card-type')?.value || 'sensor';
-  const title = document.getElementById('catalog-widget-title')?.value || (type.charAt(0).toUpperCase() + type.slice(1) + ' Card');
-  const unit = document.getElementById('catalog-widget-unit')?.value || '';
-  const color = document.getElementById('catalog-widget-color')?.value || 'var(--color-optimal)';
-
+  const type = document.getElementById("catalog-card-type")?.value || "sensor";
+  const title = document.getElementById("catalog-widget-title")?.value || type.charAt(0).toUpperCase() + type.slice(1) + " Card";
+  const unit = document.getElementById("catalog-widget-unit")?.value || "";
+  const color = document.getElementById("catalog-widget-color")?.value || "var(--color-optimal)";
   container.innerHTML = renderMockCardHTML({
     type,
     title,
@@ -3610,86 +3013,71 @@ function updateCreatorVisualPreview() {
   });
   if (window.lucide) window.lucide.createIcons();
 }
-
 async function deleteWidgetSettings() {
-  const id = document.getElementById('edit-widget-id').value;
+  const id = document.getElementById("edit-widget-id").value;
   if (!await showConfirm("Are you sure you want to remove this widget card?", "Delete Widget")) return;
-
   let widgets = [];
   try {
-    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
-  } catch (e) { }
-
-  widgets = widgets.filter(w => w.id !== id);
-  localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
-
-  closeModal('widget-editor-modal');
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+  }
+  widgets = widgets.filter((w) => w.id !== id);
+  localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
+  closeModal("widget-editor-modal");
   buildDashboardCards(cachedEntities);
-  if (document.getElementById('main-content').classList.contains('edit-mode')) {
+  if (document.getElementById("main-content").classList.contains("edit-mode")) {
     enableDragAndDrop();
   }
-
-  addAuditEntry('warning', `Widget Card "${id}" deleted from dashboard layout.`);
+  addAuditEntry("warning", `Widget Card "${id}" deleted from dashboard layout.`);
 }
-
 function addNewCardPlaceholder() {
-  const typeSelect = document.getElementById('catalog-card-type');
+  const typeSelect = document.getElementById("catalog-card-type");
   if (typeSelect) {
-    typeSelect.value = 'sensor';
-    onCreatorTypeChange('sensor');
+    typeSelect.value = "sensor";
+    onCreatorTypeChange("sensor");
   }
-
   renderCatalogBlocks();
-
-  document.getElementById('catalog-widget-title').value = '';
-  document.getElementById('catalog-widget-unit').value = '';
-  document.getElementById('catalog-widget-width').value = '1';
-  document.getElementById('catalog-widget-height').value = '1';
-  document.getElementById('creator-scale-min').value = '0';
-  document.getElementById('creator-scale-max').value = '100';
-
+  document.getElementById("catalog-widget-title").value = "";
+  document.getElementById("catalog-widget-unit").value = "";
+  document.getElementById("catalog-widget-width").value = "1";
+  document.getElementById("catalog-widget-height").value = "1";
+  document.getElementById("creator-scale-min").value = "0";
+  document.getElementById("creator-scale-max").value = "100";
   updateCreatorVisualPreview();
-
-  const modal = document.getElementById('widget-catalog-modal');
+  const modal = document.getElementById("widget-catalog-modal");
   if (modal) {
-    modal.style.display = 'flex';
-    setTimeout(() => modal.classList.add('active'), 10);
+    modal.style.display = "flex";
+    setTimeout(() => modal.classList.add("active"), 10);
   }
 }
-
 const catalogTemplates = [
-  { value: 'sensor', name: 'Sensor', desc: 'Real-time telemetry sensor with sparkline', icon: 'activity' },
-  { value: 'control', name: 'Control', desc: 'Interactive toggle switch or trigger', icon: 'sliders' },
-  { value: 'gauge', name: 'Gauge', desc: 'Circular progress & resource gauge', icon: 'compass' },
-  { value: 'value', name: 'Value', desc: 'Compact numeric or status badge', icon: 'pocket' },
-  { value: 'entities', name: 'Entities', desc: 'Stacked multi-entity list rows', icon: 'list' },
-  { value: 'glance', name: 'Glance', desc: 'Side-by-side status glance badges', icon: 'grid' },
-  { value: 'title', name: 'Section Title', desc: 'Section header dividing card groups', icon: 'heading' }
+  { value: "sensor", name: "Sensor", desc: "Real-time telemetry sensor with sparkline", icon: "activity" },
+  { value: "control", name: "Control", desc: "Interactive toggle switch or trigger", icon: "sliders" },
+  { value: "gauge", name: "Gauge", desc: "Circular progress & resource gauge", icon: "compass" },
+  { value: "value", name: "Value", desc: "Compact numeric or status badge", icon: "pocket" },
+  { value: "entities", name: "Entities", desc: "Stacked multi-entity list rows", icon: "list" },
+  { value: "glance", name: "Glance", desc: "Side-by-side status glance badges", icon: "grid" },
+  { value: "title", name: "Section Title", desc: "Section header dividing card groups", icon: "heading" }
 ];
-
-function renderCatalogBlocks() {
-  const gridEl = document.getElementById('catalog-blocks-grid');
+function renderCatalogBlocks(searchQuery) {
+  const gridEl = document.getElementById("catalog-blocks-grid");
   if (!gridEl) return;
-
-  const typeSelect = document.getElementById('catalog-card-type');
-  const currentValue = typeSelect ? typeSelect.value : 'sensor';
-
-  let html = '';
-  catalogTemplates.forEach(tpl => {
+  const typeSelect = document.getElementById("catalog-card-type");
+  const currentValue = typeSelect ? typeSelect.value : "sensor";
+  let html = "";
+  catalogTemplates.forEach((tpl) => {
     const isActive = tpl.value === currentValue;
     html += `
-      <div class="creator-chip ${isActive ? 'active' : ''}" onclick="selectCatalogBlock('${tpl.value}')" title="${tpl.desc}">
+      <div class="creator-chip ${isActive ? "active" : ""}" onclick="selectCatalogBlock('${tpl.value}')" title="${tpl.desc}">
         <i data-lucide="${tpl.icon}"></i>
         <span>${tpl.name}</span>
       </div>`;
   });
-
   gridEl.innerHTML = html;
   if (window.lucide) window.lucide.createIcons();
 }
-
 function selectCatalogBlock(value) {
-  const typeSelect = document.getElementById('catalog-card-type');
+  const typeSelect = document.getElementById("catalog-card-type");
   if (typeSelect) {
     typeSelect.value = value;
     onCreatorTypeChange(value);
@@ -3697,31 +3085,25 @@ function selectCatalogBlock(value) {
   renderCatalogBlocks();
   updateCreatorVisualPreview();
 }
-
 function onCreatorTypeChange(type) {
-  const group = document.getElementById('creator-entity-select-group');
+  const group = document.getElementById("creator-entity-select-group");
   if (!group) return;
-
-  // Toggle scales visibility
-  const scaleGroups = document.querySelectorAll('.creator-scale-group');
-  scaleGroups.forEach(el => {
-    el.style.display = (type === 'gauge' || type === 'sensor') ? 'flex' : 'none';
+  const scaleGroups = document.querySelectorAll(".creator-scale-group");
+  scaleGroups.forEach((el) => {
+    el.style.display = type === "gauge" || type === "sensor" ? "flex" : "none";
   });
-
-  if (type === 'health' || type === 'audit' || type === 'title') {
+  if (type === "health" || type === "audit" || type === "title") {
     group.innerHTML = '<span style="color:var(--text-secondary); font-size:0.75rem; font-style: italic;">No entity binding required for this card type.</span>';
     updateCreatorVisualPreview();
     return;
   }
-
-  if (type === 'entities' || type === 'glance') {
-    // Generate Checklist checkboxes
+  if (type === "entities" || type === "glance") {
     let html = '<label style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Target Entities</label><div style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px; border-radius: 6px; display:flex; flex-direction:column; gap:6px; background: var(--bg-secondary);">';
     const entList = Object.values(cachedEntities || {});
     if (entList.length === 0) {
       html += '<span style="font-size:0.75rem; color:var(--text-secondary);">No discovered entities available.</span>';
     } else {
-      entList.forEach(entity => {
+      entList.forEach((entity) => {
         html += `
           <label style="display:flex; align-items:center; gap:8px; font-weight: normal; font-size:0.75rem; cursor:pointer;">
             <input type="checkbox" name="creator-entities" value="${entity.node_id}|${entity.entity_key}">
@@ -3730,121 +3112,106 @@ function onCreatorTypeChange(type) {
         `;
       });
     }
-    html += '</div>';
+    html += "</div>";
     group.innerHTML = html;
   } else {
-    // Single selector dropdown
     let html = '<label for="creator-select" style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Target Entity</label><select id="creator-select" class="modal-input">';
     const entList = Object.values(cachedEntities || {});
     if (entList.length === 0) {
       html += '<option value="">No discovered entities available</option>';
     } else {
-      entList.forEach(entity => {
+      entList.forEach((entity) => {
         html += `<option value="${entity.node_id}|${entity.entity_key}">${entity.name || entity.entity_key} (${entity.node_id}.local)</option>`;
       });
     }
-    html += '</select>';
+    html += "</select>";
     group.innerHTML = html;
   }
-
   updateCreatorVisualPreview();
 }
-
 function addWidgetToGrid() {
-  const type = document.getElementById('catalog-card-type').value;
-  const title = document.getElementById('catalog-widget-title').value.trim();
-  const unit = document.getElementById('catalog-widget-unit').value.trim();
-  const w = parseInt(document.getElementById('catalog-widget-width').value) || 1;
-  const h = parseInt(document.getElementById('catalog-widget-height').value) || 1;
-  const color = document.getElementById('catalog-widget-color').value;
-  const min = parseFloat(document.getElementById('creator-scale-min').value);
-  const max = parseFloat(document.getElementById('creator-scale-max').value);
-
+  const type = document.getElementById("catalog-card-type").value;
+  const title = document.getElementById("catalog-widget-title").value.trim();
+  const unit = document.getElementById("catalog-widget-unit").value.trim();
+  const w = parseInt(document.getElementById("catalog-widget-width").value) || 1;
+  const h = parseInt(document.getElementById("catalog-widget-height").value) || 1;
+  const color = document.getElementById("catalog-widget-color").value;
+  const min = parseFloat(document.getElementById("creator-scale-min").value);
+  const max = parseFloat(document.getElementById("creator-scale-max").value);
   let entities = [];
-  if (type === 'entities' || type === 'glance') {
+  if (type === "entities" || type === "glance") {
     const checked = document.querySelectorAll('input[name="creator-entities"]:checked');
-    checked.forEach(chk => {
-      const [nId, eKey] = chk.value.split('|');
+    checked.forEach((chk) => {
+      const [nId, eKey] = chk.value.split("|");
       entities.push({ nodeId: nId, entityKey: eKey });
     });
-  } else if (type !== 'health' && type !== 'audit' && type !== 'title') {
-    const select = document.getElementById('creator-select');
+  } else if (type !== "health" && type !== "audit" && type !== "title") {
+    const select = document.getElementById("creator-select");
     if (select && select.value) {
-      const [nId, eKey] = select.value.split('|');
+      const [nId, eKey] = select.value.split("|");
       entities.push({ nodeId: nId, entityKey: eKey });
     }
   }
-
-  const id = 'widget_' + Date.now();
+  const id = "widget_" + Date.now();
   const newWidget = {
-    id: id,
-    type: type,
-    title: title,
+    id,
+    type,
+    title,
     tab: activeTab,
-    entities: entities,
+    entities,
     options: {
       gridWidth: w,
       gridHeight: h,
-      color: color,
-      unit: unit,
-      min: min,
-      max: max,
-      graphic: 'sparkline'
+      color,
+      unit,
+      min,
+      max,
+      graphic: "sparkline"
     }
   };
-
   let widgets = [];
   try {
-    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
-  } catch (e) { }
-
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+  }
   widgets.push(newWidget);
-  localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
-
-  closeModal('widget-catalog-modal');
+  localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
+  closeModal("widget-catalog-modal");
   buildDashboardCards(cachedEntities);
-  if (document.getElementById('main-content').classList.contains('edit-mode')) {
+  if (document.getElementById("main-content").classList.contains("edit-mode")) {
     enableDragAndDrop();
   }
-
-  addAuditEntry('success', `Created new ${type} card on layout.`);
+  addAuditEntry("success", `Created new ${type} card on layout.`);
 }
-
-// --- Lovelace YAML Code Editor & Normalization Suite ---
-
 function normalizeEntityRef(ent) {
   if (!ent) return null;
-  if (typeof ent === 'object') {
+  if (typeof ent === "object") {
     if (ent.nodeId && ent.entityKey) return { nodeId: String(ent.nodeId), entityKey: String(ent.entityKey) };
     if (ent.entity) {
-      const parts = String(ent.entity).split('.');
-      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join('.') } : { nodeId: 'system', entityKey: parts[0] };
+      const parts = String(ent.entity).split(".");
+      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join(".") } : { nodeId: "system", entityKey: parts[0] };
     }
     if (ent.id) {
-      const parts = String(ent.id).split('.');
-      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join('.') } : { nodeId: 'system', entityKey: parts[0] };
+      const parts = String(ent.id).split(".");
+      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join(".") } : { nodeId: "system", entityKey: parts[0] };
     }
-  } else if (typeof ent === 'string') {
+  } else if (typeof ent === "string") {
     const s = ent.trim();
     if (!s) return null;
-    const parts = s.split('.');
+    const parts = s.split(".");
     if (parts.length > 1) {
-      return { nodeId: parts[0], entityKey: parts.slice(1).join('.') };
+      return { nodeId: parts[0], entityKey: parts.slice(1).join(".") };
     }
-    return { nodeId: 'system', entityKey: s };
+    return { nodeId: "system", entityKey: s };
   }
   return null;
 }
-
-function normalizeCardObject(rawCard, defaultTab = 'main', index = 0) {
-  if (!rawCard || typeof rawCard !== 'object') return null;
-
-  const id = rawCard.id || ('widget-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 5) + '-' + index);
-  const type = rawCard.type || 'sensor';
-  const tab = rawCard.tab || rawCard.view || defaultTab || 'main';
-  const title = rawCard.title !== undefined ? rawCard.title : (rawCard.name !== undefined ? rawCard.name : (rawCard.header || ''));
-
-  // Extract entities
+function normalizeCardObject(rawCard, defaultTab = "main", index = 0) {
+  if (!rawCard || typeof rawCard !== "object") return null;
+  const id = rawCard.id || "widget-" + Date.now().toString(36) + "-" + Math.random().toString(36).substr(2, 5) + "-" + index;
+  const type = rawCard.type || "sensor";
+  const tab = rawCard.tab || rawCard.view || defaultTab || "main";
+  const title = rawCard.title !== void 0 ? rawCard.title : rawCard.name !== void 0 ? rawCard.name : rawCard.header || "";
   let entities = [];
   if (Array.isArray(rawCard.entities)) {
     entities = rawCard.entities.map(normalizeEntityRef).filter(Boolean);
@@ -3852,28 +3219,25 @@ function normalizeCardObject(rawCard, defaultTab = 'main', index = 0) {
     const normalized = normalizeEntityRef(rawCard.entity);
     if (normalized) entities.push(normalized);
   } else if (Array.isArray(rawCard.cards)) {
-    rawCard.cards.forEach(c => {
+    rawCard.cards.forEach((c) => {
       if (c && c.entity) {
         const normalized = normalizeEntityRef(c.entity);
         if (normalized) entities.push(normalized);
       }
     });
   }
-
-  // Extract options
-  const options = { ...(rawCard.options || {}) };
-  if (rawCard.unit !== undefined) options.unit = rawCard.unit;
-  if (rawCard.unit_of_measurement !== undefined) options.unit = rawCard.unit_of_measurement;
-  if (rawCard.color !== undefined) options.color = rawCard.color;
-  if (rawCard.gridWidth !== undefined) options.gridWidth = parseInt(rawCard.gridWidth, 10);
-  else if (rawCard.width !== undefined) options.gridWidth = parseInt(rawCard.width, 10);
-  if (rawCard.gridHeight !== undefined) options.gridHeight = parseInt(rawCard.gridHeight, 10);
-  else if (rawCard.height !== undefined) options.gridHeight = parseInt(rawCard.height, 10);
-  if (rawCard.min !== undefined) options.min = parseFloat(rawCard.min);
-  if (rawCard.max !== undefined) options.max = parseFloat(rawCard.max);
-  if (rawCard.icon !== undefined) options.icon = rawCard.icon;
-  if (rawCard.severity !== undefined) options.severity = rawCard.severity;
-
+  const options = { ...rawCard.options || {} };
+  if (rawCard.unit !== void 0) options.unit = rawCard.unit;
+  if (rawCard.unit_of_measurement !== void 0) options.unit = rawCard.unit_of_measurement;
+  if (rawCard.color !== void 0) options.color = rawCard.color;
+  if (rawCard.gridWidth !== void 0) options.gridWidth = parseInt(rawCard.gridWidth, 10);
+  else if (rawCard.width !== void 0) options.gridWidth = parseInt(rawCard.width, 10);
+  if (rawCard.gridHeight !== void 0) options.gridHeight = parseInt(rawCard.gridHeight, 10);
+  else if (rawCard.height !== void 0) options.gridHeight = parseInt(rawCard.height, 10);
+  if (rawCard.min !== void 0) options.min = parseFloat(rawCard.min);
+  if (rawCard.max !== void 0) options.max = parseFloat(rawCard.max);
+  if (rawCard.icon !== void 0) options.icon = rawCard.icon;
+  if (rawCard.severity !== void 0) options.severity = rawCard.severity;
   return {
     id,
     type,
@@ -3883,33 +3247,25 @@ function normalizeCardObject(rawCard, defaultTab = 'main', index = 0) {
     options
   };
 }
-
 function normalizeDashboardConfig(input) {
   if (!input) throw new Error("Empty YAML configuration.");
-
   let dashboards = [];
   let widgets = [];
-
-  // Case A: Input is an Array of cards/widgets directly
   if (Array.isArray(input)) {
-    const currentTabs = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-    dashboards = currentTabs.length > 0 ? currentTabs : [{ id: 'main', name: 'Main' }];
+    const currentTabs = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
+    dashboards = currentTabs.length > 0 ? currentTabs : [{ id: "main", name: "Main" }];
     const defaultTab = activeTab || dashboards[0].id;
     widgets = input.map((item, idx) => normalizeCardObject(item, defaultTab, idx)).filter(Boolean);
     return { dashboards, widgets };
   }
-
-  if (typeof input !== 'object') {
+  if (typeof input !== "object") {
     throw new Error("YAML layout content must be a structured configuration object or list of cards.");
   }
-
-  // Case B: Lovelace HA style with `views:`
   if (Array.isArray(input.views)) {
     input.views.forEach((v, vIdx) => {
-      const viewId = String(v.path || v.id || ('view_' + (vIdx + 1))).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-      const viewName = v.title || v.name || ('View ' + (vIdx + 1));
+      const viewId = String(v.path || v.id || "view_" + (vIdx + 1)).toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+      const viewName = v.title || v.name || "View " + (vIdx + 1);
       dashboards.push({ id: viewId, name: viewName });
-
       if (Array.isArray(v.cards)) {
         v.cards.forEach((card, cIdx) => {
           const w = normalizeCardObject(card, viewId, cIdx);
@@ -3918,26 +3274,20 @@ function normalizeDashboardConfig(input) {
       }
     });
   }
-
-  // Case C: Standard HomePulse style with `dashboards:` or `tabs:`
   const rawDashboards = input.dashboards || input.tabs;
   if (Array.isArray(rawDashboards)) {
     rawDashboards.forEach((d, dIdx) => {
-      const dId = String(d.id || d.path || ('view_' + (dIdx + 1))).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-      const dName = d.name || d.title || ('View ' + (dIdx + 1));
-      if (!dashboards.some(existing => existing.id === dId)) {
+      const dId = String(d.id || d.path || "view_" + (dIdx + 1)).toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+      const dName = d.name || d.title || "View " + (dIdx + 1);
+      if (!dashboards.some((existing) => existing.id === dId)) {
         dashboards.push({ id: dId, name: dName });
       }
     });
   }
-
-  // If no dashboards found yet, default to existing or main
   if (dashboards.length === 0) {
-    const existing = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-    dashboards = existing.length > 0 ? existing : [{ id: 'main', name: 'Main' }];
+    const existing = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
+    dashboards = existing.length > 0 ? existing : [{ id: "main", name: "Main" }];
   }
-
-  // Now extract root widgets/cards if any
   const rawWidgets = input.widgets || input.cards;
   if (Array.isArray(rawWidgets)) {
     const defaultTab = dashboards[0].id;
@@ -3946,239 +3296,195 @@ function normalizeDashboardConfig(input) {
       if (cardObj) widgets.push(cardObj);
     });
   }
-
   if (widgets.length === 0 && (!input.widgets && !input.cards && !input.views)) {
     throw new Error("YAML does not contain any cards or widgets ('cards:', 'widgets:', or 'views:').");
   }
-
   return { dashboards, widgets };
 }
-
 function setupYamlTextareaTabKey(textarea) {
   if (!textarea || textarea._tabKeyBound) return;
   textarea._tabKeyBound = true;
-  textarea.addEventListener('keydown', function (e) {
-    if (e.key === 'Tab') {
+  textarea.addEventListener("keydown", function(e) {
+    if (e.key === "Tab") {
       e.preventDefault();
       const start = this.selectionStart;
       const end = this.selectionEnd;
       const val = this.value;
-
       if (e.shiftKey) {
-        // Outdent 2 spaces
-        const lineStart = val.lastIndexOf('\n', start - 1) + 1;
-        if (val.substr(lineStart, 2) === '  ') {
+        const lineStart = val.lastIndexOf("\n", start - 1) + 1;
+        if (val.substr(lineStart, 2) === "  ") {
           this.value = val.substring(0, lineStart) + val.substring(lineStart + 2);
           this.selectionStart = this.selectionEnd = Math.max(lineStart, start - 2);
         }
       } else {
-        // Indent 2 spaces
-        this.value = val.substring(0, start) + '  ' + val.substring(end);
+        this.value = val.substring(0, start) + "  " + val.substring(end);
         this.selectionStart = this.selectionEnd = start + 2;
       }
-      this.dispatchEvent(new Event('input'));
+      this.dispatchEvent(new Event("input"));
     }
   });
 }
-
 function updateDashboardYamlValidation(yamlStr) {
-  const statusEl = document.getElementById('yaml-config-status');
-  const statusText = document.getElementById('yaml-config-status-text');
-  const errorBanner = document.getElementById('yaml-error-banner');
-  const footerStats = document.getElementById('yaml-footer-stats');
-
+  const statusEl = document.getElementById("yaml-config-status");
+  const statusText = document.getElementById("yaml-config-status-text");
+  const errorBanner = document.getElementById("yaml-error-banner");
+  const footerStats = document.getElementById("yaml-footer-stats");
   if (!statusEl) return;
-
   try {
     if (!yamlStr || !yamlStr.trim()) {
-      statusEl.style.background = 'rgba(245, 158, 11, 0.15)';
-      statusEl.style.color = '#f59e0b';
-      statusEl.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+      statusEl.style.background = "rgba(245, 158, 11, 0.15)";
+      statusEl.style.color = "#f59e0b";
+      statusEl.style.borderColor = "rgba(245, 158, 11, 0.3)";
       statusEl.innerHTML = '<i data-lucide="alert-triangle" style="width:13px;height:13px;"></i><span>Empty Config</span>';
-      if (errorBanner) errorBanner.style.display = 'none';
+      if (errorBanner) errorBanner.style.display = "none";
       if (window.lucide) window.lucide.createIcons();
       return;
     }
-
     const parsed = jsyaml.load(yamlStr);
     const normalized = normalizeDashboardConfig(parsed);
-
     const viewsCount = normalized.dashboards.length;
     const cardsCount = normalized.widgets.length;
-
-    statusEl.style.background = 'rgba(16, 185, 129, 0.15)';
-    statusEl.style.color = '#10b981';
-    statusEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-    statusEl.innerHTML = `<i data-lucide="check-circle" style="width:13px;height:13px;"></i><span>Valid YAML (${viewsCount} view${viewsCount === 1 ? '' : 's'}, ${cardsCount} card${cardsCount === 1 ? '' : 's'})</span>`;
-
-    if (errorBanner) errorBanner.style.display = 'none';
+    statusEl.style.background = "rgba(16, 185, 129, 0.15)";
+    statusEl.style.color = "#10b981";
+    statusEl.style.borderColor = "rgba(16, 185, 129, 0.3)";
+    statusEl.innerHTML = `<i data-lucide="check-circle" style="width:13px;height:13px;"></i><span>Valid YAML (${viewsCount} view${viewsCount === 1 ? "" : "s"}, ${cardsCount} card${cardsCount === 1 ? "" : "s"})</span>`;
+    if (errorBanner) errorBanner.style.display = "none";
     if (footerStats) {
       footerStats.textContent = `Parsed: ${viewsCount} views, ${cardsCount} cards. Press Tab to indent (2 spaces).`;
     }
     if (window.lucide) window.lucide.createIcons();
   } catch (err) {
-    statusEl.style.background = 'rgba(244, 63, 94, 0.15)';
-    statusEl.style.color = '#f43f5e';
-    statusEl.style.borderColor = 'rgba(244, 63, 94, 0.3)';
-
-    let msg = err.message || 'Syntax Error';
-    if (err.mark && err.mark.line !== undefined) {
+    statusEl.style.background = "rgba(244, 63, 94, 0.15)";
+    statusEl.style.color = "#f43f5e";
+    statusEl.style.borderColor = "rgba(244, 63, 94, 0.3)";
+    let msg = err.message || "Syntax Error";
+    if (err.mark && err.mark.line !== void 0) {
       msg = `Line ${err.mark.line + 1}: ${err.reason || err.message}`;
     }
     statusEl.innerHTML = `<i data-lucide="alert-circle" style="width:13px;height:13px;"></i><span>${escapeHtml(msg.slice(0, 35))}</span>`;
-
     if (errorBanner) {
       errorBanner.textContent = "YAML Error: " + err.message;
-      errorBanner.style.display = 'block';
+      errorBanner.style.display = "block";
     }
     if (window.lucide) window.lucide.createIcons();
   }
 }
-
 function openYAMLConfigEditor() {
-  const errorBanner = document.getElementById('yaml-error-banner');
-  if (errorBanner) errorBanner.style.display = 'none';
-
-  // Retrieve current state from localStorage
-  const dashboards = JSON.parse(localStorage.getItem('hp_dashboards') || 'null') || [
-    { id: 'main', name: 'Main' }
+  const errorBanner = document.getElementById("yaml-error-banner");
+  if (errorBanner) errorBanner.style.display = "none";
+  const dashboards = JSON.parse(localStorage.getItem("hp_dashboards") || "null") || [
+    { id: "main", name: "Main" }
   ];
-  const widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || 'null') || [];
-
-  // Generate clean Lovelace-compatible YAML export
-  const views = dashboards.map(d => ({
+  const widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "null") || [];
+  const views = dashboards.map((d) => ({
     id: d.id,
     title: d.name || d.title || d.id
   }));
-
-  const cards = widgets.map(w => {
+  const cards = widgets.map((w) => {
     const card = {
-      type: w.type || 'sensor',
-      title: w.title !== undefined ? w.title : '',
-      tab: w.tab || 'main'
+      type: w.type || "sensor",
+      title: w.title !== void 0 ? w.title : "",
+      tab: w.tab || "main"
     };
     if (w.entities && w.entities.length === 1) {
       card.entity = `${w.entities[0].nodeId}.${w.entities[0].entityKey}`;
     } else if (w.entities && w.entities.length > 1) {
-      card.entities = w.entities.map(e => `${e.nodeId}.${e.entityKey}`);
+      card.entities = w.entities.map((e) => `${e.nodeId}.${e.entityKey}`);
     }
     if (w.options && Object.keys(w.options).length > 0) {
       card.options = w.options;
     }
     return card;
   });
-
   const exportObj = {
     title: "HomePulse Dashboard",
-    views: views,
-    cards: cards
+    views,
+    cards
   };
-
   try {
     const yamlContent = jsyaml.dump(exportObj, { indent: 2, noRefs: true, lineWidth: -1 });
-    const textarea = document.getElementById('yaml-editor-textarea');
+    const textarea = document.getElementById("yaml-editor-textarea");
     if (textarea) {
       textarea.value = yamlContent;
       setupYamlTextareaTabKey(textarea);
       updateDashboardYamlValidation(yamlContent);
-
       textarea.oninput = () => {
         updateDashboardYamlValidation(textarea.value);
       };
     }
-    openModal('yaml-config-modal');
+    openModal("yaml-config-modal");
   } catch (e) {
     console.error("YAML serialization failed: ", e);
     alert("Error serializing to YAML: " + e.message);
   }
 }
-
 async function saveYAMLConfigSettings() {
-  const textarea = document.getElementById('yaml-editor-textarea');
+  const textarea = document.getElementById("yaml-editor-textarea");
   if (!textarea) return;
-
   const yamlText = textarea.value.trim();
-  const errorBanner = document.getElementById('yaml-error-banner');
-
+  const errorBanner = document.getElementById("yaml-error-banner");
   try {
-    if (errorBanner) errorBanner.style.display = 'none';
-
+    if (errorBanner) errorBanner.style.display = "none";
     if (!yamlText) {
       throw new Error("YAML configuration cannot be empty.");
     }
-
     const parsed = jsyaml.load(yamlText);
     const normalized = normalizeDashboardConfig(parsed);
-
-    // Save arrays into localStorage
-    localStorage.setItem('hp_dashboards', JSON.stringify(normalized.dashboards));
-    localStorage.setItem('hp_dashboard_widgets', JSON.stringify(normalized.widgets));
-
-    // Reset activeTab if deleted
-    const tabExists = normalized.dashboards.some(db => db.id === activeTab);
+    localStorage.setItem("hp_dashboards", JSON.stringify(normalized.dashboards));
+    localStorage.setItem("hp_dashboard_widgets", JSON.stringify(normalized.widgets));
+    const tabExists = normalized.dashboards.some((db) => db.id === activeTab);
     if (!tabExists && normalized.dashboards.length > 0) {
       activeTab = normalized.dashboards[0].id;
     }
-
-    // Persist to Postgres database via server API
     await syncLocalConfigToServer();
-
-    // Refresh UI
-    closeModal('yaml-config-modal');
+    closeModal("yaml-config-modal");
     renderDashboards();
     buildDashboardCards(cachedEntities);
-
     showToast?.("Dashboard YAML configuration applied and saved.");
-    addAuditEntry('success', "Dashboard configuration updated and validated via YAML settings editor.");
-
+    addAuditEntry("success", "Dashboard configuration updated and validated via YAML settings editor.");
   } catch (e) {
     console.error("YAML parsing error: ", e);
     if (errorBanner) {
       errorBanner.textContent = "Validation Failure: " + e.message;
-      errorBanner.style.display = 'block';
-      const modalBody = document.querySelector('#yaml-config-modal .modal-body');
+      errorBanner.style.display = "block";
+      const modalBody = document.querySelector("#yaml-config-modal .modal-body");
       if (modalBody) modalBody.scrollTop = 0;
     } else {
       alert("Validation Error: " + e.message);
     }
   }
 }
-
-window.formatDashboardYAML = function () {
-  const textarea = document.getElementById('yaml-editor-textarea');
+window.formatDashboardYAML = function() {
+  const textarea = document.getElementById("yaml-editor-textarea");
   if (!textarea) return;
   try {
     const parsed = jsyaml.load(textarea.value);
     const normalized = normalizeDashboardConfig(parsed);
-
-    const views = normalized.dashboards.map(d => ({
+    const views = normalized.dashboards.map((d) => ({
       id: d.id,
       title: d.name || d.title || d.id
     }));
-
-    const cards = normalized.widgets.map(w => {
+    const cards = normalized.widgets.map((w) => {
       const card = {
-        type: w.type || 'sensor',
-        title: w.title !== undefined ? w.title : '',
-        tab: w.tab || 'main'
+        type: w.type || "sensor",
+        title: w.title !== void 0 ? w.title : "",
+        tab: w.tab || "main"
       };
       if (w.entities && w.entities.length === 1) {
         card.entity = `${w.entities[0].nodeId}.${w.entities[0].entityKey}`;
       } else if (w.entities && w.entities.length > 1) {
-        card.entities = w.entities.map(e => `${e.nodeId}.${e.entityKey}`);
+        card.entities = w.entities.map((e) => `${e.nodeId}.${e.entityKey}`);
       }
       if (w.options && Object.keys(w.options).length > 0) {
         card.options = w.options;
       }
       return card;
     });
-
     const exportObj = {
       title: "HomePulse Dashboard",
-      views: views,
-      cards: cards
+      views,
+      cards
     };
-
     textarea.value = jsyaml.dump(exportObj, { indent: 2, noRefs: true, lineWidth: -1 });
     updateDashboardYamlValidation(textarea.value);
     showToast?.("YAML formatted cleanly.");
@@ -4186,46 +3492,45 @@ window.formatDashboardYAML = function () {
     alert("Cannot format invalid YAML: " + err.message);
   }
 };
-
-window.copyDashboardYAML = function () {
-  const textarea = document.getElementById('yaml-editor-textarea');
+window.copyDashboardYAML = function() {
+  const textarea = document.getElementById("yaml-editor-textarea");
   if (!textarea) return;
   navigator.clipboard.writeText(textarea.value).then(() => {
-    const copyText = document.getElementById('copy-yaml-text');
+    const copyText = document.getElementById("copy-yaml-text");
     if (copyText) {
       copyText.textContent = "Copied!";
-      setTimeout(() => { if (copyText) copyText.textContent = "Copy"; }, 2000);
+      setTimeout(() => {
+        if (copyText) copyText.textContent = "Copy";
+      }, 2e3);
     }
     showToast?.("Dashboard YAML copied to clipboard.");
   }).catch(() => {
     textarea.select();
-    document.execCommand('copy');
+    document.execCommand("copy");
     showToast?.("Copied to clipboard.");
   });
 };
-
-window.downloadDashboardYAML = function () {
-  const textarea = document.getElementById('yaml-editor-textarea');
+window.downloadDashboardYAML = function() {
+  const textarea = document.getElementById("yaml-editor-textarea");
   if (!textarea) return;
-  const blob = new Blob([textarea.value], { type: 'text/yaml;charset=utf-8' });
+  const blob = new Blob([textarea.value], { type: "text/yaml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
-  a.download = `homepulse-dashboard-${new Date().toISOString().slice(0, 10)}.yaml`;
+  a.download = `homepulse-dashboard-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.yaml`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   showToast?.("Dashboard YAML exported.");
 };
-
-window.importDashboardYAMLFile = function (event) {
+window.importDashboardYAMLFile = function(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function (e) {
+  reader.onload = function(e) {
     const content = e.target.result;
-    const textarea = document.getElementById('yaml-editor-textarea');
+    const textarea = document.getElementById("yaml-editor-textarea");
     if (textarea) {
       textarea.value = content;
       updateDashboardYamlValidation(content);
@@ -4233,35 +3538,83 @@ window.importDashboardYAMLFile = function (event) {
     }
   };
   reader.readAsText(file);
-  event.target.value = '';
+  event.target.value = "";
 };
-
-window.insertYamlSnippet = function (type) {
+window.insertYamlSnippet = function(type) {
   if (!type) return;
-  const textarea = document.getElementById('yaml-editor-textarea');
+  const textarea = document.getElementById("yaml-editor-textarea");
   if (!textarea) return;
-
-  const currentTab = activeTab || 'main';
-  let snippet = '';
-
+  const currentTab = activeTab || "main";
+  let snippet = "";
   switch (type) {
-    case 'sensor':
-      snippet = `\n  - type: sensor\n    title: "New Sensor"\n    tab: "${currentTab}"\n    entity: "system.cpu_usage"\n    options:\n      unit: "%"\n      color: "var(--color-optimal)"\n      gridWidth: 1\n      gridHeight: 1\n`;
+    case "sensor":
+      snippet = `
+  - type: sensor
+    title: "New Sensor"
+    tab: "${currentTab}"
+    entity: "system.cpu_usage"
+    options:
+      unit: "%"
+      color: "var(--color-optimal)"
+      gridWidth: 1
+      gridHeight: 1
+`;
       break;
-    case 'gauge':
-      snippet = `\n  - type: gauge\n    title: "Resource Gauge"\n    tab: "${currentTab}"\n    entity: "system.memory_usage"\n    options:\n      min: 0\n      max: 100\n      unit: "%"\n      color: "var(--accent-orange)"\n      gridWidth: 1\n      gridHeight: 1\n`;
+    case "gauge":
+      snippet = `
+  - type: gauge
+    title: "Resource Gauge"
+    tab: "${currentTab}"
+    entity: "system.memory_usage"
+    options:
+      min: 0
+      max: 100
+      unit: "%"
+      color: "var(--accent-orange)"
+      gridWidth: 1
+      gridHeight: 1
+`;
       break;
-    case 'control':
-      snippet = `\n  - type: control\n    title: "Toggle Control"\n    tab: "${currentTab}"\n    entity: "plugins.service_switch"\n    options:\n      color: "var(--accent-blue)"\n      gridWidth: 1\n      gridHeight: 1\n`;
+    case "control":
+      snippet = `
+  - type: control
+    title: "Toggle Control"
+    tab: "${currentTab}"
+    entity: "plugins.service_switch"
+    options:
+      color: "var(--accent-blue)"
+      gridWidth: 1
+      gridHeight: 1
+`;
       break;
-    case 'entities':
-      snippet = `\n  - type: entities\n    title: "System Overview"\n    tab: "${currentTab}"\n    entities:\n      - system.cpu_usage\n      - system.memory_usage\n      - system.disk_usage\n    options:\n      gridWidth: 2\n      gridHeight: 2\n`;
+    case "entities":
+      snippet = `
+  - type: entities
+    title: "System Overview"
+    tab: "${currentTab}"
+    entities:
+      - system.cpu_usage
+      - system.memory_usage
+      - system.disk_usage
+    options:
+      gridWidth: 2
+      gridHeight: 2
+`;
       break;
-    case 'glance':
-      snippet = `\n  - type: glance\n    title: "Quick Glance"\n    tab: "${currentTab}"\n    entities:\n      - system.cpu_usage\n      - system.temperature\n    options:\n      gridWidth: 2\n      gridHeight: 1\n`;
+    case "glance":
+      snippet = `
+  - type: glance
+    title: "Quick Glance"
+    tab: "${currentTab}"
+    entities:
+      - system.cpu_usage
+      - system.temperature
+    options:
+      gridWidth: 2
+      gridHeight: 1
+`;
       break;
   }
-
   if (snippet) {
     const val = textarea.value;
     const pos = textarea.selectionStart;
@@ -4273,108 +3626,82 @@ window.insertYamlSnippet = function (type) {
   }
 };
 
-// Built-in Background Monitor Client Functions
-// Multi-Level Standalone Probes Manager JS Engine
+// --- [Module: src/04-probes-manager.ts] ---
 let activeProbeEngineType = null;
 let activeProbeMonitorId = null;
-
 function navigateProbesLevel(level, param) {
-  const lvl1 = document.getElementById('probes-level-1');
-  const lvl2 = document.getElementById('probes-level-2');
-  const lvl3 = document.getElementById('probes-level-3');
-  const lvlCatalog = document.getElementById('probes-level-catalog');
-
+  const lvl1 = document.getElementById("probes-level-1");
+  const lvl2 = document.getElementById("probes-level-2");
+  const lvl3 = document.getElementById("probes-level-3");
+  const lvlCatalog = document.getElementById("probes-level-catalog");
   if (!lvl1 || !lvl2 || !lvl3 || !lvlCatalog) return;
-
   if (level === 1) {
-    lvl1.style.display = 'block';
-    lvl2.style.display = 'none';
-    lvl3.style.display = 'none';
-    lvlCatalog.style.display = 'none';
+    lvl1.style.display = "block";
+    lvl2.style.display = "none";
+    lvl3.style.display = "none";
+    lvlCatalog.style.display = "none";
     loadProbesLevel1();
   } else if (level === 2) {
-    lvl1.style.display = 'none';
-    lvl2.style.display = 'block';
-    lvl3.style.display = 'none';
-    lvlCatalog.style.display = 'none';
+    lvl1.style.display = "none";
+    lvl2.style.display = "block";
+    lvl3.style.display = "none";
+    lvlCatalog.style.display = "none";
     if (param) activeProbeEngineType = param;
     loadProbesLevel2(activeProbeEngineType);
   } else if (level === 3) {
-    lvl1.style.display = 'none';
-    lvl2.style.display = 'none';
-    lvl3.style.display = 'block';
-    lvlCatalog.style.display = 'none';
+    lvl1.style.display = "none";
+    lvl2.style.display = "none";
+    lvl3.style.display = "block";
+    lvlCatalog.style.display = "none";
     if (param) {
       activeProbeMonitorId = param;
       loadProbesLevel3(activeProbeMonitorId);
     }
-  } else if (level === 'catalog') {
-    lvl1.style.display = 'none';
-    lvl2.style.display = 'none';
-    lvl3.style.display = 'none';
-    lvlCatalog.style.display = 'block';
+  } else if (level === "catalog") {
+    lvl1.style.display = "none";
+    lvl2.style.display = "none";
+    lvl3.style.display = "none";
+    lvlCatalog.style.display = "block";
     if (window.lucide) window.lucide.createIcons();
   }
 }
-
 function isProbeStatusOnline(status, type) {
   if (!status) return false;
   const s = String(status).trim().toUpperCase();
   const num = parseInt(s, 10);
-  if (!isNaN(num) && ((num >= 200 && num < 400) || num === 401 || num === 403 || num === 405)) return true;
-  return (
-    s === 'UP' ||
-    s === 'ONLINE' ||
-    s === 'HEALTHY' ||
-    s === 'STABLE' ||
-    s === 'CONNECTED' ||
-    s === 'SSL_OK' ||
-    s === 'DNS_OK' ||
-    s === 'PORT_OK' ||
-    s === 'ICMP_OK' ||
-    s === '101' ||
-    s.includes('REMAINING') ||
-    s.includes('DAYS') ||
-    s.includes('SELF-SIGNED')
-  );
+  if (!isNaN(num) && (num >= 200 && num < 400 || num === 401 || num === 403 || num === 405)) return true;
+  return s === "UP" || s === "ONLINE" || s === "HEALTHY" || s === "STABLE" || s === "CONNECTED" || s === "SSL_OK" || s === "DNS_OK" || s === "PORT_OK" || s === "ICMP_OK" || s === "101" || s.includes("REMAINING") || s.includes("DAYS") || s.includes("SELF-SIGNED");
 }
-
 function getBaseHostName(name) {
-  if (!name) return 'Unknown Target';
+  if (!name) return "Unknown Target";
   let base = String(name).trim();
-  base = base.replace(/\s*\[(Internal|External)\s+[^\]]+\]\s*$/i, '');
-  base = base.replace(/\s*\((Ping|HTTP|HTTPS|SSL|Port\s*\d*|DNS|WebSocket)\)\s*$/i, '');
-  base = base.replace(/\s*-\s*(Ping|HTTP|HTTPS|SSL|Port\s*\d*|DNS|WebSocket)\s*$/i, '');
+  base = base.replace(/\s*\[(Internal|External)\s+[^\]]+\]\s*$/i, "");
+  base = base.replace(/\s*\((Ping|HTTP|HTTPS|SSL|Port\s*\d*|DNS|WebSocket)\)\s*$/i, "");
+  base = base.replace(/\s*-\s*(Ping|HTTP|HTTPS|SSL|Port\s*\d*|DNS|WebSocket)\s*$/i, "");
   return base.trim();
 }
-
 async function loadProbesLevel1() {
   const { httpUrl } = getApiUrls();
-  const gridEl = document.getElementById('engines-grid');
+  const gridEl = document.getElementById("engines-grid");
   if (!gridEl) return;
-
   try {
     const res = await fetch(`${httpUrl}/api/monitors`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const monitors = await res.json();
-
     const counts = { all_grouped: monitors.length, http: 0, websocket: 0, ping: 0, port: 0, dns: 0, ssl: 0 };
-    monitors.forEach(m => {
-      if (counts[m.type] !== undefined) counts[m.type]++;
+    monitors.forEach((m) => {
+      if (counts[m.type] !== void 0) counts[m.type]++;
     });
-
     const engines = [
-      { type: 'all_grouped', name: 'Grouped Host & Service Probes', desc: 'All probes grouped by Host / Service', icon: 'layers', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.15)' },
-      { type: 'http', name: 'HTTP/HTTPS Prober', desc: 'Web endpoints and REST APIs', icon: 'globe', color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
-      { type: 'websocket', name: 'WebSocket Prober', desc: 'Active socket handshakes', icon: 'message-square', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
-      { type: 'ping', name: 'ICMP Ping Prober', desc: 'Simple host reachability checks', icon: 'shield', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
-      { type: 'port', name: 'TCP Port Prober', desc: 'Open database or SSH port queries', icon: 'server', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
-      { type: 'dns', name: 'DNS Resolver Prober', desc: 'Hostname IP resolution query checks', icon: 'globe-2', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' },
-      { type: 'ssl', name: 'SSL Expiration Prober', desc: 'SSL/TLS certificate expiration checks', icon: 'lock', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.1)' }
+      { type: "all_grouped", name: "Grouped Host & Service Probes", desc: "All probes grouped by Host / Service", icon: "layers", color: "#60a5fa", bg: "rgba(96, 165, 250, 0.15)" },
+      { type: "http", name: "HTTP/HTTPS Prober", desc: "Web endpoints and REST APIs", icon: "globe", color: "#10b981", bg: "rgba(16, 185, 129, 0.1)" },
+      { type: "websocket", name: "WebSocket Prober", desc: "Active socket handshakes", icon: "message-square", color: "#3b82f6", bg: "rgba(59, 130, 246, 0.1)" },
+      { type: "ping", name: "ICMP Ping Prober", desc: "Simple host reachability checks", icon: "shield", color: "#ef4444", bg: "rgba(239, 68, 68, 0.1)" },
+      { type: "port", name: "TCP Port Prober", desc: "Open database or SSH port queries", icon: "server", color: "#f59e0b", bg: "rgba(245, 158, 11, 0.1)" },
+      { type: "dns", name: "DNS Resolver Prober", desc: "Hostname IP resolution query checks", icon: "globe-2", color: "#8b5cf6", bg: "rgba(139, 92, 246, 0.1)" },
+      { type: "ssl", name: "SSL Expiration Prober", desc: "SSL/TLS certificate expiration checks", icon: "lock", color: "#f43f5e", bg: "rgba(244, 63, 94, 0.1)" }
     ];
-
-    const visibleEngines = engines.filter(eng => counts[eng.type] > 0);
-
+    const visibleEngines = engines.filter((eng) => counts[eng.type] > 0);
     if (visibleEngines.length === 0) {
       gridEl.innerHTML = `
         <div style="grid-column: 1 / -1; text-align: center; padding: 40px; background: rgba(20, 20, 22, 0.4); border: 1px dashed var(--border-soft); border-radius: 8px;">
@@ -4383,20 +3710,18 @@ async function loadProbesLevel1() {
           <p style="font-size: 0.72rem; color: var(--text-secondary); margin: 0 0 16px 0;">Configure your first check to compile monitoring metrics.</p>
           <button class="btn btn-primary" onclick="openAddMonitorModal()" style="font-size: 0.75rem; padding: 6px 14px; margin: 0 auto; display: block; cursor: pointer;">Configure New Probe</button>
         </div>`;
-      if (gridEl.style.display === 'none') {
-        gridEl.style.display = 'grid';
+      if (gridEl.style.display === "none") {
+        gridEl.style.display = "grid";
       }
       if (window.lucide) window.lucide.createIcons();
       return;
     }
-
-    let html = '';
-    visibleEngines.forEach(eng => {
+    let html = "";
+    visibleEngines.forEach((eng) => {
       const activeCount = counts[eng.type];
-      const countLabel = activeCount === 1 ? '1 active probe' : `${activeCount} active probes`;
-
+      const countLabel = activeCount === 1 ? "1 active probe" : `${activeCount} active probes`;
       html += `
-        <div class="mon-picker-card" onclick="navigateProbesLevel(2, '${eng.type}')" style="display: flex; flex-direction: column; align-items: flex-start; ${eng.type === 'all_grouped' ? 'border:1px solid rgba(96,165,250,0.4); background:rgba(30,58,138,0.15);' : ''}">
+        <div class="mon-picker-card" onclick="navigateProbesLevel(2, '${eng.type}')" style="display: flex; flex-direction: column; align-items: flex-start; ${eng.type === "all_grouped" ? "border:1px solid rgba(96,165,250,0.4); background:rgba(30,58,138,0.15);" : ""}">
           <div style="display:flex; align-items:center; justify-content:center; background: ${eng.bg}; color: ${eng.color}; border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; width: 38px; height: 38px; margin-bottom: 12px; flex-shrink: 0;">
             <i data-lucide="${eng.icon}" style="width: 20px; height: 20px; color: ${eng.color}; margin-bottom: 0;"></i>
           </div>
@@ -4407,67 +3732,61 @@ async function loadProbesLevel1() {
           </span>
         </div>`;
     });
-
     gridEl.innerHTML = html;
     if (window.lucide) window.lucide.createIcons();
   } catch (err) {
     gridEl.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem;">Failure compiling engines stats: ${err.message}</p>`;
   }
 }
-
-window.toggleNavGroup = function (group, event) {
+window.toggleNavGroup = function(group, event) {
   if (event) event.preventDefault();
   const submenu = document.getElementById(`${group}-submenu`);
   const arrow = document.getElementById(`${group}-arrow`);
   if (submenu && arrow) {
-    const isHidden = (submenu.style.display === 'none');
+    const isHidden = submenu.style.display === "none";
     if (isHidden) {
-      submenu.style.display = 'flex';
-      arrow.setAttribute('data-lucide', 'chevron-down');
+      submenu.style.display = "flex";
+      arrow.setAttribute("data-lucide", "chevron-down");
     } else {
-      submenu.style.display = 'none';
-      arrow.setAttribute('data-lucide', 'chevron-right');
+      submenu.style.display = "none";
+      arrow.setAttribute("data-lucide", "chevron-right");
     }
     if (window.lucide) window.lucide.createIcons();
   }
 };
-
-window.toggleCategoryFolder = function (cat) {
+window.toggleCategoryFolder = function(cat) {
   const content = document.getElementById(`folder-content-${cat}`);
   const arrow = document.getElementById(`folder-arrow-${cat}`);
   if (content && arrow) {
-    if (content.style.display === 'none') {
-      content.style.display = 'flex';
-      arrow.setAttribute('data-lucide', 'chevron-down');
+    if (content.style.display === "none") {
+      content.style.display = "flex";
+      arrow.setAttribute("data-lucide", "chevron-down");
       if (window.lucide) window.lucide.createIcons();
     } else {
-      content.style.display = 'none';
-      arrow.setAttribute('data-lucide', 'chevron-right');
+      content.style.display = "none";
+      arrow.setAttribute("data-lucide", "chevron-right");
       if (window.lucide) window.lucide.createIcons();
     }
   }
 };
-
-window.toggleHostProbeGroup = function (groupId) {
+window.toggleHostProbeGroup = function(groupId) {
   const content = document.getElementById(`host-group-content-${groupId}`);
   const arrow = document.getElementById(`host-group-arrow-${groupId}`);
   if (content && arrow) {
-    if (content.style.display === 'none') {
-      content.style.display = 'flex';
-      arrow.setAttribute('data-lucide', 'chevron-down');
+    if (content.style.display === "none") {
+      content.style.display = "flex";
+      arrow.setAttribute("data-lucide", "chevron-down");
     } else {
-      content.style.display = 'none';
-      arrow.setAttribute('data-lucide', 'chevron-right');
+      content.style.display = "none";
+      arrow.setAttribute("data-lucide", "chevron-right");
     }
     if (window.lucide) window.lucide.createIcons();
   }
 };
-
 async function loadProbesLevel2(type) {
   const { httpUrl } = getApiUrls();
-  const listEl = document.getElementById('probes-source-list');
+  const listEl = document.getElementById("probes-source-list");
   if (!listEl) return;
-
   const titles = {
     all_grouped: { title: "Grouped Host & Service Probes", desc: "All system probes grouped together by Host and Service." },
     http: { title: "HTTP/HTTPS Prober Engine", desc: "Monitors HTTP/HTTPS website load status codes and latency." },
@@ -4477,18 +3796,14 @@ async function loadProbesLevel2(type) {
     dns: { title: "DNS Query Name Resolver", desc: "Monitors DNS lookup values for key servers." },
     ssl: { title: "SSL Certificate Expiry Engine", desc: "Monitors SSL/TLS certificate validity dates and thresholds." }
   };
-
   const info = titles[type] || { title: "Probes Engine", desc: "Manage Probes" };
-  document.getElementById('lvl2-engine-title').textContent = info.title;
-  document.getElementById('lvl2-engine-desc').textContent = info.desc;
-
+  document.getElementById("lvl2-engine-title").textContent = info.title;
+  document.getElementById("lvl2-engine-desc").textContent = info.desc;
   try {
     const res = await fetch(`${httpUrl}/api/monitors`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const monitors = await res.json();
-
-    const filtered = (type === 'all_grouped') ? monitors : monitors.filter(m => m.type === type);
-
+    const filtered = type === "all_grouped" ? monitors : monitors.filter((m) => m.type === type);
     if (filtered.length === 0) {
       listEl.innerHTML = `
         <p style="font-size:0.8rem; color:var(--text-secondary); text-align:center; padding:24px; border:1px dashed var(--border-soft); border-radius:6px; margin:0;">
@@ -4496,32 +3811,25 @@ async function loadProbesLevel2(type) {
         </p>`;
       return;
     }
-
-    // Group monitors by base host/service name
     const serviceGroups = {};
-    filtered.forEach(m => {
+    filtered.forEach((m) => {
       const baseHost = getBaseHostName(m.name);
       if (!serviceGroups[baseHost]) {
         serviceGroups[baseHost] = [];
       }
       serviceGroups[baseHost].push(m);
     });
-
     let html = '<div style="display:flex; flex-direction:column; gap:16px;">';
-
     Object.keys(serviceGroups).sort().forEach((baseHost, idx) => {
       const groupProbes = serviceGroups[baseHost];
-      const groupId = `grp_${idx}_${baseHost.replace(/[^a-zA-Z0-9]/g, '_')}`;
-
-      // Calculate status summary
+      const groupId = `grp_${idx}_${baseHost.replace(/[^a-zA-Z0-9]/g, "_")}`;
       let total = groupProbes.length;
       let onlineCount = 0;
       let offlineCount = 0;
       let disabledCount = 0;
       let totalLatency = 0;
       let latencyCount = 0;
-
-      groupProbes.forEach(p => {
+      groupProbes.forEach((p) => {
         const enabled = p.enabled !== false;
         if (!enabled) {
           disabledCount++;
@@ -4530,32 +3838,28 @@ async function loadProbesLevel2(type) {
         } else {
           offlineCount++;
         }
-        if (enabled && p.last_latency !== null && p.last_latency !== undefined) {
+        if (enabled && p.last_latency !== null && p.last_latency !== void 0) {
           totalLatency += parseFloat(p.last_latency);
           latencyCount++;
         }
       });
-
-      let statusBadgeColor = '#34d399';
-      let statusBadgeBg = 'rgba(52, 211, 153, 0.12)';
-      let statusBadgeText = 'ALL ONLINE';
-
+      let statusBadgeColor = "#34d399";
+      let statusBadgeBg = "rgba(52, 211, 153, 0.12)";
+      let statusBadgeText = "ALL ONLINE";
       if (offlineCount > 0 && onlineCount > 0) {
-        statusBadgeColor = '#f59e0b';
-        statusBadgeBg = 'rgba(245, 158, 11, 0.12)';
-        statusBadgeText = 'DEGRADED';
+        statusBadgeColor = "#f59e0b";
+        statusBadgeBg = "rgba(245, 158, 11, 0.12)";
+        statusBadgeText = "DEGRADED";
       } else if (offlineCount > 0 && onlineCount === 0) {
-        statusBadgeColor = '#f43f5e';
-        statusBadgeBg = 'rgba(244, 63, 94, 0.12)';
-        statusBadgeText = 'OFFLINE';
+        statusBadgeColor = "#f43f5e";
+        statusBadgeBg = "rgba(244, 63, 94, 0.12)";
+        statusBadgeText = "OFFLINE";
       } else if (disabledCount === total) {
-        statusBadgeColor = '#6b7280';
-        statusBadgeBg = 'rgba(107, 114, 128, 0.12)';
-        statusBadgeText = 'DISABLED';
+        statusBadgeColor = "#6b7280";
+        statusBadgeBg = "rgba(107, 114, 128, 0.12)";
+        statusBadgeText = "DISABLED";
       }
-
-      const avgLat = latencyCount > 0 ? `${(totalLatency / latencyCount).toFixed(1)} ms avg` : '--';
-
+      const avgLat = latencyCount > 0 ? `${(totalLatency / latencyCount).toFixed(1)} ms avg` : "--";
       html += `
         <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:8px; overflow:hidden;">
           <!-- Host Group Header -->
@@ -4566,7 +3870,7 @@ async function loadProbesLevel2(type) {
               </div>
               <div>
                 <div style="font-weight:700; font-size:0.9rem; color:#fff;">${baseHost}</div>
-                <div style="font-size:0.72rem; color:var(--text-secondary);">${total} Grouped Probe${total > 1 ? 's' : ''}</div>
+                <div style="font-size:0.72rem; color:var(--text-secondary);">${total} Grouped Probe${total > 1 ? "s" : ""}</div>
               </div>
             </div>
 
@@ -4582,21 +3886,18 @@ async function loadProbesLevel2(type) {
           <!-- Grouped Probes Body -->
           <div id="host-group-content-${groupId}" style="display:flex; flex-direction:column; gap:8px; padding:12px 16px; background:rgba(0,0,0,0.15); border-top:1px solid var(--border-soft);">
       `;
-
-      groupProbes.forEach(mon => {
+      groupProbes.forEach((mon) => {
         const isEnabled = mon.enabled !== false;
         const isOnline = isEnabled && isProbeStatusOnline(mon.last_status, mon.type);
-        const monStatusColor = !isEnabled ? '#6b7280' : (isOnline ? 'var(--color-optimal)' : '#f43f5e');
-        const monStatusText = !isEnabled ? 'DISABLED' : (isOnline ? 'ONLINE' : 'OFFLINE');
-        const monLat = isEnabled && mon.last_latency !== null && mon.last_latency !== undefined ? `${mon.last_latency} ms` : '--';
-
-        let probeIcon = 'activity';
-        if (mon.type === 'ping') probeIcon = 'shield';
-        else if (mon.type === 'http') probeIcon = 'globe';
-        else if (mon.type === 'port') probeIcon = 'server';
-        else if (mon.type === 'ssl') probeIcon = 'lock';
-        else if (mon.type === 'dns') probeIcon = 'globe-2';
-
+        const monStatusColor = !isEnabled ? "#6b7280" : isOnline ? "var(--color-optimal)" : "#f43f5e";
+        const monStatusText = !isEnabled ? "DISABLED" : isOnline ? "ONLINE" : "OFFLINE";
+        const monLat = isEnabled && mon.last_latency !== null && mon.last_latency !== void 0 ? `${mon.last_latency} ms` : "--";
+        let probeIcon = "activity";
+        if (mon.type === "ping") probeIcon = "shield";
+        else if (mon.type === "http") probeIcon = "globe";
+        else if (mon.type === "port") probeIcon = "server";
+        else if (mon.type === "ssl") probeIcon = "lock";
+        else if (mon.type === "dns") probeIcon = "globe-2";
         html += `
           <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); border-radius:6px; padding:10px 14px;">
             <div style="display:flex; align-items:center; gap:10px;">
@@ -4614,7 +3915,7 @@ async function loadProbesLevel2(type) {
               </div>
 
               <label class="switch" title="Enable/Disable Monitor" onclick="event.stopPropagation()">
-                <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMonitorEnabled('${mon.id}', this.checked, event)">
+                <input type="checkbox" ${isEnabled ? "checked" : ""} onchange="toggleMonitorEnabled('${mon.id}', this.checked, event)">
                 <span class="slider"></span>
               </label>
 
@@ -4628,109 +3929,92 @@ async function loadProbesLevel2(type) {
           </div>
         `;
       });
-
       html += `
           </div>
         </div>
       `;
     });
-
-    html += '</div>';
+    html += "</div>";
     listEl.innerHTML = html;
     if (window.lucide) window.lucide.createIcons();
   } catch (err) {
     listEl.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem;">Failure loading probes: ${err.message}</p>`;
   }
 }
-
 function goLvl3(monId, e) {
-  if (e.target.closest('button') || e.target.closest('.btn-icon') || e.target.closest('.switch')) return;
+  if (e.target.closest("button") || e.target.closest(".btn-icon") || e.target.closest(".switch")) return;
   navigateProbesLevel(3, monId);
 }
-
 async function loadProbesLevel3(monId) {
   const { httpUrl } = getApiUrls();
-  const tableBody = document.getElementById('lvl3-history-table-body');
+  const tableBody = document.getElementById("lvl3-history-table-body");
   if (!tableBody) return;
-
   tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">Querying logs...</td></tr>`;
-
   try {
     const resMon = await fetch(`${httpUrl}/api/monitors`);
     if (!resMon.ok) throw new Error(`HTTP ${resMon.status}`);
     const monitors = await resMon.json();
-
-    const ids = String(monId).split(',');
+    const ids = String(monId).split(",");
     const isGrouped = ids.length > 1;
-
     if (isGrouped) {
-      const mon1 = monitors.find(m => String(m.id) === String(ids[0]));
-      const mon2 = monitors.find(m => String(m.id) === String(ids[1]));
-
+      const mon1 = monitors.find((m) => String(m.id) === String(ids[0]));
+      const mon2 = monitors.find((m) => String(m.id) === String(ids[1]));
       if (!mon1 || !mon2) {
         alert("Probe details not found.");
         navigateProbesLevel(2);
         return;
       }
-
-      const baseName = mon1.name.endsWith(' (HTTP)') ? mon1.name.slice(0, -7) : mon1.name.slice(0, -8);
-      document.getElementById('lvl3-probe-title').textContent = baseName + " (Combined Probe)";
-      document.getElementById('lvl3-probe-meta').textContent = `HTTP URL: ${mon1.target} | HTTPS URL: ${mon2.target}`;
-
-      const isUp1 = (mon1.enabled !== false) && isProbeStatusOnline(mon1.last_status, mon1.type);
-      const isUp2 = (mon2.enabled !== false) && isProbeStatusOnline(mon2.last_status, mon2.type);
-
-      // Seed cachedEntities with current values for these monitors to prevent out-of-sync WebSocket updates
+      const baseName = mon1.name.endsWith(" (HTTP)") ? mon1.name.slice(0, -7) : mon1.name.slice(0, -8);
+      document.getElementById("lvl3-probe-title").textContent = baseName + " (Combined Probe)";
+      document.getElementById("lvl3-probe-meta").textContent = `HTTP URL: ${mon1.target} | HTTPS URL: ${mon2.target}`;
+      const isUp1 = mon1.enabled !== false && isProbeStatusOnline(mon1.last_status, mon1.type);
+      const isUp2 = mon2.enabled !== false && isProbeStatusOnline(mon2.last_status, mon2.type);
       const statusKey1 = `monitor-${ids[0]}-status`;
       const latencyKey1 = `monitor-${ids[0]}-latency`;
       const statusKey2 = `monitor-${ids[1]}-status`;
       const latencyKey2 = `monitor-${ids[1]}-latency`;
-
       cachedEntities[statusKey1] = {
-        node_id: 'monitors',
+        node_id: "monitors",
         entity_key: statusKey1,
         value: mon1.last_status,
         status: mon1.last_status,
-        status_type: isUp1 ? 'healthy' : 'error'
+        status_type: isUp1 ? "healthy" : "error"
       };
       cachedEntities[latencyKey1] = {
-        node_id: 'monitors',
+        node_id: "monitors",
         entity_key: latencyKey1,
         value: mon1.last_latency
       };
       cachedEntities[statusKey2] = {
-        node_id: 'monitors',
+        node_id: "monitors",
         entity_key: statusKey2,
         value: mon2.last_status,
         status: mon2.last_status,
-        status_type: isUp2 ? 'healthy' : 'error'
+        status_type: isUp2 ? "healthy" : "error"
       };
       cachedEntities[latencyKey2] = {
-        node_id: 'monitors',
+        node_id: "monitors",
         entity_key: latencyKey2,
         value: mon2.last_latency
       };
-
-      let statusLabel = '';
-      let statusColor = '';
+      let statusLabel = "";
+      let statusColor = "";
       if (isUp1 && isUp2) {
-        statusLabel = 'BOTH ONLINE';
-        statusColor = 'var(--color-optimal)';
+        statusLabel = "BOTH ONLINE";
+        statusColor = "var(--color-optimal)";
       } else if (isUp1) {
-        statusLabel = 'HTTP ONLINE';
-        statusColor = 'var(--accent-orange)';
+        statusLabel = "HTTP ONLINE";
+        statusColor = "var(--accent-orange)";
       } else if (isUp2) {
-        statusLabel = 'HTTPS ONLINE';
-        statusColor = 'var(--accent-orange)';
+        statusLabel = "HTTPS ONLINE";
+        statusColor = "var(--accent-orange)";
       } else {
-        statusLabel = 'BOTH OFFLINE';
-        statusColor = '#f43f5e';
+        statusLabel = "BOTH OFFLINE";
+        statusColor = "#f43f5e";
       }
-
-      document.getElementById('lvl3-stat-status').textContent = statusLabel;
-      document.getElementById('lvl3-stat-status').style.color = statusColor;
-
-      let latString = '';
+      document.getElementById("lvl3-stat-status").textContent = statusLabel;
+      document.getElementById("lvl3-stat-status").style.color = statusColor;
+      let latString = "";
       if (mon1.last_latency !== null && mon2.last_latency !== null) {
         latString = `HTTP: ${mon1.last_latency.toFixed(1)} ms | HTTPS: ${mon2.last_latency.toFixed(1)} ms`;
       } else if (mon1.last_latency !== null) {
@@ -4738,139 +4022,116 @@ async function loadProbesLevel3(monId) {
       } else if (mon2.last_latency !== null) {
         latString = `HTTP: -- ms | HTTPS: ${mon2.last_latency.toFixed(1)} ms`;
       } else {
-        latString = '-- ms';
+        latString = "-- ms";
       }
-      document.getElementById('lvl3-stat-latency').textContent = latString;
-      document.getElementById('lvl3-stat-interval').textContent = `${mon1.check_interval} seconds`;
-
+      document.getElementById("lvl3-stat-latency").textContent = latString;
+      document.getElementById("lvl3-stat-interval").textContent = `${mon1.check_interval} seconds`;
       const resStatus1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-status?limit=10`);
       const statusLogs1 = resStatus1.ok ? await resStatus1.json() : [];
       const resStatus2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-status?limit=10`);
       const statusLogs2 = resStatus2.ok ? await resStatus2.json() : [];
-
       const resLatency1 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[0]}-latency?limit=10`);
       const latencyLogs1 = resLatency1.ok ? await resLatency1.json() : [];
       const resLatency2 = await fetch(`${httpUrl}/api/monitors/logs/monitor-${ids[1]}-latency?limit=10`);
       const latencyLogs2 = resLatency2.ok ? await resLatency2.json() : [];
-
       let combinedLogs = [];
       statusLogs1.forEach((log, index) => {
         const matchingLat = latencyLogs1[index];
         combinedLogs.push({
           timestamp: log.timestamp,
-          source: 'HTTP',
+          source: "HTTP",
           status: log.value,
-          latency: matchingLat ? parseFloat(matchingLat.value) : 0.0
+          latency: matchingLat ? parseFloat(matchingLat.value) : 0
         });
       });
       statusLogs2.forEach((log, index) => {
         const matchingLat = latencyLogs2[index];
         combinedLogs.push({
           timestamp: log.timestamp,
-          source: 'HTTPS',
+          source: "HTTPS",
           status: log.value,
-          latency: matchingLat ? parseFloat(matchingLat.value) : 0.0
+          latency: matchingLat ? parseFloat(matchingLat.value) : 0
         });
       });
-
-      combinedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-      // Slice to 10 for basic display
+      combinedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       const displayLogs = combinedLogs.slice(0, 10);
-
       if (displayLogs.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
       } else {
-        tableBody.innerHTML = displayLogs.map(log => {
-          const isLogUp = isProbeStatusOnline(log.status, 'http');
+        tableBody.innerHTML = displayLogs.map((log) => {
+          const isLogUp = isProbeStatusOnline(log.status, "http");
           const finalStatus = isLogUp ? `[${log.source}] HTTP ${log.status}` : `[${log.source}] ${log.status}`;
           return `
             <tr style="border-bottom:1px solid var(--border-soft);">
               <td style="padding: 10px 14px; font-size:0.75rem; color:var(--text-secondary); font-family:monospace;">${new Date(log.timestamp).toLocaleString()}</td>
-              <td style="padding: 10px 14px; font-weight:700; font-size:0.75rem; color:${isLogUp ? 'var(--color-optimal)' : '#f43f5e'};">${finalStatus}</td>
+              <td style="padding: 10px 14px; font-weight:700; font-size:0.75rem; color:${isLogUp ? "var(--color-optimal)" : "#f43f5e"};">${finalStatus}</td>
               <td style="padding: 10px 14px; font-family:monospace; font-size:0.75rem;">${log.latency.toFixed(2)} ms</td>
             </tr>`;
-        }).join('');
+        }).join("");
       }
     } else {
-      const mon = monitors.find(m => String(m.id) === String(monId));
-
+      const mon = monitors.find((m) => String(m.id) === String(monId));
       if (!mon) {
         alert("Probe details not found.");
         navigateProbesLevel(2);
         return;
       }
-
-      document.getElementById('lvl3-probe-title').textContent = mon.name;
-      document.getElementById('lvl3-probe-meta').textContent = `Engine: ${mon.type.toUpperCase()} | Address: ${mon.target}`;
-
+      document.getElementById("lvl3-probe-title").textContent = mon.name;
+      document.getElementById("lvl3-probe-meta").textContent = `Engine: ${mon.type.toUpperCase()} | Address: ${mon.target}`;
       const isUp = isProbeStatusOnline(mon.last_status, mon.type);
-      const statusColor = isUp ? 'var(--color-optimal)' : '#f43f5e';
-
-      // Seed cachedEntities with current values for this monitor to prevent out-of-sync WebSocket updates
+      const statusColor = isUp ? "var(--color-optimal)" : "#f43f5e";
       const statusKey = `monitor-${monId}-status`;
       const latencyKey = `monitor-${monId}-latency`;
-
       cachedEntities[statusKey] = {
-        node_id: 'monitors',
+        node_id: "monitors",
         entity_key: statusKey,
         value: mon.last_status,
         status: mon.last_status,
-        status_type: isUp ? 'healthy' : 'error'
+        status_type: isUp ? "healthy" : "error"
       };
       cachedEntities[latencyKey] = {
-        node_id: 'monitors',
+        node_id: "monitors",
         entity_key: latencyKey,
         value: mon.last_latency
       };
-      const statusLabel = isUp ? (mon.type === 'ssl' ? mon.last_status : 'ONLINE') : (mon.last_status === 'unknown' ? 'UNKNOWN' : 'OFFLINE');
-      const latencyStr = mon.last_latency !== null ? `${mon.last_latency} ms` : '-- ms';
-
-      document.getElementById('lvl3-stat-status').textContent = statusLabel;
-      document.getElementById('lvl3-stat-status').style.color = statusColor;
-      document.getElementById('lvl3-stat-latency').textContent = latencyStr;
-      document.getElementById('lvl3-stat-interval').textContent = `${mon.check_interval} seconds`;
-
+      const statusLabel = isUp ? mon.type === "ssl" ? mon.last_status : "ONLINE" : mon.last_status === "unknown" ? "UNKNOWN" : "OFFLINE";
+      const latencyStr = mon.last_latency !== null ? `${mon.last_latency} ms` : "-- ms";
+      document.getElementById("lvl3-stat-status").textContent = statusLabel;
+      document.getElementById("lvl3-stat-status").style.color = statusColor;
+      document.getElementById("lvl3-stat-latency").textContent = latencyStr;
+      document.getElementById("lvl3-stat-interval").textContent = `${mon.check_interval} seconds`;
       const resStatus = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-status?limit=10`);
       if (!resStatus.ok) throw new Error(`Status Logs HTTP ${resStatus.status}`);
       const statusLogs = await resStatus.json();
-
       const resLatency = await fetch(`${httpUrl}/api/monitors/logs/monitor-${monId}-latency?limit=10`);
       if (!resLatency.ok) throw new Error(`Latency Logs HTTP ${resLatency.status}`);
       const latencyLogs = await resLatency.json();
-
       if (statusLogs.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:var(--text-secondary);">No logs recorded yet for this probe.</td></tr>`;
         return;
       }
-
-      let logsHtml = '';
+      let logsHtml = "";
       for (let i = 0; i < statusLogs.length; i++) {
         const sLog = statusLogs[i];
-        const lLog = latencyLogs[i] || { value: '0.0' };
-
+        const lLog = latencyLogs[i] || { value: "0.0" };
         const dt = new Date(sLog.timestamp).toLocaleString();
         const statusVal = sLog.value;
-
         let isLvlUp = isProbeStatusOnline(sLog.value, mon.type);
         let displayStatus = statusVal;
-
-        if (statusVal === 'up' || statusVal === 'UP' || statusVal === 'ONLINE') {
-          displayStatus = 'ONLINE';
-        } else if (statusVal === 'down' || statusVal === 'DOWN' || statusVal === 'OFFLINE') {
-          displayStatus = 'OFFLINE';
+        if (statusVal === "up" || statusVal === "UP" || statusVal === "ONLINE") {
+          displayStatus = "ONLINE";
+        } else if (statusVal === "down" || statusVal === "DOWN" || statusVal === "OFFLINE") {
+          displayStatus = "OFFLINE";
         } else {
           const codeNum = parseInt(statusVal);
           if (!isNaN(codeNum)) {
             displayStatus = `HTTP ${statusVal}`;
           } else {
-            displayStatus = statusVal.replace(/_/g, ' ');
+            displayStatus = statusVal.replace(/_/g, " ");
           }
         }
-
-        const resultColor = isLvlUp ? 'var(--color-optimal)' : '#f43f5e';
+        const resultColor = isLvlUp ? "var(--color-optimal)" : "#f43f5e";
         const latencyVal = parseFloat(lLog.value) || 0;
-
         logsHtml += `
           <tr style="border-bottom:1px solid var(--border-soft);">
             <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
@@ -4884,67 +4145,56 @@ async function loadProbesLevel3(monId) {
     tableBody.innerHTML = `<tr><td colspan="3" style="padding:16px; text-align:center; color:#f43f5e;">Failed to load logs details: ${err.message}</td></tr>`;
   }
 }
-
-window.openAddMonitorModal = function () {
+window.openAddMonitorModal = function() {
   console.log("openAddMonitorModal triggered - navigating to catalog page");
-  navigateProbesLevel('catalog');
+  navigateProbesLevel("catalog");
 };
-
-window.selectProbeTypeToConfigure = function (type) {
+window.selectProbeTypeToConfigure = function(type) {
   console.log("selectProbeTypeToConfigure triggered for:", type);
-
-  const nameInput = document.getElementById('mon-name');
-  if (nameInput) nameInput.value = '';
-  const typeInput = document.getElementById('mon-type');
+  const nameInput = document.getElementById("mon-name");
+  if (nameInput) nameInput.value = "";
+  const typeInput = document.getElementById("mon-type");
   if (typeInput) typeInput.value = type;
-  const targetInput = document.getElementById('mon-target');
-  if (targetInput) targetInput.value = '';
-  const intervalInput = document.getElementById('mon-interval');
-  if (intervalInput) intervalInput.value = '30';
-  const timeoutInput = document.getElementById('mon-timeout');
-  if (timeoutInput) timeoutInput.value = '5';
-
+  const targetInput = document.getElementById("mon-target");
+  if (targetInput) targetInput.value = "";
+  const intervalInput = document.getElementById("mon-interval");
+  if (intervalInput) intervalInput.value = "30";
+  const timeoutInput = document.getElementById("mon-timeout");
+  if (timeoutInput) timeoutInput.value = "5";
   onMonitorTypeChange(type);
-  populateMonitorGroupCheckboxes('add-mon-groups-container', []);
-
-  openModal('add-monitor-modal');
+  populateMonitorGroupCheckboxes("add-mon-groups-container", []);
+  openModal("add-monitor-modal");
 };
-
 function onMonitorTypeChange(type) {
-  const container = document.getElementById('modal-http-protocol-select-container');
+  const container = document.getElementById("modal-http-protocol-select-container");
   if (container) {
-    container.style.display = (type === 'http') ? 'flex' : 'none';
+    container.style.display = type === "http" ? "flex" : "none";
   }
 }
-
 async function submitAddMonitor() {
-  const name = document.getElementById('mon-name').value.trim();
-  const type = document.getElementById('mon-type').value;
-  const target = document.getElementById('mon-target').value.trim();
-  const interval = parseInt(document.getElementById('mon-interval').value) || 30;
-  const timeout = parseInt(document.getElementById('mon-timeout').value) || 5;
-  const category = document.getElementById('mon-category').value.trim() || 'General';
-
-  const checkedGroupIds = Array.from(document.querySelectorAll('#add-mon-groups-container .mon-group-chk:checked')).map(c => parseInt(c.value));
-
+  const name = document.getElementById("mon-name").value.trim();
+  const type = document.getElementById("mon-type").value;
+  const target = document.getElementById("mon-target").value.trim();
+  const interval = parseInt(document.getElementById("mon-interval").value) || 30;
+  const timeout = parseInt(document.getElementById("mon-timeout").value) || 5;
+  const category = document.getElementById("mon-category").value.trim() || "General";
+  const checkedGroupIds = Array.from(document.querySelectorAll("#add-mon-groups-container .mon-group-chk:checked")).map((c) => parseInt(c.value));
   if (!name || !target) {
     alert("Required fields Name and Target Address must be filled!");
     return;
   }
-
   const { httpUrl } = getApiUrls();
   try {
-    if (type === 'http') {
-      const proto = document.getElementById('mon-proto')?.value || 'http';
-      const cleanTarget = target.replace(/^(https?:\/\/)+/i, '');
-
-      if (proto === 'both') {
+    if (type === "http") {
+      const proto = document.getElementById("mon-proto")?.value || "http";
+      const cleanTarget = target.replace(/^(https?:\/\/)+/i, "");
+      if (proto === "both") {
         const resHttp = await fetch(`${httpUrl}/api/monitors`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: `${name} (HTTP)`,
-            type: type,
+            type,
             target: `http://${cleanTarget}`,
             check_interval: interval,
             timeout,
@@ -4956,13 +4206,12 @@ async function submitAddMonitor() {
           const errData = await resHttp.json();
           throw new Error(`HTTP Save failed: ${errData.detail || resHttp.status}`);
         }
-
         const resHttps = await fetch(`${httpUrl}/api/monitors`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: `${name} (HTTPS)`,
-            type: type,
+            type,
             target: `https://${cleanTarget}`,
             check_interval: interval,
             timeout,
@@ -4975,13 +4224,13 @@ async function submitAddMonitor() {
           throw new Error(`HTTPS Save failed: ${errData.detail || resHttps.status}`);
         }
       } else {
-        const urlPrefix = proto === 'https' ? 'https://' : 'http://';
+        const urlPrefix = proto === "https" ? "https://" : "http://";
         const res = await fetch(`${httpUrl}/api/monitors`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name,
-            type: type,
+            type,
             target: urlPrefix + cleanTarget,
             check_interval: interval,
             timeout,
@@ -4996,17 +4245,16 @@ async function submitAddMonitor() {
       }
     } else {
       const res = await fetch(`${httpUrl}/api/monitors`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type: type, target, check_interval: interval, timeout, category, group_ids: checkedGroupIds })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, type, target, check_interval: interval, timeout, category, group_ids: checkedGroupIds })
       });
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.detail || `HTTP ${res.status}`);
       }
     }
-
-    closeModal('add-monitor-modal');
+    closeModal("add-monitor-modal");
     loadProbesLevel1();
     if (activeProbeEngineType) {
       loadProbesLevel2(activeProbeEngineType);
@@ -5016,43 +4264,37 @@ async function submitAddMonitor() {
     alert(`Failed to save monitor probe config: ${err.message}`);
   }
 }
-
 async function deleteMonitorSource(monId, e) {
   if (e) e.stopPropagation();
   const confirmed = await showConfirm("Are you sure you want to remove this probe?", "Remove Monitor");
   if (!confirmed) return;
-
   const { httpUrl } = getApiUrls();
   try {
     const resList = await fetch(`${httpUrl}/api/monitors`);
     if (!resList.ok) throw new Error(`HTTP ${resList.status}`);
     const monitors = await resList.json();
-
-    let idsToDelete = String(monId).split(',');
-
+    let idsToDelete = String(monId).split(",");
     if (idsToDelete.length === 1) {
       const singleId = idsToDelete[0];
-      const targetMon = monitors.find(m => String(m.id) === String(singleId));
-      if (targetMon && targetMon.type === 'http') {
+      const targetMon = monitors.find((m) => String(m.id) === String(singleId));
+      if (targetMon && targetMon.type === "http") {
         let partner = null;
-        if (targetMon.name.endsWith(' (HTTP)')) {
+        if (targetMon.name.endsWith(" (HTTP)")) {
           const base = targetMon.name.substring(0, targetMon.name.length - 7);
-          partner = monitors.find(m => m.type === 'http' && m.name === base + ' (HTTPS)');
-        } else if (targetMon.name.endsWith(' (HTTPS)')) {
+          partner = monitors.find((m) => m.type === "http" && m.name === base + " (HTTPS)");
+        } else if (targetMon.name.endsWith(" (HTTPS)")) {
           const base = targetMon.name.substring(0, targetMon.name.length - 8);
-          partner = monitors.find(m => m.type === 'http' && m.name === base + ' (HTTP)');
+          partner = monitors.find((m) => m.type === "http" && m.name === base + " (HTTP)");
         }
         if (partner) {
           idsToDelete.push(String(partner.id));
         }
       }
     }
-
     for (const deleteId of idsToDelete) {
-      const res = await fetch(`${httpUrl}/api/monitors/${deleteId}`, { method: 'DELETE' });
+      const res = await fetch(`${httpUrl}/api/monitors/${deleteId}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
     }
-
     loadProbesLevel1();
     if (activeProbeEngineType) {
       loadProbesLevel2(activeProbeEngineType);
@@ -5062,14 +4304,12 @@ async function deleteMonitorSource(monId, e) {
     alert(`Could not delete prober source: ${err.message}`);
   }
 }
-
 function onEditMonitorTypeChange(type) {
-  const container = document.getElementById('modal-edit-http-protocol-select-container');
+  const container = document.getElementById("modal-edit-http-protocol-select-container");
   if (container) {
-    container.style.display = (type === 'http') ? 'flex' : 'none';
+    container.style.display = type === "http" ? "flex" : "none";
   }
 }
-
 async function openEditMonitor(monId, event) {
   if (event) event.stopPropagation();
   const { httpUrl } = getApiUrls();
@@ -5077,112 +4317,97 @@ async function openEditMonitor(monId, event) {
     const res = await fetch(`${httpUrl}/api/monitors`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const monitors = await res.json();
-
-    const ids = String(monId).split(',');
+    const ids = String(monId).split(",");
     const isGrouped = ids.length > 1;
-
     if (isGrouped) {
-      const mon1 = monitors.find(m => String(m.id) === String(ids[0]));
-      const mon2 = monitors.find(m => String(m.id) === String(ids[1]));
+      const mon1 = monitors.find((m) => String(m.id) === String(ids[0]));
+      const mon2 = monitors.find((m) => String(m.id) === String(ids[1]));
       if (!mon1 || !mon2) {
         alert("Configured monitors not found.");
         return;
       }
-
-      const baseName = mon1.name.endsWith(' (HTTP)') ? mon1.name.slice(0, -7) : mon1.name.slice(0, -8);
-      document.getElementById('edit-mon-id').value = monId;
-      document.getElementById('edit-mon-name').value = baseName;
-      document.getElementById('edit-mon-type').value = 'http';
-      document.getElementById('edit-mon-proto').value = 'both';
-      document.getElementById('edit-mon-category').value = mon1.category || 'General';
-
-      document.getElementById('edit-mon-target').value = mon1.target.replace(/^(https?:\/\/)+/i, '');
-      document.getElementById('edit-mon-interval').value = mon1.check_interval;
-      document.getElementById('edit-mon-timeout').value = mon1.timeout;
-      await populateMonitorGroupCheckboxes('edit-mon-groups-container', mon1.group_ids || []);
+      const baseName = mon1.name.endsWith(" (HTTP)") ? mon1.name.slice(0, -7) : mon1.name.slice(0, -8);
+      document.getElementById("edit-mon-id").value = monId;
+      document.getElementById("edit-mon-name").value = baseName;
+      document.getElementById("edit-mon-type").value = "http";
+      document.getElementById("edit-mon-proto").value = "both";
+      document.getElementById("edit-mon-category").value = mon1.category || "General";
+      document.getElementById("edit-mon-target").value = mon1.target.replace(/^(https?:\/\/)+/i, "");
+      document.getElementById("edit-mon-interval").value = mon1.check_interval;
+      document.getElementById("edit-mon-timeout").value = mon1.timeout;
+      await populateMonitorGroupCheckboxes("edit-mon-groups-container", mon1.group_ids || []);
     } else {
-      const mon = monitors.find(m => String(m.id) === String(monId));
+      const mon = monitors.find((m) => String(m.id) === String(monId));
       if (!mon) {
         alert("Monitor not found.");
         return;
       }
-
-      document.getElementById('edit-mon-id').value = monId;
-      document.getElementById('edit-mon-name').value = mon.name;
-      document.getElementById('edit-mon-type').value = mon.type;
-      document.getElementById('edit-mon-category').value = mon.category || 'General';
-
-      if (mon.type === 'http') {
-        const hasHttps = mon.target.startsWith('https://');
-        document.getElementById('edit-mon-proto').value = hasHttps ? 'https' : 'http';
-        document.getElementById('edit-mon-target').value = mon.target.replace(/^(https?:\/\/)+/i, '');
+      document.getElementById("edit-mon-id").value = monId;
+      document.getElementById("edit-mon-name").value = mon.name;
+      document.getElementById("edit-mon-type").value = mon.type;
+      document.getElementById("edit-mon-category").value = mon.category || "General";
+      if (mon.type === "http") {
+        const hasHttps = mon.target.startsWith("https://");
+        document.getElementById("edit-mon-proto").value = hasHttps ? "https" : "http";
+        document.getElementById("edit-mon-target").value = mon.target.replace(/^(https?:\/\/)+/i, "");
       } else {
-        document.getElementById('edit-mon-target').value = mon.target;
+        document.getElementById("edit-mon-target").value = mon.target;
       }
-
-      document.getElementById('edit-mon-interval').value = mon.check_interval;
-      document.getElementById('edit-mon-timeout').value = mon.timeout;
-      await populateMonitorGroupCheckboxes('edit-mon-groups-container', mon.group_ids || []);
+      document.getElementById("edit-mon-interval").value = mon.check_interval;
+      document.getElementById("edit-mon-timeout").value = mon.timeout;
+      await populateMonitorGroupCheckboxes("edit-mon-groups-container", mon.group_ids || []);
     }
-
-    onEditMonitorTypeChange(document.getElementById('edit-mon-type').value);
-    openModal('edit-monitor-modal');
+    onEditMonitorTypeChange(document.getElementById("edit-mon-type").value);
+    openModal("edit-monitor-modal");
   } catch (err) {
     alert(`Could not load monitor details: ${err.message}`);
   }
 }
-
 async function submitEditMonitor() {
-  const monId = document.getElementById('edit-mon-id').value;
-  const name = document.getElementById('edit-mon-name').value.trim();
-  const type = document.getElementById('edit-mon-type').value;
-  const target = document.getElementById('edit-mon-target').value.trim();
-  const interval = parseInt(document.getElementById('edit-mon-interval').value) || 30;
-  const timeout = parseInt(document.getElementById('edit-mon-timeout').value) || 5;
-  const category = document.getElementById('edit-mon-category').value.trim() || 'General';
-
-  const checkedGroupIds = Array.from(document.querySelectorAll('#edit-mon-groups-container .mon-group-chk:checked')).map(c => parseInt(c.value));
-
+  const monId = document.getElementById("edit-mon-id").value;
+  const name = document.getElementById("edit-mon-name").value.trim();
+  const type = document.getElementById("edit-mon-type").value;
+  const target = document.getElementById("edit-mon-target").value.trim();
+  const interval = parseInt(document.getElementById("edit-mon-interval").value) || 30;
+  const timeout = parseInt(document.getElementById("edit-mon-timeout").value) || 5;
+  const category = document.getElementById("edit-mon-category").value.trim() || "General";
+  const checkedGroupIds = Array.from(document.querySelectorAll("#edit-mon-groups-container .mon-group-chk:checked")).map((c) => parseInt(c.value));
   if (!name || !target) {
     alert("Required fields Name and Target Address must be filled!");
     return;
   }
-
   const { httpUrl } = getApiUrls();
   try {
-    const ids = String(monId).split(',');
+    const ids = String(monId).split(",");
     const wasGrouped = ids.length > 1;
-
-    if (type === 'http') {
-      const proto = document.getElementById('edit-mon-proto').value;
-      const cleanTarget = target.replace(/^(https?:\/\/)+/i, '');
-
-      if (proto === 'both') {
+    if (type === "http") {
+      const proto = document.getElementById("edit-mon-proto").value;
+      const cleanTarget = target.replace(/^(https?:\/\/)+/i, "");
+      if (proto === "both") {
         if (wasGrouped) {
           const res1 = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: `${name} (HTTP)`,
-              type: type,
+              type,
               target: `http://${cleanTarget}`,
               check_interval: interval,
-              timeout: timeout,
+              timeout,
               category,
               group_ids: checkedGroupIds
             })
           });
           if (!res1.ok) throw new Error(`HTTP Update failed`);
-
           const res2 = await fetch(`${httpUrl}/api/monitors/${ids[1]}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: `${name} (HTTPS)`,
-              type: type,
+              type,
               target: `https://${cleanTarget}`,
               check_interval: interval,
-              timeout: timeout,
+              timeout,
               category,
               group_ids: checkedGroupIds
             })
@@ -5190,29 +4415,28 @@ async function submitEditMonitor() {
           if (!res2.ok) throw new Error(`HTTPS Update failed`);
         } else {
           const res1 = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: `${name} (HTTP)`,
-              type: type,
+              type,
               target: `http://${cleanTarget}`,
               check_interval: interval,
-              timeout: timeout,
+              timeout,
               category,
               group_ids: checkedGroupIds
             })
           });
           if (!res1.ok) throw new Error(`HTTP Update failed`);
-
           const res2 = await fetch(`${httpUrl}/api/monitors`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: `${name} (HTTPS)`,
-              type: type,
+              type,
               target: `https://${cleanTarget}`,
               check_interval: interval,
-              timeout: timeout,
+              timeout,
               category,
               group_ids: checkedGroupIds
             })
@@ -5221,35 +4445,34 @@ async function submitEditMonitor() {
         }
       } else {
         if (wasGrouped) {
-          const resDel = await fetch(`${httpUrl}/api/monitors/${ids[1]}`, { method: 'DELETE' });
+          const resDel = await fetch(`${httpUrl}/api/monitors/${ids[1]}`, { method: "DELETE" });
           if (!resDel.ok) throw new Error(`Failed to remove second monitor during ungrouping`);
-
-          const finalTarget = proto === 'https' ? `https://${cleanTarget}` : `http://${cleanTarget}`;
+          const finalTarget = proto === "https" ? `https://${cleanTarget}` : `http://${cleanTarget}`;
           const res1 = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              name: name,
-              type: type,
+              name,
+              type,
               target: finalTarget,
               check_interval: interval,
-              timeout: timeout,
+              timeout,
               category,
               group_ids: checkedGroupIds
             })
           });
           if (!res1.ok) throw new Error(`Failed to update ungrouped monitor`);
         } else {
-          const finalTarget = proto === 'https' ? `https://${cleanTarget}` : `http://${cleanTarget}`;
+          const finalTarget = proto === "https" ? `https://${cleanTarget}` : `http://${cleanTarget}`;
           const res1 = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              name: name,
-              type: type,
+              name,
+              type,
               target: finalTarget,
               check_interval: interval,
-              timeout: timeout,
+              timeout,
               category,
               group_ids: checkedGroupIds
             })
@@ -5259,22 +4482,21 @@ async function submitEditMonitor() {
       }
     } else {
       const res = await fetch(`${httpUrl}/api/monitors/${ids[0]}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: name,
-          type: type,
-          target: target,
+          name,
+          type,
+          target,
           check_interval: interval,
-          timeout: timeout,
+          timeout,
           category,
           group_ids: checkedGroupIds
         })
       });
       if (!res.ok) throw new Error(`Failed to update monitor`);
     }
-
-    closeModal('edit-monitor-modal');
+    closeModal("edit-monitor-modal");
     loadProbesLevel1();
     if (activeProbeEngineType) {
       loadProbesLevel2(activeProbeEngineType);
@@ -5284,228 +4506,187 @@ async function submitEditMonitor() {
     alert(`Failed to save monitor probe changes: ${err.message}`);
   }
 }
-
-function showToast(message, type = 'info') {
-  const container = document.getElementById('toast-container');
+function showToast(message, type = "info") {
+  const container = document.getElementById("toast-container");
   if (!container) return;
-
-  const toast = document.createElement('div');
+  const toast = document.createElement("div");
   toast.className = `toast-msg ${type}`;
-  toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : type === 'error' ? 'alert-triangle' : 'info'}" style="width: 18px; height: 18px;"></i><span>${message}</span>`;
+  toast.innerHTML = `<i data-lucide="${type === "success" ? "check-circle" : type === "error" ? "alert-triangle" : "info"}" style="width: 18px; height: 18px;"></i><span>${message}</span>`;
   container.appendChild(toast);
-
   if (window.lucide) {
     lucide.createIcons({
       node: toast
     });
   }
-
   setTimeout(() => {
-    toast.classList.add('show');
+    toast.classList.add("show");
   }, 50);
-
   setTimeout(() => {
-    toast.classList.remove('show');
+    toast.classList.remove("show");
     setTimeout(() => {
       toast.remove();
     }, 300);
-  }, 3000);
+  }, 3e3);
 }
-
-window.showAlert = function (message, title = "System Alert", type = "error") {
-  const modal = document.getElementById('custom-alert-modal');
+window.showAlert = function(message, title = "System Alert", type = "error") {
+  const modal = document.getElementById("custom-alert-modal");
   if (!modal) {
     console.warn("custom-alert-modal element not found in DOM.");
     return;
   }
-
-  const titleSpan = document.getElementById('custom-alert-title');
+  const titleSpan = document.getElementById("custom-alert-title");
   if (titleSpan) titleSpan.textContent = title;
-
-  const bodyDiv = document.getElementById('custom-alert-body');
+  const bodyDiv = document.getElementById("custom-alert-body");
   if (bodyDiv) bodyDiv.textContent = message;
-
-  const icon = document.getElementById('custom-alert-icon');
+  const icon = document.getElementById("custom-alert-icon");
   if (icon) {
-    if (type === 'error') {
-      icon.style.color = '#f43f5e';
-      icon.setAttribute('data-lucide', 'alert-triangle');
-    } else if (type === 'success') {
-      icon.style.color = '#10b981';
-      icon.setAttribute('data-lucide', 'check-circle');
+    if (type === "error") {
+      icon.style.color = "#f43f5e";
+      icon.setAttribute("data-lucide", "alert-triangle");
+    } else if (type === "success") {
+      icon.style.color = "#10b981";
+      icon.setAttribute("data-lucide", "check-circle");
     } else {
-      icon.style.color = 'var(--accent-orange)';
-      icon.setAttribute('data-lucide', 'info');
+      icon.style.color = "var(--accent-orange)";
+      icon.setAttribute("data-lucide", "info");
     }
   }
-
-  openModal('custom-alert-modal');
+  openModal("custom-alert-modal");
   if (window.lucide) {
     window.lucide.createIcons({
       node: modal
     });
   }
 };
-
-window.alert = function (message) {
+window.alert = function(message) {
   window.showAlert(message, "System Alert", "error");
 };
-
 let confirmResolver = null;
-window.showConfirm = function (message, title = "Confirm Action") {
+window.showConfirm = function(message, title = "Confirm Action") {
   return new Promise((resolve) => {
     confirmResolver = resolve;
-    const modal = document.getElementById('custom-confirm-modal');
+    const modal = document.getElementById("custom-confirm-modal");
     if (!modal) {
       resolve(confirm(message));
       return;
     }
-    document.getElementById('custom-confirm-title').textContent = title;
-    document.getElementById('custom-confirm-body').textContent = message;
-    openModal('custom-confirm-modal');
+    document.getElementById("custom-confirm-title").textContent = title;
+    document.getElementById("custom-confirm-body").textContent = message;
+    openModal("custom-confirm-modal");
   });
 };
-
-window.closeConfirmModal = function (result) {
-  closeModal('custom-confirm-modal');
+window.closeConfirmModal = function(result) {
+  closeModal("custom-confirm-modal");
   if (confirmResolver) {
     confirmResolver(result);
     confirmResolver = null;
   }
 };
-
 let liveMonitorBuffer = {};
-
 function handleLiveMonitorWSUpdate(entityId, value, status, statusType) {
-  const lvl3View = document.getElementById('probes-level-3');
-  if (!lvl3View || lvl3View.style.display === 'none') {
+  const lvl3View = document.getElementById("probes-level-3");
+  if (!lvl3View || lvl3View.style.display === "none") {
     return;
   }
-
   if (!activeProbeMonitorId) return;
-
-  const ids = String(activeProbeMonitorId).split(',');
+  const ids = String(activeProbeMonitorId).split(",");
   const match = entityId.match(/^monitor-(\d+)-(status|latency)$/);
   if (!match) return;
-
   const monId = match[1];
   const field = match[2];
-
   if (!ids.includes(String(monId))) {
     return;
   }
-
   console.log(`[WS Live Probe] Received update for: ${entityId}, value: ${value}, activeProbeMonitorId: ${activeProbeMonitorId}`);
-
   if (!liveMonitorBuffer[monId]) {
-    liveMonitorBuffer[monId] = { timestamp: new Date().toISOString() };
+    liveMonitorBuffer[monId] = { timestamp: (/* @__PURE__ */ new Date()).toISOString() };
   }
-
-  if (field === 'status') {
+  if (field === "status") {
     liveMonitorBuffer[monId].status = value;
-  } else if (field === 'latency') {
+  } else if (field === "latency") {
     liveMonitorBuffer[monId].latency = parseFloat(value);
   }
-
   console.log(`[WS Live Probe] Current buffer state for ${monId}:`, liveMonitorBuffer[monId]);
-
   checkAndCommitLiveLog(monId);
   updateLevel3HeadingStats();
 }
-
 function checkAndCommitLiveLog(monId) {
   const buf = liveMonitorBuffer[monId];
-  if (buf && buf.status !== undefined && buf.latency !== undefined) {
+  if (buf && buf.status !== void 0 && buf.latency !== void 0) {
     appendLiveHistoryRow(monId, buf.timestamp, buf.status, buf.latency);
     delete liveMonitorBuffer[monId];
   }
 }
-
 function appendLiveHistoryRow(monId, timestamp, status, latency) {
-  const tableBody = document.getElementById('lvl3-history-table-body');
+  const tableBody = document.getElementById("lvl3-history-table-body");
   if (!tableBody) return;
-
-  if (tableBody.innerHTML.includes('Querying logs') || tableBody.innerHTML.includes('No logs recorded')) {
-    tableBody.innerHTML = '';
+  if (tableBody.innerHTML.includes("Querying logs") || tableBody.innerHTML.includes("No logs recorded")) {
+    tableBody.innerHTML = "";
   }
-
-  const ids = String(activeProbeMonitorId).split(',');
+  const ids = String(activeProbeMonitorId).split(",");
   const isGrouped = ids.length > 1;
-
-  let source = '';
+  let source = "";
   if (isGrouped) {
     if (String(monId) === String(ids[0])) {
-      source = 'HTTP';
+      source = "HTTP";
     } else if (String(monId) === String(ids[1])) {
-      source = 'HTTPS';
+      source = "HTTPS";
     }
   }
-
-  const isLogUp = isProbeStatusOnline(status, isGrouped ? 'http' : 'other');
-  const finalStatus = source ? `[${source}] ${source === 'HTTP' ? 'HTTP ' + status : status}` : status;
-
+  const isLogUp = isProbeStatusOnline(status, isGrouped ? "http" : "other");
+  const finalStatus = source ? `[${source}] ${source === "HTTP" ? "HTTP " + status : status}` : status;
   const html = `
     <tr style="border-bottom:1px solid var(--border-soft); transition: background-color 0.5s ease;">
       <td style="padding: 10px 14px; font-size:0.75rem; color:var(--text-secondary); font-family:monospace;">${new Date(timestamp).toLocaleString()}</td>
-      <td style="padding: 10px 14px; font-weight:700; font-size:0.75rem; color:${isLogUp ? 'var(--color-optimal)' : '#f43f5e'};">${finalStatus}</td>
+      <td style="padding: 10px 14px; font-weight:700; font-size:0.75rem; color:${isLogUp ? "var(--color-optimal)" : "#f43f5e"};">${finalStatus}</td>
       <td style="padding: 10px 14px; font-family:monospace; font-size:0.75rem;">${parseFloat(latency).toFixed(2)} ms</td>
     </tr>
   `;
-
-  tableBody.insertAdjacentHTML('afterbegin', html);
-
+  tableBody.insertAdjacentHTML("afterbegin", html);
   const firstRow = tableBody.firstElementChild;
   if (firstRow) {
-    firstRow.style.backgroundColor = 'rgba(200, 140, 60, 0.15)';
+    firstRow.style.backgroundColor = "rgba(200, 140, 60, 0.15)";
     setTimeout(() => {
-      firstRow.style.backgroundColor = 'transparent';
-    }, 1000);
+      firstRow.style.backgroundColor = "transparent";
+    }, 1e3);
   }
-
   while (tableBody.children.length > 30) {
     tableBody.lastElementChild.remove();
   }
 }
-
 function updateLevel3HeadingStats() {
   if (!activeProbeMonitorId) return;
-  const ids = String(activeProbeMonitorId).split(',');
+  const ids = String(activeProbeMonitorId).split(",");
   const isGrouped = ids.length > 1;
   const eList = Object.values(cachedEntities);
-
   if (isGrouped) {
-    const mon1Status = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[0]}-status`);
-    const mon2Status = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[1]}-status`);
-    const mon1Lat = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[0]}-latency`);
-    const mon2Lat = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[1]}-latency`);
-
+    const mon1Status = eList.find((e) => e.node_id === "monitors" && e.entity_key === `monitor-${ids[0]}-status`);
+    const mon2Status = eList.find((e) => e.node_id === "monitors" && e.entity_key === `monitor-${ids[1]}-status`);
+    const mon1Lat = eList.find((e) => e.node_id === "monitors" && e.entity_key === `monitor-${ids[0]}-latency`);
+    const mon2Lat = eList.find((e) => e.node_id === "monitors" && e.entity_key === `monitor-${ids[1]}-latency`);
     if (mon1Status && mon2Status) {
-      const isUp1 = isProbeStatusOnline(mon1Status.value, 'http');
-      const isUp2 = isProbeStatusOnline(mon2Status.value, 'http');
-
-      let label = 'BOTH OFFLINE';
-      let color = '#f43f5e';
+      const isUp1 = isProbeStatusOnline(mon1Status.value, "http");
+      const isUp2 = isProbeStatusOnline(mon2Status.value, "http");
+      let label = "BOTH OFFLINE";
+      let color = "#f43f5e";
       if (isUp1 && isUp2) {
-        label = 'BOTH ONLINE';
-        color = 'var(--color-optimal)';
+        label = "BOTH ONLINE";
+        color = "var(--color-optimal)";
       } else if (isUp1) {
-        label = 'HTTP ONLINE';
-        color = 'var(--accent-orange)';
+        label = "HTTP ONLINE";
+        color = "var(--accent-orange)";
       } else if (isUp2) {
-        label = 'HTTPS ONLINE';
-        color = 'var(--accent-orange)';
+        label = "HTTPS ONLINE";
+        color = "var(--accent-orange)";
       }
-
-      const statusEl = document.getElementById('lvl3-stat-status');
+      const statusEl = document.getElementById("lvl3-stat-status");
       if (statusEl) {
         statusEl.textContent = label;
         statusEl.style.color = color;
       }
-
-      let latString = '-- ms';
+      let latString = "-- ms";
       const latVal1 = mon1Lat ? parseFloat(mon1Lat.value) : null;
       const latVal2 = mon2Lat ? parseFloat(mon2Lat.value) : null;
-
       if (latVal1 !== null && latVal2 !== null && latVal1 > 0 && latVal2 > 0) {
         latString = `HTTP: ${latVal1.toFixed(1)} ms | HTTPS: ${latVal2.toFixed(1)} ms`;
       } else if (latVal1 !== null && latVal1 > 0) {
@@ -5513,155 +4694,135 @@ function updateLevel3HeadingStats() {
       } else if (latVal2 !== null && latVal2 > 0) {
         latString = `HTTP: -- ms | HTTPS: ${latVal2.toFixed(1)} ms`;
       }
-
-      const latEl = document.getElementById('lvl3-stat-latency');
+      const latEl = document.getElementById("lvl3-stat-latency");
       if (latEl) latEl.textContent = latString;
     }
   } else {
-    const monStatus = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[0]}-status`);
-    const monLat = eList.find(e => e.node_id === 'monitors' && e.entity_key === `monitor-${ids[0]}-latency`);
-
+    const monStatus = eList.find((e) => e.node_id === "monitors" && e.entity_key === `monitor-${ids[0]}-status`);
+    const monLat = eList.find((e) => e.node_id === "monitors" && e.entity_key === `monitor-${ids[0]}-latency`);
     if (monStatus) {
-      const isUp = isProbeStatusOnline(monStatus.value, 'other');
-      const color = isUp ? 'var(--color-optimal)' : '#f43f5e';
-      const label = isUp ? (monStatus.entity_key.includes('ssl') ? monStatus.value : 'ONLINE') : 'OFFLINE';
-
-      const statusEl = document.getElementById('lvl3-stat-status');
+      const isUp = isProbeStatusOnline(monStatus.value, "other");
+      const color = isUp ? "var(--color-optimal)" : "#f43f5e";
+      const label = isUp ? monStatus.entity_key.includes("ssl") ? monStatus.value : "ONLINE" : "OFFLINE";
+      const statusEl = document.getElementById("lvl3-stat-status");
       if (statusEl) {
         statusEl.textContent = label;
         statusEl.style.color = color;
       }
     }
-
     if (monLat) {
       const latVal = parseFloat(monLat.value);
-      const latEl = document.getElementById('lvl3-stat-latency');
-      if (latEl) latEl.textContent = (latVal > 0) ? `${latVal.toFixed(1)} ms` : '-- ms';
+      const latEl = document.getElementById("lvl3-stat-latency");
+      if (latEl) latEl.textContent = latVal > 0 ? `${latVal.toFixed(1)} ms` : "-- ms";
     }
   }
 }
-
-window.activeAuditFilter = 'all';
-
+window.activeAuditFilter = "all";
 function filterAuditLogs(severity) {
   window.activeAuditFilter = severity;
-
-  document.querySelectorAll('.audit-filter-btn').forEach(btn => {
-    if (btn.getAttribute('data-filter') === severity) {
-      btn.classList.add('active');
-      btn.style.background = 'var(--bg-secondary)';
-      btn.style.color = 'var(--text-primary)';
+  document.querySelectorAll(".audit-filter-btn").forEach((btn) => {
+    if (btn.getAttribute("data-filter") === severity) {
+      btn.classList.add("active");
+      btn.style.background = "var(--bg-secondary)";
+      btn.style.color = "var(--text-primary)";
     } else {
-      btn.classList.remove('active');
-      btn.style.background = 'transparent';
-      btn.style.color = 'var(--text-secondary)';
+      btn.classList.remove("active");
+      btn.style.background = "transparent";
+      btn.style.color = "var(--text-secondary)";
     }
   });
-
-  document.querySelectorAll('.audit-row').forEach(row => {
+  document.querySelectorAll(".audit-row").forEach((row) => {
     const rowSev = row.dataset.severity;
-    if (severity === 'all' || rowSev === severity) {
-      row.style.display = 'flex';
+    if (severity === "all" || rowSev === severity) {
+      row.style.display = "flex";
     } else {
-      row.style.display = 'none';
+      row.style.display = "none";
     }
   });
 }
 
-// ==========================================
-// ALERT ROUTER ENGINE & RULES COMPOSER LOGIC
-// ==========================================
+// --- [Module: src/05-alert-router.ts] ---
 window.cachedChannels = [];
 window.activeAlertRuleId = null;
 window.activeAlertChannelId = null;
-
 function switchAlertSubView(viewName) {
-  document.querySelectorAll('.alert-content-pane').forEach(p => p.classList.add('hide'));
-  document.querySelectorAll('#alert-sub-navigation .sub-nav-btn').forEach(btn => {
-    btn.classList.remove('active');
-    btn.style.background = 'none';
-    btn.style.color = 'var(--text-secondary)';
-    const icon = btn.querySelector('i');
-    if (icon) icon.style.color = 'var(--text-secondary)';
+  document.querySelectorAll(".alert-content-pane").forEach((p) => p.classList.add("hide"));
+  document.querySelectorAll("#alert-sub-navigation .sub-nav-btn").forEach((btn) => {
+    btn.classList.remove("active");
+    btn.style.background = "none";
+    btn.style.color = "var(--text-secondary)";
+    const icon = btn.querySelector("i");
+    if (icon) icon.style.color = "var(--text-secondary)";
   });
-
   const activePane = document.getElementById(`alert-sub-view-${viewName}`);
-  if (activePane) activePane.classList.remove('hide');
-
+  if (activePane) activePane.classList.remove("hide");
   const activeBtn = document.getElementById(`alert-subnav-${viewName}`);
   if (activeBtn) {
-    activeBtn.classList.add('active');
-    activeBtn.style.background = 'var(--bg-secondary)';
-    activeBtn.style.color = 'var(--text-primary)';
-    const icon = activeBtn.querySelector('i');
-    if (icon) icon.style.color = 'var(--accent-orange)';
+    activeBtn.classList.add("active");
+    activeBtn.style.background = "var(--bg-secondary)";
+    activeBtn.style.color = "var(--text-primary)";
+    const icon = activeBtn.querySelector("i");
+    if (icon) icon.style.color = "var(--accent-orange)";
   }
 }
-
 window.cachedGroups = [];
-
 async function loadMonitorGroups() {
   const { httpUrl } = getApiUrls();
-  const listEl = document.getElementById('alert-groups-list');
+  const listEl = document.getElementById("alert-groups-list");
   if (!listEl) return;
-
   try {
     const res = await fetch(`${httpUrl}/api/monitor-groups`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     window.cachedGroups = data;
-
     if (data.length === 0) {
       listEl.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No target groups configured yet.</p>`;
     } else {
-      listEl.innerHTML = data.map(grp => `
+      listEl.innerHTML = data.map((grp) => `
         <div class="channel-card" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:16px; border:1px solid var(--border-soft); border-radius:8px;">
           <div>
             <h4 style="margin:0; font-size:0.95rem; color:var(--text-primary); font-weight:600;">${grp.name}</h4>
             <span style="font-size:0.75rem; color:var(--text-secondary); display:flex; align-items:center; gap:6px; margin-top:4px;">
               <i class="fa-solid fa-server" style="color:var(--accent-orange); font-size:0.7rem;"></i>
-              ${grp.monitor_count === 1 ? '1 Monitor mapped' : `${grp.monitor_count} Monitors mapped`}
+              ${grp.monitor_count === 1 ? "1 Monitor mapped" : `${grp.monitor_count} Monitors mapped`}
             </span>
           </div>
           <button class="btn btn-secondary" onclick="deleteMonitorGroup(${grp.id})" style="padding:6px 12px; font-size:0.72rem; color:var(--semantic-red); border-color:rgba(239, 68, 68, 0.2); background:rgba(239, 68, 68, 0.05); cursor:pointer;">
             Remove Group
           </button>
         </div>
-      `).join('');
+      `).join("");
     }
   } catch (err) {
     console.error("Failed to load monitor groups:", err);
     listEl.innerHTML = `<p style="color:var(--semantic-red); font-size:0.8rem; text-align:center; padding:24px 0;">Failed to fetch monitor groups: ${err.message}</p>`;
   }
 }
-
 async function createMonitorGroup() {
-  const inputEl = document.getElementById('new-group-name');
+  const inputEl = document.getElementById("new-group-name");
   if (!inputEl) return;
   const name = inputEl.value.trim();
   if (!name) {
     alert("Group Name cannot be empty.");
     return;
   }
-
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/monitor-groups`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name })
     });
     if (!res.ok) {
       const errData = await res.json();
       throw new Error(errData.detail || `HTTP ${res.status}`);
     }
-    inputEl.value = '';
+    inputEl.value = "";
     await loadMonitorGroups();
   } catch (err) {
     alert(`Failed to create Target Group: ${err.message}`);
   }
 }
-
 async function deleteMonitorGroup(gid) {
   if (!await showConfirm("Are you sure you want to delete this target group? This will unmap any monitors assigned to it.", "Delete Target Group")) {
     return;
@@ -5669,7 +4830,7 @@ async function deleteMonitorGroup(gid) {
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/monitor-groups/${gid}`, {
-      method: 'DELETE'
+      method: "DELETE"
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     await loadMonitorGroups();
@@ -5677,11 +4838,9 @@ async function deleteMonitorGroup(gid) {
     alert(`Failed to delete Target Group: ${err.message}`);
   }
 }
-
 async function populateMonitorGroupCheckboxes(targetContainerId, selectedGroupIds = []) {
   const container = document.getElementById(targetContainerId);
   if (!container) return;
-
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/monitor-groups`);
@@ -5691,50 +4850,43 @@ async function populateMonitorGroupCheckboxes(targetContainerId, selectedGroupId
   } catch (err) {
     console.error("Failed to sync group checkboxes:", err);
   }
-
   if (window.cachedGroups.length === 0) {
     container.innerHTML = `<span style="color:var(--text-secondary); font-size:0.75rem;">No target groups defined yet. Go to Alert Router > Target Groups to add.</span>`;
     return;
   }
-
-  container.innerHTML = window.cachedGroups.map(grp => `
+  container.innerHTML = window.cachedGroups.map((grp) => `
     <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer;">
-      <input type="checkbox" class="mon-group-chk" value="${grp.id}" ${selectedGroupIds.includes(grp.id) ? 'checked' : ''} style="accent-color:var(--accent-orange);">
+      <input type="checkbox" class="mon-group-chk" value="${grp.id}" ${selectedGroupIds.includes(grp.id) ? "checked" : ""} style="accent-color:var(--accent-orange);">
       <span>${grp.name}</span>
     </label>
-  `).join('');
+  `).join("");
 }
-
 async function loadNotificationChannels() {
   const { httpUrl } = getApiUrls();
-  const listEl = document.getElementById('alert-channels-list');
+  const listEl = document.getElementById("alert-channels-list");
   if (!listEl) return;
-
   try {
     const res = await fetch(`${httpUrl}/api/alerts/channels`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     window.cachedChannels = data;
-
     if (data.length === 0) {
       listEl.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No notification channels configured yet.</p>`;
       return;
     }
-
-    listEl.innerHTML = data.map(chan => {
-      let iconName = 'bell';
-      let details = '';
-      if (chan.type === 'smtp') {
-        iconName = 'mail';
+    listEl.innerHTML = data.map((chan) => {
+      let iconName = "bell";
+      let details = "";
+      if (chan.type === "smtp") {
+        iconName = "mail";
         details = `Host: ${chan.config.host}:${chan.config.port} | To: ${chan.config.to_address}`;
-      } else if (chan.type === 'telegram') {
-        iconName = 'message-square';
+      } else if (chan.type === "telegram") {
+        iconName = "message-square";
         details = `Chat ID: ${chan.config.chat_id}`;
-      } else if (chan.type === 'pushover') {
-        iconName = 'smartphone';
+      } else if (chan.type === "pushover") {
+        iconName = "smartphone";
         details = `User Key: ${chan.config.user_key.substring(0, 8)}... | Priority: ${chan.config.priority || 0}`;
       }
-
       return `
         <div style="background:#1d1b18; border:1px solid var(--border-soft); border-radius:8px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center;">
           <div style="display:flex; align-items:center; gap:12px;">
@@ -5753,80 +4905,68 @@ async function loadNotificationChannels() {
             </button>
           </div>
         </div>`;
-    }).join('');
-
+    }).join("");
     if (window.lucide) window.lucide.createIcons();
   } catch (err) {
     listEl.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem;">Failure loading channels: ${err.message}</p>`;
   }
 }
-
 async function loadAlertRules() {
   const { httpUrl } = getApiUrls();
-  const listEl = document.getElementById('alert-rules-list');
+  const listEl = document.getElementById("alert-rules-list");
   if (!listEl) return;
-
   try {
     const res = await fetch(`${httpUrl}/api/alerts/rules`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-
     if (data.length === 0) {
       listEl.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">No warning rules configured yet.</p>`;
       return;
     }
-
-    listEl.innerHTML = data.map(rule => {
-      // Build Target description
-      let targetDesc = '';
+    listEl.innerHTML = data.map((rule) => {
+      let targetDesc = "";
       if (rule.targets_list && rule.targets_list.length > 0) {
         targetDesc = `${rule.targets_list.length} Targets`;
-      } else if (rule.target_type === 'all') {
-        targetDesc = 'All Monitors';
-      } else if (rule.target_type.startsWith('type_')) {
+      } else if (rule.target_type === "all") {
+        targetDesc = "All Monitors";
+      } else if (rule.target_type.startsWith("type_")) {
         targetDesc = `All ${rule.target_type.slice(5).toUpperCase()} Probes`;
-      } else if (rule.target_type.startsWith('category_')) {
+      } else if (rule.target_type.startsWith("category_")) {
         targetDesc = `Category: ${rule.target_type.slice(9)}`;
-      } else if (rule.target_type === 'custom') {
+      } else if (rule.target_type === "custom") {
         targetDesc = `${rule.monitors_list ? rule.monitors_list.length : 0} Monitors`;
-      } else if (rule.target_type === 'custom_groups') {
-        const grpNames = (rule.target_groups || []).map(gid => {
-          const match = window.cachedGroups.find(g => g.id === gid);
+      } else if (rule.target_type === "custom_groups") {
+        const grpNames = (rule.target_groups || []).map((gid) => {
+          const match = window.cachedGroups.find((g) => g.id === gid);
           return match ? match.name : `Group #${gid}`;
-        }).join(', ') || 'No groups selected';
-        const opLabel = (rule.target_groups_operator === 'all') ? 'ALL' : 'ANY';
+        }).join(", ") || "No groups selected";
+        const opLabel = rule.target_groups_operator === "all" ? "ALL" : "ANY";
         targetDesc = `Groups (${opLabel}): ${grpNames}`;
       }
-
-      // Build conditions presentation text
       const condsText = rule.rules_json.map((c, idx) => {
-        const prefix = idx > 0 ? ` <span style="color:var(--accent-orange); font-weight:700;">${c.join_type}</span> ` : '';
+        const prefix = idx > 0 ? ` <span style="color:var(--accent-orange); font-weight:700;">${c.join_type}</span> ` : "";
         return `${prefix}<span style="color:var(--text-primary); font-family:monospace;">${c.entity_key}</span> ${c.operator} <span style="font-family:monospace; color:var(--accent-orange);">${c.value}</span>`;
-      }).join('');
-
-      const isFiring = rule.status === 'firing';
-      const statusLabel = isFiring ? 'FIRING' : 'NORMAL';
-      const statusColorClass = isFiring ? 'status-pill critical' : 'status-pill optimal';
-
-      // Find channel names associated
-      const chanNames = rule.channel_ids.map(cid => {
-        const matchingChan = window.cachedChannels.find(c => c.id === cid);
+      }).join("");
+      const isFiring = rule.status === "firing";
+      const statusLabel = isFiring ? "FIRING" : "NORMAL";
+      const statusColorClass = isFiring ? "status-pill critical" : "status-pill optimal";
+      const chanNames = rule.channel_ids.map((cid) => {
+        const matchingChan = window.cachedChannels.find((c) => c.id === cid);
         return matchingChan ? matchingChan.name : `Channel #${cid}`;
-      }).join(', ') || 'No notifier linked';
-
+      }).join(", ") || "No notifier linked";
       return `
         <div style="background:#1d1b18; border:1px solid var(--border-soft); border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:12px;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start;">
             <div>
               <h4 style="font-size:0.85rem; font-weight:700; color:var(--text-primary); margin:0 0 4px 0;">${rule.name}</h4>
               <div style="font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">
-                ${condsText} <span style="color:var(--text-muted); font-size:0.7rem; margin-left: 8px;">(Cooldown: ${rule.cooldown_interval || '5m'})</span>
+                ${condsText} <span style="color:var(--text-muted); font-size:0.7rem; margin-left: 8px;">(Cooldown: ${rule.cooldown_interval || "5m"})</span>
               </div>
             </div>
             <div style="display:flex; align-items:center; gap:12px;">
               <span class="${statusColorClass}" style="font-size:0.65rem;">${statusLabel}</span>
               <label class="switch" title="Enable/Disable Rule" onclick="event.stopPropagation()">
-                <input type="checkbox" ${rule.enabled !== false ? 'checked' : ''} onchange="toggleRuleEnabled(${rule.id}, this.checked, event)">
+                <input type="checkbox" ${rule.enabled !== false ? "checked" : ""} onchange="toggleRuleEnabled(${rule.id}, this.checked, event)">
                 <span class="slider"></span>
               </label>
             </div>
@@ -5845,51 +4985,44 @@ async function loadAlertRules() {
             </div>
           </div>
         </div>`;
-    }).join('');
-
+    }).join("");
     if (window.lucide) window.lucide.createIcons();
   } catch (err) {
     listEl.innerHTML = `<p style="color:#f43f5e; font-size:0.8rem;">Failure loading rules: ${err.message}</p>`;
   }
 }
-
 function openChannelComposer(cid = null) {
   window.activeAlertChannelId = cid;
-  const modal = document.getElementById('channel-modal');
-  const titleEl = document.getElementById('channel-modal-title');
-  const nameInput = document.getElementById('chan-name');
-  const typeSelect = document.getElementById('chan-type');
-
+  const modal = document.getElementById("channel-modal");
+  const titleEl = document.getElementById("channel-modal-title");
+  const nameInput = document.getElementById("chan-name");
+  const typeSelect = document.getElementById("chan-type");
   if (!modal) return;
-
   if (cid) {
-    titleEl.textContent = 'Edit Notification Channel';
-    const chan = window.cachedChannels.find(c => c.id === cid);
+    titleEl.textContent = "Edit Notification Channel";
+    const chan = window.cachedChannels.find((c) => c.id === cid);
     if (chan) {
       nameInput.value = chan.name;
       typeSelect.value = chan.type;
       renderChannelConfigFields(chan.config);
     }
   } else {
-    titleEl.textContent = 'Add Notification Channel';
-    nameInput.value = '';
-    typeSelect.value = 'smtp';
+    titleEl.textContent = "Add Notification Channel";
+    nameInput.value = "";
+    typeSelect.value = "smtp";
     renderChannelConfigFields({});
   }
-
-  openModal('channel-modal');
+  openModal("channel-modal");
 }
-
 function renderChannelConfigFields(currentConfig = {}) {
-  const container = document.getElementById('chan-dynamic-fields');
-  const type = document.getElementById('chan-type').value;
+  const container = document.getElementById("chan-dynamic-fields");
+  const type = document.getElementById("chan-type").value;
   if (!container) return;
-
-  if (type === 'smtp') {
+  if (type === "smtp") {
     container.innerHTML = `
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">SMTP Server Host</label>
-        <input type="text" id="smtp-host" placeholder="smtp.gmail.com" value="${currentConfig.host || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="text" id="smtp-host" placeholder="smtp.gmail.com" value="${currentConfig.host || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">SMTP Port</label>
@@ -5897,73 +5030,73 @@ function renderChannelConfigFields(currentConfig = {}) {
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Sender / Username (Optional)</label>
-        <input type="text" id="smtp-user" placeholder="e.g. notifications@yourdomain.com" value="${currentConfig.username || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="text" id="smtp-user" placeholder="e.g. notifications@yourdomain.com" value="${currentConfig.username || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Password (Optional)</label>
-        <input type="password" id="smtp-pass" placeholder="••••••••" value="${currentConfig.password || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="password" id="smtp-pass" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" value="${currentConfig.password || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Sender Envelope From address</label>
-        <input type="text" id="smtp-from" placeholder="notifications@yourdomain.com" value="${currentConfig.from_address || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="text" id="smtp-from" placeholder="notifications@yourdomain.com" value="${currentConfig.from_address || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Recipient To address</label>
-        <input type="text" id="smtp-to" placeholder="sysalerts@coxonfam.au" value="${currentConfig.to_address || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="text" id="smtp-to" placeholder="sysalerts@coxonfam.au" value="${currentConfig.to_address || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
     `;
-  } else if (type === 'telegram') {
+  } else if (type === "telegram") {
     container.innerHTML = `
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Telegram Bot Token</label>
-        <input type="password" id="telegram-token" placeholder="bot123456789:ABCDefgh..." value="${currentConfig.bot_token || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="password" id="telegram-token" placeholder="bot123456789:ABCDefgh..." value="${currentConfig.bot_token || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Chat ID / Target Channel</label>
-        <input type="text" id="telegram-chat" placeholder="e.g. -10015839958" value="${currentConfig.chat_id || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="text" id="telegram-chat" placeholder="e.g. -10015839958" value="${currentConfig.chat_id || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
     `;
-  } else if (type === 'pushover') {
+  } else if (type === "pushover") {
     container.innerHTML = `
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Pushover User Key</label>
-        <input type="password" id="pushover-user" placeholder="uabcdefg123456..." value="${currentConfig.user_key || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="password" id="pushover-user" placeholder="uabcdefg123456..." value="${currentConfig.user_key || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Application API Token</label>
-        <input type="password" id="pushover-token" placeholder="azxy123456..." value="${currentConfig.api_token || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="password" id="pushover-token" placeholder="azxy123456..." value="${currentConfig.api_token || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Sound Ringtone</label>
         <select id="pushover-sound" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
-          <option value="pushover" ${currentConfig.sound === 'pushover' ? 'selected' : ''}>Pushover Default</option>
-          <option value="bike" ${currentConfig.sound === 'bike' ? 'selected' : ''}>Bike</option>
-          <option value="bugle" ${currentConfig.sound === 'bugle' ? 'selected' : ''}>Bugle</option>
-          <option value="classical" ${currentConfig.sound === 'classical' ? 'selected' : ''}>Classical</option>
-          <option value="cosmic" ${currentConfig.sound === 'cosmic' ? 'selected' : ''}>Cosmic</option>
-          <option value="falling" ${currentConfig.sound === 'falling' ? 'selected' : ''}>Falling</option>
-          <option value="gamelan" ${currentConfig.sound === 'gamelan' ? 'selected' : ''}>Gamelan</option>
-          <option value="incoming" ${currentConfig.sound === 'incoming' ? 'selected' : ''}>Incoming Call</option>
-          <option value="intermission" ${currentConfig.sound === 'intermission' ? 'selected' : ''}>Intermission</option>
-          <option value="magic" ${currentConfig.sound === 'magic' ? 'selected' : ''}>Magic</option>
-          <option value="mechanical" ${currentConfig.sound === 'mechanical' ? 'selected' : ''}>Mechanical</option>
-          <option value="pianobar" ${currentConfig.sound === 'pianobar' ? 'selected' : ''}>Pianobar</option>
-          <option value="siren" ${currentConfig.sound === 'siren' ? 'selected' : ''}>Siren</option>
-          <option value="spacealarm" ${currentConfig.sound === 'spacealarm' ? 'selected' : ''}>Space Alarm</option>
-          <option value="tugboat" ${currentConfig.sound === 'tugboat' ? 'selected' : ''}>Tug Boat</option>
+          <option value="pushover" ${currentConfig.sound === "pushover" ? "selected" : ""}>Pushover Default</option>
+          <option value="bike" ${currentConfig.sound === "bike" ? "selected" : ""}>Bike</option>
+          <option value="bugle" ${currentConfig.sound === "bugle" ? "selected" : ""}>Bugle</option>
+          <option value="classical" ${currentConfig.sound === "classical" ? "selected" : ""}>Classical</option>
+          <option value="cosmic" ${currentConfig.sound === "cosmic" ? "selected" : ""}>Cosmic</option>
+          <option value="falling" ${currentConfig.sound === "falling" ? "selected" : ""}>Falling</option>
+          <option value="gamelan" ${currentConfig.sound === "gamelan" ? "selected" : ""}>Gamelan</option>
+          <option value="incoming" ${currentConfig.sound === "incoming" ? "selected" : ""}>Incoming Call</option>
+          <option value="intermission" ${currentConfig.sound === "intermission" ? "selected" : ""}>Intermission</option>
+          <option value="magic" ${currentConfig.sound === "magic" ? "selected" : ""}>Magic</option>
+          <option value="mechanical" ${currentConfig.sound === "mechanical" ? "selected" : ""}>Mechanical</option>
+          <option value="pianobar" ${currentConfig.sound === "pianobar" ? "selected" : ""}>Pianobar</option>
+          <option value="siren" ${currentConfig.sound === "siren" ? "selected" : ""}>Siren</option>
+          <option value="spacealarm" ${currentConfig.sound === "spacealarm" ? "selected" : ""}>Space Alarm</option>
+          <option value="tugboat" ${currentConfig.sound === "tugboat" ? "selected" : ""}>Tug Boat</option>
         </select>
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Message Priority</label>
         <select id="pushover-priority" onchange="togglePushoverCriticalFields(this.value)" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
-          <option value="-2" ${currentConfig.priority === -2 ? 'selected' : ''}>Lowest (Silent Background)</option>
-          <option value="-1" ${currentConfig.priority === -1 ? 'selected' : ''}>Low (No sound/vibe)</option>
-          <option value="0" ${currentConfig.priority === 0 || !currentConfig.priority ? 'selected' : ''}>Normal</option>
-          <option value="1" ${currentConfig.priority === 1 ? 'selected' : ''}>High (Bypasses quiet hours)</option>
-          <option value="2" ${currentConfig.priority === 2 ? 'selected' : ''}>Emergency / Critical Alert</option>
+          <option value="-2" ${currentConfig.priority === -2 ? "selected" : ""}>Lowest (Silent Background)</option>
+          <option value="-1" ${currentConfig.priority === -1 ? "selected" : ""}>Low (No sound/vibe)</option>
+          <option value="0" ${currentConfig.priority === 0 || !currentConfig.priority ? "selected" : ""}>Normal</option>
+          <option value="1" ${currentConfig.priority === 1 ? "selected" : ""}>High (Bypasses quiet hours)</option>
+          <option value="2" ${currentConfig.priority === 2 ? "selected" : ""}>Emergency / Critical Alert</option>
         </select>
       </div>
-      <div id="pushover-critical-params" style="display:${currentConfig.priority == 2 ? 'flex' : 'none'}; flex-direction:column; gap:10px;">
+      <div id="pushover-critical-params" style="display:${currentConfig.priority == 2 ? "flex" : "none"}; flex-direction:column; gap:10px;">
         <div style="display:flex; flex-direction:column; gap:4px;">
           <label style="font-size:0.7rem; color:var(--text-secondary);">Retry interval (seconds)</label>
           <input type="number" id="pushover-retry" placeholder="60" value="${currentConfig.retry || 60}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
@@ -5974,23 +5107,23 @@ function renderChannelConfigFields(currentConfig = {}) {
         </div>
       </div>
     `;
-  } else if (type === 'webhook') {
+  } else if (type === "webhook") {
     container.innerHTML = `
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Webhook URL Endpoint</label>
-        <input type="text" id="webhook-url" placeholder="https://api.my-domain.com/alerts" value="${currentConfig.url || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="text" id="webhook-url" placeholder="https://api.my-domain.com/alerts" value="${currentConfig.url || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">HTTP Request Method</label>
         <select id="webhook-method" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
-          <option value="POST" ${currentConfig.method === 'POST' ? 'selected' : ''}>POST</option>
-          <option value="PUT" ${currentConfig.method === 'PUT' ? 'selected' : ''}>PUT</option>
-          <option value="GET" ${currentConfig.method === 'GET' ? 'selected' : ''}>GET</option>
+          <option value="POST" ${currentConfig.method === "POST" ? "selected" : ""}>POST</option>
+          <option value="PUT" ${currentConfig.method === "PUT" ? "selected" : ""}>PUT</option>
+          <option value="GET" ${currentConfig.method === "GET" ? "selected" : ""}>GET</option>
         </select>
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Custom Headers (JSON string - Optional)</label>
-        <input type="text" id="webhook-headers" placeholder='{"Authorization": "Bearer key"}' value='${currentConfig.headers ? (typeof currentConfig.headers === "string" ? currentConfig.headers : JSON.stringify(currentConfig.headers)) : ""}' style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
+        <input type="text" id="webhook-headers" placeholder='{"Authorization": "Bearer key"}' value='${currentConfig.headers ? typeof currentConfig.headers === "string" ? currentConfig.headers : JSON.stringify(currentConfig.headers) : ""}' style="background:#221d16; color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:6px; font-size:0.75rem;">
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label style="font-size:0.7rem; color:var(--text-secondary);">Payload Template (JSON - Use {{message}}, {{title}})</label>
@@ -5999,64 +5132,59 @@ function renderChannelConfigFields(currentConfig = {}) {
     `;
   }
 }
-
 function togglePushoverCriticalFields(val) {
-  const customFields = document.getElementById('pushover-critical-params');
+  const customFields = document.getElementById("pushover-critical-params");
   if (customFields) {
-    customFields.style.display = (parseInt(val) === 2) ? 'flex' : 'none';
+    customFields.style.display = parseInt(val) === 2 ? "flex" : "none";
   }
 }
-
 function gatherChannelConfig() {
-  const type = document.getElementById('chan-type').value;
+  const type = document.getElementById("chan-type").value;
   let cfg = {};
-
-  if (type === 'smtp') {
+  if (type === "smtp") {
     cfg = {
-      host: document.getElementById('smtp-host').value.trim(),
-      port: parseInt(document.getElementById('smtp-port').value) || 587,
-      username: document.getElementById('smtp-user').value.trim(),
-      password: document.getElementById('smtp-pass').value.trim(),
-      from_address: document.getElementById('smtp-from').value.trim(),
-      to_address: document.getElementById('smtp-to').value.trim()
+      host: document.getElementById("smtp-host").value.trim(),
+      port: parseInt(document.getElementById("smtp-port").value) || 587,
+      username: document.getElementById("smtp-user").value.trim(),
+      password: document.getElementById("smtp-pass").value.trim(),
+      from_address: document.getElementById("smtp-from").value.trim(),
+      to_address: document.getElementById("smtp-to").value.trim()
     };
-  } else if (type === 'telegram') {
+  } else if (type === "telegram") {
     cfg = {
-      bot_token: document.getElementById('telegram-token').value.trim(),
-      chat_id: document.getElementById('telegram-chat').value.trim()
+      bot_token: document.getElementById("telegram-token").value.trim(),
+      chat_id: document.getElementById("telegram-chat").value.trim()
     };
-  } else if (type === 'pushover') {
+  } else if (type === "pushover") {
     cfg = {
-      user_key: document.getElementById('pushover-user').value.trim(),
-      api_token: document.getElementById('pushover-token').value.trim(),
-      sound: document.getElementById('pushover-sound').value,
-      priority: parseInt(document.getElementById('pushover-priority').value)
+      user_key: document.getElementById("pushover-user").value.trim(),
+      api_token: document.getElementById("pushover-token").value.trim(),
+      sound: document.getElementById("pushover-sound").value,
+      priority: parseInt(document.getElementById("pushover-priority").value)
     };
     if (cfg.priority === 2) {
-      cfg.retry = parseInt(document.getElementById('pushover-retry').value) || 60;
-      cfg.expire = parseInt(document.getElementById('pushover-expire').value) || 3600;
+      cfg.retry = parseInt(document.getElementById("pushover-retry").value) || 60;
+      cfg.expire = parseInt(document.getElementById("pushover-expire").value) || 3600;
     }
-  } else if (type === 'webhook') {
+  } else if (type === "webhook") {
     cfg = {
-      url: document.getElementById('webhook-url').value.trim(),
-      method: document.getElementById('webhook-method').value,
-      headers: document.getElementById('webhook-headers').value.trim(),
-      payload_template: document.getElementById('webhook-template').value.trim()
+      url: document.getElementById("webhook-url").value.trim(),
+      method: document.getElementById("webhook-method").value,
+      headers: document.getElementById("webhook-headers").value.trim(),
+      payload_template: document.getElementById("webhook-template").value.trim()
     };
   }
   return cfg;
 }
-
 async function testCurrentChannelConfig() {
-  const type = document.getElementById('chan-type').value;
+  const type = document.getElementById("chan-type").value;
   const config = gatherChannelConfig();
-
   const { httpUrl } = getApiUrls();
   showToast("Dispatching test notification...", "info");
   try {
     const res = await fetch(`${httpUrl}/api/alerts/channels/test`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, config })
     });
     if (!res.ok) {
@@ -6068,47 +5196,41 @@ async function testCurrentChannelConfig() {
     showToast(`Test failed: ${err.message}`, "error");
   }
 }
-
 async function submitSaveChannel() {
-  const name = document.getElementById('chan-name').value.trim();
-  const type = document.getElementById('chan-type').value;
+  const name = document.getElementById("chan-name").value.trim();
+  const type = document.getElementById("chan-type").value;
   const config = gatherChannelConfig();
-
   if (!name) {
     alert("Profile configurations need a name!");
     return;
   }
-
   const { httpUrl } = getApiUrls();
   const cid = window.activeAlertChannelId;
-  const method = cid ? 'PUT' : 'POST';
+  const method = cid ? "PUT" : "POST";
   const url = cid ? `${httpUrl}/api/alerts/channels/${cid}` : `${httpUrl}/api/alerts/channels`;
-
   try {
     const res = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, type, config })
     });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
-    closeModal('channel-modal');
+    closeModal("channel-modal");
     loadNotificationChannels();
     showToast("Notification channel config profile committed.", "success");
   } catch (err) {
     alert(`Save failed: ${err.message}`);
   }
 }
-
 async function deleteChannelSource(cid, event) {
   if (event) event.stopPropagation();
   if (!await showConfirm("Are you sure you want to permanently delete this notification channel? Custom rules routing to it will lose reference.", "Delete Channel")) return;
-
   const { httpUrl } = getApiUrls();
   try {
-    const res = await fetch(`${httpUrl}/api/alerts/channels/${cid}`, { method: 'DELETE' });
+    const res = await fetch(`${httpUrl}/api/alerts/channels/${cid}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     loadNotificationChannels();
     showToast("Deleted notification channel profile.", "success");
@@ -6116,83 +5238,68 @@ async function deleteChannelSource(cid, event) {
     showToast(`Deletion failed: ${err.message}`, "error");
   }
 }
-
 function onRuleTargetTypeChange(val) {
-  const monWrapper = document.getElementById('rule-monitors-selection-wrapper');
-  const grpsWrapper = document.getElementById('rule-groups-selection-wrapper');
-  const label = document.getElementById('rule-monitors-selection-label');
-
-  if (val === 'custom_groups') {
-    if (monWrapper) monWrapper.style.display = 'none';
-    if (grpsWrapper) grpsWrapper.style.display = 'flex';
+  const monWrapper = document.getElementById("rule-monitors-selection-wrapper");
+  const grpsWrapper = document.getElementById("rule-groups-selection-wrapper");
+  const label = document.getElementById("rule-monitors-selection-label");
+  if (val === "custom_groups") {
+    if (monWrapper) monWrapper.style.display = "none";
+    if (grpsWrapper) grpsWrapper.style.display = "flex";
   } else {
-    if (monWrapper) monWrapper.style.display = 'flex';
-    if (grpsWrapper) grpsWrapper.style.display = 'none';
+    if (monWrapper) monWrapper.style.display = "flex";
+    if (grpsWrapper) grpsWrapper.style.display = "none";
     if (label) {
-      if (val === 'custom') {
-        label.textContent = 'Include Specific Monitors (Selected targets only)';
+      if (val === "custom") {
+        label.textContent = "Include Specific Monitors (Selected targets only)";
       } else {
-        label.textContent = 'Exclude Specific Monitors (Applies to all but checked targets)';
+        label.textContent = "Exclude Specific Monitors (Applies to all but checked targets)";
       }
     }
   }
 }
-
 async function openRuleComposer(rid = null) {
   window.activeAlertRuleId = rid;
-  const modal = document.getElementById('rule-modal');
-  const titleEl = document.getElementById('rule-modal-title');
-  const nameInput = document.getElementById('rule-name');
-
+  const modal = document.getElementById("rule-modal");
+  const titleEl = document.getElementById("rule-modal-title");
+  const nameInput = document.getElementById("rule-name");
   if (!modal) return;
-
-  // Reset inputs to default values
-  nameInput.value = '';
-  document.getElementById('rule-trigger-offline').checked = true;
-  document.getElementById('rule-trigger-latency').checked = false;
-  document.getElementById('rule-trigger-latency-ms').value = '100';
-  document.getElementById('rule-trigger-custom').checked = false;
-  document.getElementById('rule-trigger-custom-op').value = '==';
-  document.getElementById('rule-trigger-custom-val').value = '';
-  document.getElementById('rule-cooldown').value = '5m';
-
-  // Render linked channel checkboxes
-  const channelsContainer = document.getElementById('rule-channels-list-container');
+  nameInput.value = "";
+  document.getElementById("rule-trigger-offline").checked = true;
+  document.getElementById("rule-trigger-latency").checked = false;
+  document.getElementById("rule-trigger-latency-ms").value = "100";
+  document.getElementById("rule-trigger-custom").checked = false;
+  document.getElementById("rule-trigger-custom-op").value = "==";
+  document.getElementById("rule-trigger-custom-val").value = "";
+  document.getElementById("rule-cooldown").value = "5m";
+  const channelsContainer = document.getElementById("rule-channels-list-container");
   if (window.cachedChannels.length === 0) {
     channelsContainer.innerHTML = `<span style="font-size:0.72rem; color:var(--text-secondary);">No notification channels configured yet. Create a channel profile first!</span>`;
   } else {
-    channelsContainer.innerHTML = window.cachedChannels.map(chan => `
+    channelsContainer.innerHTML = window.cachedChannels.map((chan) => `
       <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer;">
         <input type="checkbox" class="rule-channel-chk" value="${chan.id}" style="accent-color:var(--accent-orange);">
         <span>${chan.name} (${chan.type.toUpperCase()})</span>
       </label>
-    `).join('');
+    `).join("");
   }
-
-  // Load and build the unified Mapped Alert Targets catalog (Monitors + Plugins)
-  const targetsListContainer = document.getElementById('rule-targets-selector-list');
+  const targetsListContainer = document.getElementById("rule-targets-selector-list");
   if (targetsListContainer) {
     targetsListContainer.innerHTML = `<span style="font-size:0.72rem; color:var(--text-secondary);">Loading available targets...</span>`;
   }
-
   let monitors = [];
   let plugins = [];
   const { httpUrl } = getApiUrls();
-
   try {
     const resMon = await fetch(`${httpUrl}/api/monitors`);
     if (resMon.ok) monitors = await resMon.json();
-
     const resPlugins = await fetch(`${httpUrl}/api/plugins/installed`);
     if (resPlugins.ok) plugins = await resPlugins.json();
     window.currentActivePluginsData = plugins;
   } catch (err) {
     console.error("Failed to load targets in rule composer:", err);
   }
-
-  let selectHtml = '';
-  // 1. Add health check monitors
-  monitors.forEach(m => {
+  let selectHtml = "";
+  monitors.forEach((m) => {
     const tKey = `monitor-${m.id}`;
     selectHtml += `
       <label class="rule-target-item" data-key="${tKey}" style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--text-primary); cursor:pointer; padding: 4px 0;">
@@ -6201,10 +5308,8 @@ async function openRuleComposer(rid = null) {
       </label>
     `;
   });
-
-  // 2. Add plugin daemon status, manifest entities, and live runtime plugin entities
-  const addedRuleEntityKeys = new Set();
-  plugins.forEach(p => {
+  const addedRuleEntityKeys = /* @__PURE__ */ new Set();
+  plugins.forEach((p) => {
     const statusKey = `plugin-${p.id}-status`;
     addedRuleEntityKeys.add(statusKey);
     selectHtml += `
@@ -6213,8 +5318,8 @@ async function openRuleComposer(rid = null) {
         <span>Plugin Daemon: <strong>${p.name}</strong> [${statusKey}]</span>
       </label>
     `;
-    const manifestEntities = (p.entities && typeof p.entities === 'object' && !Array.isArray(p.entities)) ? p.entities : {};
-    Object.keys(manifestEntities).forEach(entityKey => {
+    const manifestEntities = p.entities && typeof p.entities === "object" && !Array.isArray(p.entities) ? p.entities : {};
+    Object.keys(manifestEntities).forEach((entityKey) => {
       if (addedRuleEntityKeys.has(entityKey)) return;
       addedRuleEntityKeys.add(entityKey);
       const ent = manifestEntities[entityKey];
@@ -6225,8 +5330,7 @@ async function openRuleComposer(rid = null) {
         </label>
       `;
     });
-    // Also add live runtime entities reported by this plugin
-    Object.values(cachedEntities || {}).forEach(liveEnt => {
+    Object.values(cachedEntities || {}).forEach((liveEnt) => {
       if (!liveEnt || !liveEnt.entity_key || addedRuleEntityKeys.has(liveEnt.entity_key)) return;
       if (liveEnt.plugin_id === p.id || liveEnt.node_id === p.id || liveEnt.node_id === `plugin-${p.id}`) {
         addedRuleEntityKeys.add(liveEnt.entity_key);
@@ -6239,55 +5343,45 @@ async function openRuleComposer(rid = null) {
       }
     });
   });
-
   if (targetsListContainer) {
     targetsListContainer.innerHTML = selectHtml || `<span style="font-size:0.72rem; color:var(--text-secondary);">No active targets found.</span>`;
   }
-
-  // If in edit mode, populate saved values
   if (rid) {
-    titleEl.textContent = 'Edit Alert Rule';
+    titleEl.textContent = "Edit Alert Rule";
     try {
       const res = await fetch(`${httpUrl}/api/alerts/rules`);
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const list = await res.json();
-      const rule = list.find(r => r.id === rid);
+      const rule = list.find((r) => r.id === rid);
       if (rule) {
         nameInput.value = rule.name;
-        document.getElementById('rule-cooldown').value = rule.cooldown_interval || '5m';
-
+        document.getElementById("rule-cooldown").value = rule.cooldown_interval || "5m";
         let offlineChecked = false;
         let latencyChecked = false;
         let customChecked = false;
-
-        rule.rules_json.forEach(cond => {
-          if (cond.entity_key === 'status' && cond.operator === '!=' && cond.value === 'ONLINE') {
+        rule.rules_json.forEach((cond) => {
+          if (cond.entity_key === "status" && cond.operator === "!=" && cond.value === "ONLINE") {
             offlineChecked = true;
-          } else if (cond.entity_key === 'latency' && cond.operator === '>') {
+          } else if (cond.entity_key === "latency" && cond.operator === ">") {
             latencyChecked = true;
-            document.getElementById('rule-trigger-latency-ms').value = cond.value;
+            document.getElementById("rule-trigger-latency-ms").value = cond.value;
           } else {
             customChecked = true;
-            document.getElementById('rule-trigger-custom-op').value = cond.operator;
-            document.getElementById('rule-trigger-custom-val').value = cond.value;
+            document.getElementById("rule-trigger-custom-op").value = cond.operator;
+            document.getElementById("rule-trigger-custom-val").value = cond.value;
           }
         });
-
-        document.getElementById('rule-trigger-offline').checked = offlineChecked;
-        document.getElementById('rule-trigger-latency').checked = latencyChecked;
-        document.getElementById('rule-trigger-custom').checked = customChecked;
-
-        // Toggle selected channels
-        document.querySelectorAll('.rule-channel-chk').forEach(c => {
+        document.getElementById("rule-trigger-offline").checked = offlineChecked;
+        document.getElementById("rule-trigger-latency").checked = latencyChecked;
+        document.getElementById("rule-trigger-custom").checked = customChecked;
+        document.querySelectorAll(".rule-channel-chk").forEach((c) => {
           c.checked = rule.channel_ids.includes(parseInt(c.value));
         });
-
-        // Toggle selected targets
         const ruleTargets = rule.targets_list || [];
         if (ruleTargets.length === 0 && rule.monitors_list) {
-          rule.monitors_list.forEach(mid => ruleTargets.push(`monitor-${mid}`));
+          rule.monitors_list.forEach((mid) => ruleTargets.push(`monitor-${mid}`));
         }
-        document.querySelectorAll('.rule-target-chk').forEach(c => {
+        document.querySelectorAll(".rule-target-chk").forEach((c) => {
           c.checked = ruleTargets.includes(c.value);
         });
       }
@@ -6295,123 +5389,100 @@ async function openRuleComposer(rid = null) {
       alert(`Failed to load rule detail: ${err.message}`);
     }
   } else {
-    titleEl.textContent = 'Create Alert Rule';
+    titleEl.textContent = "Create Alert Rule";
   }
-
-  const searchInput = document.getElementById('rule-target-search');
-  if (searchInput) searchInput.value = '';
-
-  openModal('rule-modal');
+  const searchInput = document.getElementById("rule-target-search");
+  if (searchInput) searchInput.value = "";
+  openModal("rule-modal");
 }
-
-window.filterRuleTargetsSelector = function () {
-  const query = document.getElementById('rule-target-search').value.toLowerCase().trim();
-  const items = document.querySelectorAll('.rule-target-item');
-  items.forEach(item => {
+window.filterRuleTargetsSelector = function() {
+  const query = document.getElementById("rule-target-search").value.toLowerCase().trim();
+  const items = document.querySelectorAll(".rule-target-item");
+  items.forEach((item) => {
     const text = item.textContent.toLowerCase();
     if (text.includes(query)) {
-      item.style.display = 'flex';
+      item.style.display = "flex";
     } else {
-      item.style.display = 'none';
+      item.style.display = "none";
     }
   });
 };
-
 async function submitSaveRule() {
-  const name = document.getElementById('rule-name').value.trim();
+  const name = document.getElementById("rule-name").value.trim();
   if (!name) {
     alert("Warning rule must have a name!");
     return;
   }
-
-  // Gather conditions array from simplified checkboxes
   const conditions = [];
-
-  if (document.getElementById('rule-trigger-offline').checked) {
-    conditions.push({ entity_key: 'status', operator: '!=', value: 'ONLINE', join_type: 'OR' });
+  if (document.getElementById("rule-trigger-offline").checked) {
+    conditions.push({ entity_key: "status", operator: "!=", value: "ONLINE", join_type: "OR" });
   }
-
-  if (document.getElementById('rule-trigger-latency').checked) {
-    const lval = document.getElementById('rule-trigger-latency-ms').value.trim();
+  if (document.getElementById("rule-trigger-latency").checked) {
+    const lval = document.getElementById("rule-trigger-latency-ms").value.trim();
     if (!lval) {
       alert("Latency threshold limit cannot be empty!");
       return;
     }
-    conditions.push({ entity_key: 'latency', operator: '>', value: lval, join_type: 'OR' });
+    conditions.push({ entity_key: "latency", operator: ">", value: lval, join_type: "OR" });
   }
-
-  if (document.getElementById('rule-trigger-custom').checked) {
-    const cval = document.getElementById('rule-trigger-custom-val').value.trim();
+  if (document.getElementById("rule-trigger-custom").checked) {
+    const cval = document.getElementById("rule-trigger-custom-val").value.trim();
     if (!cval) {
       alert("Custom trigger threshold check value cannot be empty!");
       return;
     }
     conditions.push({
-      entity_key: 'status',
-      operator: document.getElementById('rule-trigger-custom-op').value,
+      entity_key: "status",
+      operator: document.getElementById("rule-trigger-custom-op").value,
       value: cval,
-      join_type: 'OR'
+      join_type: "OR"
     });
   }
-
   if (conditions.length === 0) {
     alert("Please enable at least 1 trigger condition!");
     return;
   }
-
-  // Clear first join type connector
-  conditions[0].join_type = '';
-
-  // Gather channel IDs
+  conditions[0].join_type = "";
   const channel_ids = [];
-  document.querySelectorAll('.rule-channel-chk:checked').forEach(c => {
+  document.querySelectorAll(".rule-channel-chk:checked").forEach((c) => {
     channel_ids.push(parseInt(c.value));
   });
-
   if (channel_ids.length === 0) {
     alert("Please select at least 1 destination notification channel!");
     return;
   }
-
-  // Gather target keys list
   const targets_list = [];
-  document.querySelectorAll('.rule-target-chk:checked').forEach(c => {
+  document.querySelectorAll(".rule-target-chk:checked").forEach((c) => {
     targets_list.push(c.value);
   });
-
   if (targets_list.length === 0) {
     alert("Please select at least 1 target health checker or plugin sensor!");
     return;
   }
-
-  // Backward compatibility parsing
   const monitors_list = [];
-  targets_list.forEach(tk => {
-    if (tk.startsWith('monitor-')) {
-      monitors_list.push(parseInt(tk.split('-')[1]));
+  targets_list.forEach((tk) => {
+    if (tk.startsWith("monitor-")) {
+      monitors_list.push(parseInt(tk.split("-")[1]));
     }
   });
-
-  const cooldown_interval = document.getElementById('rule-cooldown').value || '5m';
-
+  const cooldown_interval = document.getElementById("rule-cooldown").value || "5m";
   const { httpUrl } = getApiUrls();
   const rid = window.activeAlertRuleId;
-  const method = rid ? 'PUT' : 'POST';
+  const method = rid ? "PUT" : "POST";
   const url = rid ? `${httpUrl}/api/alerts/rules/${rid}` : `${httpUrl}/api/alerts/rules`;
-
   try {
     const res = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name,
         rules_json: conditions,
         channel_ids,
         enabled: true,
-        target_type: 'custom',
+        target_type: "custom",
         monitors_list,
         target_groups: [],
-        target_groups_operator: 'any',
+        target_groups_operator: "any",
         targets_list,
         cooldown_interval
       })
@@ -6420,21 +5491,19 @@ async function submitSaveRule() {
       const err = await res.json();
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
-    closeModal('rule-modal');
+    closeModal("rule-modal");
     loadAlertRules();
     showToast("Warning trigger rule configuration saved.", "success");
   } catch (err) {
     alert(`Save failed: ${err.message}`);
   }
 }
-
 async function deleteRuleSource(rid, event) {
   if (event) event.stopPropagation();
   if (!await showConfirm("Are you sure you want to delete this warning rule definition?", "Delete Alert Rule")) return;
-
   const { httpUrl } = getApiUrls();
   try {
-    const res = await fetch(`${httpUrl}/api/alerts/rules/${rid}`, { method: 'DELETE' });
+    const res = await fetch(`${httpUrl}/api/alerts/rules/${rid}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     loadAlertRules();
     showToast("Warning rule removed from database system.", "success");
@@ -6442,72 +5511,60 @@ async function deleteRuleSource(rid, event) {
     showToast(`Rule deletion failed: ${err.message}`, "error");
   }
 }
-
 async function toggleRuleEnabled(rid, enabled, event) {
   if (event) event.stopPropagation();
-
   const { httpUrl } = getApiUrls();
   try {
-    // We can fetch list of rules, find target, modify enabled boolean, and send PUT request
     const resList = await fetch(`${httpUrl}/api/alerts/rules`);
     if (!resList.ok) throw new Error(`List call failed`);
     const list = await resList.json();
-    const rule = list.find(r => r.id === rid);
-
+    const rule = list.find((r) => r.id === rid);
     if (rule) {
       const payload = {
         name: rule.name,
         rules_json: rule.rules_json,
         channel_ids: rule.channel_ids,
-        enabled: enabled,
-        target_type: rule.target_type || 'all',
+        enabled,
+        target_type: rule.target_type || "all",
         monitors_list: rule.monitors_list || [],
         target_groups: rule.target_groups || [],
-        target_groups_operator: rule.target_groups_operator || 'any',
+        target_groups_operator: rule.target_groups_operator || "any",
         targets_list: rule.targets_list || [],
-        cooldown_interval: rule.cooldown_interval || '5m'
+        cooldown_interval: rule.cooldown_interval || "5m"
       };
-
       const res = await fetch(`${httpUrl}/api/alerts/rules/${rid}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error(`Save PUT failed: ${res.status}`);
-      showToast(`Rule status successfully switched ${enabled ? 'ON' : 'OFF'}.`, "success");
+      showToast(`Rule status successfully switched ${enabled ? "ON" : "OFF"}.`, "success");
     }
   } catch (err) {
     showToast(`Toggle failed: ${err.message}`, "error");
   }
 }
 
-// Expose loadHistoryAnalytics to window so dropdown shifts can invoke it
+// --- [Module: src/06-history-analytics.ts] ---
 window.loadHistoryAnalytics = loadHistoryAnalytics;
-
 function showUptimeHistoryView() {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent && mainContent.classList.contains('edit-mode')) {
-    const editToggleBtn = document.getElementById('edit-toggle-btn');
-    if (editToggleBtn) editToggleBtn.click();
+  const mainContent = document.getElementById("main-content");
+  if (mainContent && mainContent.classList.contains("edit-mode")) {
+    const editToggleBtn2 = document.getElementById("edit-toggle-btn");
+    if (editToggleBtn2) editToggleBtn2.click();
   }
-
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'none';
-
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
+  if (editToggleBtn) editToggleBtn.style.display = "none";
   hideAllViews();
-
-  const uptimeHistoryView = document.getElementById('uptime-history-view');
-  if (uptimeHistoryView) uptimeHistoryView.classList.remove('hide');
-
-  const navHistory = document.getElementById('nav-history');
-  if (navHistory) navHistory.classList.add('active');
-
+  const uptimeHistoryView = document.getElementById("uptime-history-view");
+  if (uptimeHistoryView) uptimeHistoryView.classList.remove("hide");
+  const navHistory = document.getElementById("nav-history");
+  if (navHistory) navHistory.classList.add("active");
   populateHistoryMonitorsDropdown();
 }
-
 function formatDateTimeLocal(d) {
-  if (!d || isNaN(d.getTime())) d = new Date();
-  const pad = n => String(n).padStart(2, '0');
+  if (!d || isNaN(d.getTime())) d = /* @__PURE__ */ new Date();
+  const pad = (n) => String(n).padStart(2, "0");
   const year = d.getFullYear();
   const month = pad(d.getMonth() + 1);
   const day = pad(d.getDate());
@@ -6515,139 +5572,122 @@ function formatDateTimeLocal(d) {
   const minutes = pad(d.getMinutes());
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
-
 window.historyAllSourceItems = [];
-window.historyActiveCategory = 'all';
+window.historyActiveCategory = "all";
 window.historyComboboxHighlightedIndex = -1;
-window.historyCurrentPreset = '1h';
-
+window.historyCurrentPreset = "1h";
 window.openHistoryCombobox = function() {
-  const popup = document.getElementById('history-combobox-popup');
-  const chevron = document.getElementById('history-combobox-chevron');
-  const wrapper = document.getElementById('history-combobox-wrapper');
+  const popup = document.getElementById("history-combobox-popup");
+  const chevron = document.getElementById("history-combobox-chevron");
+  const wrapper = document.getElementById("history-combobox-wrapper");
   if (!popup) return;
-
-  popup.style.display = 'flex';
-  if (chevron) chevron.style.transform = 'rotate(180deg)';
-  if (wrapper) wrapper.style.borderColor = 'var(--color-primary)';
-
+  popup.style.display = "flex";
+  if (chevron) chevron.style.transform = "rotate(180deg)";
+  if (wrapper) wrapper.style.borderColor = "var(--color-primary)";
   renderComboboxCategoryTabs();
   renderComboboxItems();
 };
-
 window.closeHistoryCombobox = function() {
-  const popup = document.getElementById('history-combobox-popup');
-  const chevron = document.getElementById('history-combobox-chevron');
-  const wrapper = document.getElementById('history-combobox-wrapper');
-  if (popup) popup.style.display = 'none';
-  if (chevron) chevron.style.transform = 'rotate(0deg)';
-  if (wrapper) wrapper.style.borderColor = 'var(--border-soft)';
+  const popup = document.getElementById("history-combobox-popup");
+  const chevron = document.getElementById("history-combobox-chevron");
+  const wrapper = document.getElementById("history-combobox-wrapper");
+  if (popup) popup.style.display = "none";
+  if (chevron) chevron.style.transform = "rotate(0deg)";
+  if (wrapper) wrapper.style.borderColor = "var(--border-soft)";
   window.historyComboboxHighlightedIndex = -1;
 };
-
 window.toggleHistoryCombobox = function() {
-  const popup = document.getElementById('history-combobox-popup');
-  if (popup && popup.style.display === 'flex') {
+  const popup = document.getElementById("history-combobox-popup");
+  if (popup && popup.style.display === "flex") {
     closeHistoryCombobox();
   } else {
     openHistoryCombobox();
-    const input = document.getElementById('history-combobox-input');
+    const input = document.getElementById("history-combobox-input");
     if (input) input.focus();
   }
 };
-
 window.filterComboboxByCategory = function(categoryKey) {
   window.historyActiveCategory = categoryKey;
   renderComboboxCategoryTabs();
   renderComboboxItems();
-  const input = document.getElementById('history-combobox-input');
+  const input = document.getElementById("history-combobox-input");
   if (input) input.focus();
 };
-
 window.onHistoryComboboxInput = function(query) {
   openHistoryCombobox();
-  const clearBtn = document.getElementById('btn-history-clear-sensor');
-  if (clearBtn) clearBtn.style.display = query ? 'block' : 'none';
+  const clearBtn = document.getElementById("btn-history-clear-sensor");
+  if (clearBtn) clearBtn.style.display = query ? "block" : "none";
   renderComboboxItems(query);
 };
-
 window.clearHistoryComboboxSelection = function() {
-  const input = document.getElementById('history-combobox-input');
-  const clearBtn = document.getElementById('btn-history-clear-sensor');
+  const input = document.getElementById("history-combobox-input");
+  const clearBtn = document.getElementById("btn-history-clear-sensor");
   if (input) {
-    input.value = '';
+    input.value = "";
     input.focus();
   }
-  if (clearBtn) clearBtn.style.display = 'none';
-  window.historyActiveCategory = 'all';
+  if (clearBtn) clearBtn.style.display = "none";
+  window.historyActiveCategory = "all";
   renderComboboxCategoryTabs();
-  renderComboboxItems('');
+  renderComboboxItems("");
 };
-
 window.onHistoryComboboxKeyDown = function(e) {
-  const popup = document.getElementById('history-combobox-popup');
-  const itemsContainer = document.getElementById('history-combobox-items-list');
-  if (!popup || popup.style.display !== 'flex') {
-    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+  const popup = document.getElementById("history-combobox-popup");
+  const itemsContainer = document.getElementById("history-combobox-items-list");
+  if (!popup || popup.style.display !== "flex") {
+    if (e.key === "ArrowDown" || e.key === "Enter") {
       openHistoryCombobox();
       return;
     }
   }
-
-  if (e.key === 'Escape') {
+  if (e.key === "Escape") {
     closeHistoryCombobox();
     return;
   }
-
-  const renderedItems = itemsContainer ? Array.from(itemsContainer.querySelectorAll('.combobox-item')) : [];
+  const renderedItems = itemsContainer ? Array.from(itemsContainer.querySelectorAll(".combobox-item")) : [];
   if (renderedItems.length === 0) return;
-
-  if (e.key === 'ArrowDown') {
+  if (e.key === "ArrowDown") {
     e.preventDefault();
     window.historyComboboxHighlightedIndex = Math.min(renderedItems.length - 1, window.historyComboboxHighlightedIndex + 1);
     updateComboboxHighlight(renderedItems);
-  } else if (e.key === 'ArrowUp') {
+  } else if (e.key === "ArrowUp") {
     e.preventDefault();
     window.historyComboboxHighlightedIndex = Math.max(0, window.historyComboboxHighlightedIndex - 1);
     updateComboboxHighlight(renderedItems);
-  } else if (e.key === 'Enter') {
+  } else if (e.key === "Enter") {
     e.preventDefault();
     if (window.historyComboboxHighlightedIndex >= 0 && window.historyComboboxHighlightedIndex < renderedItems.length) {
-      const val = renderedItems[window.historyComboboxHighlightedIndex].getAttribute('data-value');
+      const val = renderedItems[window.historyComboboxHighlightedIndex].getAttribute("data-value");
       selectHistoryComboboxOption(val);
     } else if (renderedItems.length > 0) {
-      const val = renderedItems[0].getAttribute('data-value');
+      const val = renderedItems[0].getAttribute("data-value");
       selectHistoryComboboxOption(val);
     } else {
-      const input = document.getElementById('history-combobox-input');
+      const input = document.getElementById("history-combobox-input");
       if (input && input.value.trim()) {
         selectHistoryComboboxOption(input.value.trim(), true);
       }
     }
   }
 };
-
 function updateComboboxHighlight(items) {
   items.forEach((item, idx) => {
     if (idx === window.historyComboboxHighlightedIndex) {
-      item.style.background = 'rgba(59, 130, 246, 0.2)';
-      item.scrollIntoView({ block: 'nearest' });
+      item.style.background = "rgba(59, 130, 246, 0.2)";
+      item.scrollIntoView({ block: "nearest" });
     } else {
-      item.style.background = item.classList.contains('active-item') ? 'rgba(59, 130, 246, 0.12)' : '';
+      item.style.background = item.classList.contains("active-item") ? "rgba(59, 130, 246, 0.12)" : "";
     }
   });
 }
-
 function renderComboboxCategoryTabs() {
-  const tabsContainer = document.getElementById('history-combobox-category-tabs');
+  const tabsContainer = document.getElementById("history-combobox-category-tabs");
   if (!tabsContainer) return;
-
   const catMap = {
-    'all': { label: 'All', count: window.historyAllSourceItems.length }
+    "all": { label: "All", count: window.historyAllSourceItems.length }
   };
-
-  window.historyAllSourceItems.forEach(item => {
-    const cat = item.category || 'other';
+  window.historyAllSourceItems.forEach((item) => {
+    const cat = item.category || "other";
     if (!catMap[cat]) {
       catMap[cat] = {
         label: item.categoryLabel || cat,
@@ -6656,16 +5696,14 @@ function renderComboboxCategoryTabs() {
     }
     catMap[cat].count++;
   });
-
-  let tabsHtml = '';
-  Object.keys(catMap).forEach(catKey => {
+  let tabsHtml = "";
+  Object.keys(catMap).forEach((catKey) => {
     const info = catMap[catKey];
-    const isActive = (window.historyActiveCategory || 'all') === catKey;
-    const bg = isActive ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.05)';
-    const border = isActive ? '1px solid var(--color-primary)' : '1px solid rgba(255, 255, 255, 0.08)';
-    const color = isActive ? '#fff' : 'var(--text-secondary)';
-    const fw = isActive ? '600' : 'normal';
-
+    const isActive = (window.historyActiveCategory || "all") === catKey;
+    const bg = isActive ? "rgba(59, 130, 246, 0.25)" : "rgba(255, 255, 255, 0.05)";
+    const border = isActive ? "1px solid var(--color-primary)" : "1px solid rgba(255, 255, 255, 0.08)";
+    const color = isActive ? "#fff" : "var(--text-secondary)";
+    const fw = isActive ? "600" : "normal";
     tabsHtml += `
       <button type="button" onclick="event.stopPropagation(); filterComboboxByCategory('${catKey}')"
         style="background: ${bg}; border: ${border}; color: ${color}; font-size: 0.68rem; font-weight: ${fw}; padding: 3px 8px; border-radius: 12px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; transition: all 0.15s;">
@@ -6674,35 +5712,28 @@ function renderComboboxCategoryTabs() {
       </button>
     `;
   });
-
   tabsContainer.innerHTML = tabsHtml;
 }
-
-function renderComboboxItems(searchQuery) {
-  const container = document.getElementById('history-combobox-items-list');
+function renderComboboxItems(searchQuery = "") {
+  const container = document.getElementById("history-combobox-items-list");
   if (!container) return;
-
-  const q = (searchQuery !== undefined ? searchQuery : (document.getElementById('history-combobox-input')?.value || '')).trim().toLowerCase();
-  const select = document.getElementById('history-monitor-select');
-  const currentVal = select ? select.value : '';
-
+  const q = (searchQuery !== void 0 ? searchQuery : document.getElementById("history-combobox-input")?.value || "").trim().toLowerCase();
+  const select = document.getElementById("history-monitor-select");
+  const currentVal = select ? select.value : "";
   let filtered = window.historyAllSourceItems || [];
-
-  if (window.historyActiveCategory && window.historyActiveCategory !== 'all') {
-    filtered = filtered.filter(item => item.category === window.historyActiveCategory);
+  if (window.historyActiveCategory && window.historyActiveCategory !== "all") {
+    filtered = filtered.filter((item) => item.category === window.historyActiveCategory);
   }
-
   if (q) {
-    filtered = filtered.filter(item => {
-      const name = (item.name || '').toLowerCase();
-      const sId = (item.sensorId || '').toLowerCase();
-      const key = (item.key || '').toLowerCase();
-      const id = String(item.id || '').toLowerCase();
-      const cat = (item.categoryLabel || '').toLowerCase();
+    filtered = filtered.filter((item) => {
+      const name = (item.name || "").toLowerCase();
+      const sId = (item.sensorId || "").toLowerCase();
+      const key = (item.key || "").toLowerCase();
+      const id = String(item.id || "").toLowerCase();
+      const cat = (item.categoryLabel || "").toLowerCase();
       return name.includes(q) || sId.includes(q) || key.includes(q) || id === q || cat.includes(q);
     });
   }
-
   if (filtered.length === 0) {
     container.innerHTML = `
       <div style="padding: 16px 12px; text-align: center; color: var(--text-secondary); font-size: 0.75rem;">
@@ -6712,29 +5743,25 @@ function renderComboboxItems(searchQuery) {
     window.historyComboboxHighlightedIndex = -1;
     return;
   }
-
   window.historyComboboxHighlightedIndex = -1;
-
-  let itemsHtml = '';
-  filtered.forEach(item => {
+  let itemsHtml = "";
+  filtered.forEach((item) => {
     const isSelected = item.value === currentVal;
-    const bg = isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent';
-    const borderLeft = isSelected ? '3px solid var(--color-primary)' : '3px solid transparent';
-    const activeClass = isSelected ? 'active-item' : '';
-
-    let badgeBg = 'rgba(255, 255, 255, 0.08)';
-    let badgeColor = 'var(--text-secondary)';
-    if (item.category === 'monitors') {
-      badgeBg = 'rgba(59, 130, 246, 0.15)';
-      badgeColor = '#60a5fa';
-    } else if (item.category === 'core') {
-      badgeBg = 'rgba(16, 185, 129, 0.15)';
-      badgeColor = '#34d399';
+    const bg = isSelected ? "rgba(59, 130, 246, 0.15)" : "transparent";
+    const borderLeft = isSelected ? "3px solid var(--color-primary)" : "3px solid transparent";
+    const activeClass = isSelected ? "active-item" : "";
+    let badgeBg = "rgba(255, 255, 255, 0.08)";
+    let badgeColor = "var(--text-secondary)";
+    if (item.category === "monitors") {
+      badgeBg = "rgba(59, 130, 246, 0.15)";
+      badgeColor = "#60a5fa";
+    } else if (item.category === "core") {
+      badgeBg = "rgba(16, 185, 129, 0.15)";
+      badgeColor = "#34d399";
     } else {
-      badgeBg = 'rgba(245, 158, 11, 0.15)';
-      badgeColor = '#fbbf24';
+      badgeBg = "rgba(245, 158, 11, 0.15)";
+      badgeColor = "#fbbf24";
     }
-
     itemsHtml += `
       <div class="combobox-item ${activeClass}" data-value="${item.value}" onclick="selectHistoryComboboxOption('${item.value}')"
         onmouseenter="if(!this.classList.contains('active-item')) this.style.background='rgba(255,255,255,0.06)'"
@@ -6745,7 +5772,7 @@ function renderComboboxItems(searchQuery) {
             <span style="font-size: 0.6rem; padding: 1px 6px; border-radius: 3px; font-weight: 700; text-transform: uppercase; background: ${badgeBg}; color: ${badgeColor}; flex-shrink: 0;">${item.categoryLabel}</span>
             <span style="font-size: 0.78rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${item.name}</span>
           </div>
-          <span style="font-size: 0.65rem; color: var(--text-secondary); font-family: monospace; flex-shrink: 0;">${item.typeStr || ''}</span>
+          <span style="font-size: 0.65rem; color: var(--text-secondary); font-family: monospace; flex-shrink: 0;">${item.typeStr || ""}</span>
         </div>
         <div style="font-size: 0.66rem; color: var(--text-secondary); font-family: monospace; display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           <span style="opacity: 0.6;">ID:</span>
@@ -6754,136 +5781,121 @@ function renderComboboxItems(searchQuery) {
       </div>
     `;
   });
-
   container.innerHTML = itemsHtml;
 }
-
 window.selectHistoryComboboxOption = function(val, isCustom = false) {
-  const select = document.getElementById('history-monitor-select');
-  const input = document.getElementById('history-combobox-input');
-  const clearBtn = document.getElementById('btn-history-clear-sensor');
-
-  let item = (window.historyAllSourceItems || []).find(i => i.value === val);
-
+  const select = document.getElementById("history-monitor-select");
+  const input = document.getElementById("history-combobox-input");
+  const clearBtn = document.getElementById("btn-history-clear-sensor");
+  let item = (window.historyAllSourceItems || []).find((i) => i.value === val);
   if (!item && isCustom) {
     item = {
       value: `direct-${val}`,
       name: `Custom ID: ${val}`,
-      category: 'other',
-      categoryLabel: 'Custom',
+      category: "other",
+      categoryLabel: "Custom",
       sensorId: val,
       key: val,
-      source: 'direct'
+      source: "direct"
     };
     window.historyAllSourceItems.unshift(item);
   }
-
   if (item) {
     if (select) {
-      let opt = Array.from(select.options).find(o => o.value === item.value);
+      let opt = Array.from(select.options).find((o) => o.value === item.value);
       if (!opt) {
-        opt = document.createElement('option');
+        opt = document.createElement("option");
         opt.value = item.value;
-        opt.setAttribute('data-source', item.source);
-        opt.setAttribute('data-key', item.key);
-        opt.setAttribute('data-name', item.name);
-        opt.setAttribute('data-sensor-id', item.sensorId);
-        if (item.id) opt.setAttribute('data-id', item.id);
-        if (item.type) opt.setAttribute('data-type', item.type);
+        opt.setAttribute("data-source", item.source);
+        opt.setAttribute("data-key", item.key);
+        opt.setAttribute("data-name", item.name);
+        opt.setAttribute("data-sensor-id", item.sensorId);
+        if (item.id) opt.setAttribute("data-id", item.id);
+        if (item.type) opt.setAttribute("data-type", item.type);
         select.appendChild(opt);
       }
       select.value = item.value;
     }
-
     if (input) {
       input.value = item.name;
     }
-    if (clearBtn) clearBtn.style.display = 'block';
-
+    if (clearBtn) clearBtn.style.display = "block";
     updateActiveQueryBanner(item.name, item.sensorId);
     closeHistoryCombobox();
     loadHistoryAnalytics();
   }
 };
-
-// Global click outside listener to close combobox popup
-document.addEventListener('click', function(e) {
-  const popup = document.getElementById('history-combobox-popup');
-  const wrapper = document.getElementById('history-combobox-wrapper');
-  if (popup && popup.style.display === 'flex') {
+document.addEventListener("click", function(e) {
+  const popup = document.getElementById("history-combobox-popup");
+  const wrapper = document.getElementById("history-combobox-wrapper");
+  if (popup && popup.style.display === "flex") {
     if (!popup.contains(e.target) && !wrapper.contains(e.target)) {
       closeHistoryCombobox();
     }
   }
 });
-
 window.applyHistoryPreset = function(preset, triggerLoad = true) {
-  const chips = document.querySelectorAll('.btn-preset-chip');
-  chips.forEach(chip => {
-    const isMatch = chip.getAttribute('data-preset') === preset;
-    chip.classList.toggle('active', isMatch);
+  const chips = document.querySelectorAll(".btn-preset-chip");
+  chips.forEach((chip) => {
+    const isMatch = chip.getAttribute("data-preset") === preset;
+    chip.classList.toggle("active", isMatch);
     if (isMatch) {
-      chip.style.background = 'rgba(59, 130, 246, 0.2)';
-      chip.style.borderColor = 'var(--color-primary)';
-      chip.style.color = '#fff';
-      chip.style.fontWeight = '600';
+      chip.style.background = "rgba(59, 130, 246, 0.2)";
+      chip.style.borderColor = "var(--color-primary)";
+      chip.style.color = "#fff";
+      chip.style.fontWeight = "600";
     } else {
-      chip.style.background = 'rgba(255, 255, 255, 0.06)';
-      chip.style.borderColor = 'var(--border-soft)';
-      chip.style.color = '#e2e8f0';
-      chip.style.fontWeight = 'normal';
+      chip.style.background = "rgba(255, 255, 255, 0.06)";
+      chip.style.borderColor = "var(--border-soft)";
+      chip.style.color = "#e2e8f0";
+      chip.style.fontWeight = "normal";
     }
   });
-
   let hours = 1;
-  if (preset === '1h') hours = 1;
-  else if (preset === '3h') hours = 3;
-  else if (preset === '12h') hours = 12;
-  else if (preset === '24h') hours = 24;
-  else if (preset === '7d') hours = 168;
-  else if (preset === '30d') hours = 720;
-
-  const now = new Date();
-  const start = new Date(now.getTime() - hours * 3600 * 1000);
-
-  const startInput = document.getElementById('history-custom-start');
-  const endInput = document.getElementById('history-custom-end');
+  if (preset === "1h") hours = 1;
+  else if (preset === "3h") hours = 3;
+  else if (preset === "12h") hours = 12;
+  else if (preset === "24h") hours = 24;
+  else if (preset === "7d") hours = 168;
+  else if (preset === "30d") hours = 720;
+  const now = /* @__PURE__ */ new Date();
+  const start = new Date(now.getTime() - hours * 3600 * 1e3);
+  const startInput = document.getElementById("history-custom-start");
+  const endInput = document.getElementById("history-custom-end");
   if (startInput) startInput.value = formatDateTimeLocal(start);
   if (endInput) endInput.value = formatDateTimeLocal(now);
-
   window.historyCurrentPreset = preset;
   updateShiftButtonsState();
   if (triggerLoad) {
     loadHistoryAnalytics();
   }
 };
-
 window.onCustomDateRangeChanged = function() {
-  window.historyCurrentPreset = 'custom';
-  const chips = document.querySelectorAll('.btn-preset-chip');
-  chips.forEach(chip => {
-    chip.classList.remove('active');
-    chip.style.background = 'rgba(255, 255, 255, 0.06)';
-    chip.style.borderColor = 'var(--border-soft)';
-    chip.style.color = '#e2e8f0';
-    chip.style.fontWeight = 'normal';
+  window.historyCurrentPreset = "custom";
+  const chips = document.querySelectorAll(".btn-preset-chip");
+  chips.forEach((chip) => {
+    chip.classList.remove("active");
+    chip.style.background = "rgba(255, 255, 255, 0.06)";
+    chip.style.borderColor = "var(--border-soft)";
+    chip.style.color = "#e2e8f0";
+    chip.style.fontWeight = "normal";
   });
   updateShiftButtonsState();
 };
-
 window.shiftHistoryTimeWindow = function(direction) {
-  const startInput = document.getElementById('history-custom-start');
-  const endInput = document.getElementById('history-custom-end');
+  const startInput = document.getElementById("history-custom-start");
+  const endInput = document.getElementById("history-custom-end");
   if (!startInput || !endInput || !startInput.value || !endInput.value) return;
-
   let sTime = new Date(startInput.value).getTime();
   let eTime = new Date(endInput.value).getTime();
   if (isNaN(sTime) || isNaN(eTime)) return;
-  if (sTime > eTime) { const t = sTime; sTime = eTime; eTime = t; }
-
+  if (sTime > eTime) {
+    const t = sTime;
+    sTime = eTime;
+    eTime = t;
+  }
   let duration = eTime - sTime;
-  if (duration <= 0) duration = 3600 * 1000;
-
+  if (duration <= 0) duration = 3600 * 1e3;
   let newStart, newEnd;
   const now = Date.now();
   if (direction === -1) {
@@ -6897,101 +5909,87 @@ window.shiftHistoryTimeWindow = function(direction) {
       newStart = new Date(now - duration);
     }
   }
-
   startInput.value = formatDateTimeLocal(newStart);
   endInput.value = formatDateTimeLocal(newEnd);
   onCustomDateRangeChanged();
   loadHistoryAnalytics();
 };
-
 window.shiftHistoryTime = function(direction) {
   shiftHistoryTimeWindow(direction);
 };
-
 window.resetHistoryTimeOffset = function() {
-  applyHistoryPreset('1h');
+  applyHistoryPreset("1h");
 };
-
 function updateShiftButtonsState() {
-  const btnForward = document.getElementById('btn-history-shift-forward');
-  const endInput = document.getElementById('history-custom-end');
+  const btnForward = document.getElementById("btn-history-shift-forward");
+  const endInput = document.getElementById("history-custom-end");
   if (btnForward && endInput && endInput.value) {
     const eTime = new Date(endInput.value).getTime();
-    const isAtPresent = (Date.now() - eTime) < 60000;
+    const isAtPresent = Date.now() - eTime < 6e4;
     btnForward.disabled = isAtPresent;
-    btnForward.style.opacity = isAtPresent ? '0.5' : '1.0';
-    btnForward.style.cursor = isAtPresent ? 'default' : 'pointer';
-    const icon = btnForward.querySelector('i, svg');
+    btnForward.style.opacity = isAtPresent ? "0.5" : "1.0";
+    btnForward.style.cursor = isAtPresent ? "default" : "pointer";
+    const icon = btnForward.querySelector("i, svg");
     if (icon) {
-      icon.style.color = isAtPresent ? 'var(--text-secondary)' : '#fff';
+      icon.style.color = isAtPresent ? "var(--text-secondary)" : "#fff";
     }
   }
 }
-
 function updateActiveQueryBanner(metricName, sensorId, recordCount) {
-  const select = document.getElementById('history-monitor-select');
+  const select = document.getElementById("history-monitor-select");
   const opt = select ? select.options[select.selectedIndex] : null;
-
-  const name = metricName || (opt ? (opt.getAttribute('data-name') || opt.text) : '--');
-  const sId = sensorId || (opt ? (opt.getAttribute('data-sensor-id') || opt.getAttribute('data-key')) : null);
-
-  const nameEl = document.getElementById('history-query-target-name');
-  const idTextEl = document.getElementById('history-query-sensor-id-text');
-  const idPill = document.getElementById('history-query-sensor-id-pill');
-  const rangeEl = document.getElementById('history-query-date-range');
-  const countEl = document.getElementById('history-query-record-count');
-
+  const name = metricName || (opt ? opt.getAttribute("data-name") || opt.text : "--");
+  const sId = sensorId || (opt ? opt.getAttribute("data-sensor-id") || opt.getAttribute("data-key") : null);
+  const nameEl = document.getElementById("history-query-target-name");
+  const idTextEl = document.getElementById("history-query-sensor-id-text");
+  const idPill = document.getElementById("history-query-sensor-id-pill");
+  const rangeEl = document.getElementById("history-query-date-range");
+  const countEl = document.getElementById("history-query-record-count");
   if (nameEl) nameEl.textContent = name;
   if (idTextEl && idPill) {
     if (sId) {
       idTextEl.textContent = sId;
-      idPill.style.display = 'inline-flex';
+      idPill.style.display = "inline-flex";
       window.currentActiveHistorySensorId = sId;
     } else {
-      idPill.style.display = 'none';
+      idPill.style.display = "none";
       window.currentActiveHistorySensorId = null;
     }
   }
-
-  const startInput = document.getElementById('history-custom-start');
-  const endInput = document.getElementById('history-custom-end');
+  const startInput = document.getElementById("history-custom-start");
+  const endInput = document.getElementById("history-custom-end");
   if (rangeEl && startInput && endInput && startInput.value && endInput.value) {
     const s = new Date(startInput.value);
     const e = new Date(endInput.value);
     const formatDt = (d) => {
-      return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + 
-             d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
     };
-    rangeEl.textContent = `Range: ${formatDt(s)} → ${formatDt(e)}`;
+    rangeEl.textContent = `Range: ${formatDt(s)} \u2192 ${formatDt(e)}`;
   }
-
-  if (countEl && recordCount !== undefined) {
-    countEl.textContent = `${recordCount} record${recordCount === 1 ? '' : 's'}`;
+  if (countEl && recordCount !== void 0) {
+    countEl.textContent = `${recordCount} record${recordCount === 1 ? "" : "s"}`;
   }
   if (window.lucide) window.lucide.createIcons();
 }
-
 window.copyActiveSensorId = function() {
   if (window.currentActiveHistorySensorId) {
     navigator.clipboard.writeText(window.currentActiveHistorySensorId).then(() => {
-      showToast(`Copied Sensor ID: ${window.currentActiveHistorySensorId}`, 'success');
+      showToast(`Copied Sensor ID: ${window.currentActiveHistorySensorId}`, "success");
     }).catch(() => {
       prompt("Copy Sensor ID:", window.currentActiveHistorySensorId);
     });
   }
 };
-
 window.openHistoryForSensor = function(sensorId) {
   if (!sensorId) return;
   showUptimeHistoryView();
   setTimeout(() => {
     const clean = sensorId.trim().toLowerCase();
-    const matched = (window.historyAllSourceItems || []).find(item => {
-      const sId = (item.sensorId || '').toLowerCase();
-      const key = (item.key || '').toLowerCase();
+    const matched = (window.historyAllSourceItems || []).find((item) => {
+      const sId = (item.sensorId || "").toLowerCase();
+      const key = (item.key || "").toLowerCase();
       return sId === clean || key === clean || item.value === clean;
     });
-
     if (matched) {
       selectHistoryComboboxOption(matched.value);
     } else {
@@ -6999,21 +5997,15 @@ window.openHistoryForSensor = function(sensorId) {
     }
   }, 100);
 };
-
 async function populateHistoryMonitorsDropdown() {
-  const select = document.getElementById('history-monitor-select');
+  const select = document.getElementById("history-monitor-select");
   if (!select) return;
-
   const previousSelected = select.value;
   const { httpUrl } = getApiUrls();
-
   try {
-    // 1. Fetch configured prober monitors
     const monitorsRes = await fetch(`${httpUrl}/api/monitors`);
     const monitors = monitorsRes.ok ? await monitorsRes.json() : [];
     window.allMonitorsCache = monitors;
-
-    // 2. Fetch active entities (plugins and core telemetry)
     let entities = {};
     try {
       const entitiesRes = await fetch(`${httpUrl}/api/entities`);
@@ -7023,156 +6015,127 @@ async function populateHistoryMonitorsDropdown() {
     } catch (e) {
       entities = window.cachedEntities || {};
     }
-
     window.historyAllSourceItems = [];
-    let optionsHtml = '';
-
-    // A. Probers & Monitors group
+    let optionsHtml = "";
     if (monitors.length > 0) {
-      monitors.forEach(mon => {
-        const typeStr = (mon.type || 'ping').toUpperCase();
-        const sensorIdStatus = window.getSensorIdForEntity ? window.getSensorIdForEntity('monitors', `monitor-${mon.id}-status`, mon.name, mon.type) : `ping.${mon.name}`;
-        const sensorIdLatency = window.getSensorIdForEntity ? window.getSensorIdForEntity('monitors', `monitor-${mon.id}-latency`, mon.name, mon.type) : `sensor.${mon.name}_latency`;
+      monitors.forEach((mon) => {
+        const typeStr = (mon.type || "ping").toUpperCase();
+        const sensorIdStatus = window.getSensorIdForEntity ? window.getSensorIdForEntity("monitors", `monitor-${mon.id}-status`, mon.name, mon.type) : `ping.${mon.name}`;
+        const sensorIdLatency = window.getSensorIdForEntity ? window.getSensorIdForEntity("monitors", `monitor-${mon.id}-latency`, mon.name, mon.type) : `sensor.${mon.name}_latency`;
         const optVal = `mon-${mon.id}`;
-
         window.historyAllSourceItems.push({
           value: optVal,
           name: mon.name,
-          typeStr: typeStr,
-          category: 'monitors',
-          categoryLabel: 'Prober',
+          typeStr,
+          category: "monitors",
+          categoryLabel: "Prober",
           sensorId: sensorIdLatency,
           key: `monitor-${mon.id}-latency`,
-          source: 'monitor',
+          source: "monitor",
           id: mon.id,
           type: mon.type
         });
-
         optionsHtml += `<option value="${optVal}" data-source="monitor" data-id="${mon.id}" data-type="${mon.type}" data-name="${mon.name}" data-sensor-id="${sensorIdLatency}">${mon.name} (${typeStr})</option>`;
       });
     }
-
-    // B. Plugin Sensors grouped by plugin
     const pluginGroups = {};
     const coreTelemetry = [];
-
-    Object.values(entities || {}).forEach(ent => {
-      const key = ent.entity_key || '';
-      const nodeId = ent.node_id || '';
-
-      if (key.startsWith('monitor-') && (key.endsWith('-status') || key.endsWith('-latency'))) {
+    Object.values(entities || {}).forEach((ent) => {
+      const key = ent.entity_key || "";
+      const nodeId = ent.node_id || "";
+      if (key.startsWith("monitor-") && (key.endsWith("-status") || key.endsWith("-latency"))) {
         return;
       }
-
-      if (nodeId === 'core-mon' || ['cpu-utilization', 'database-latency', 'database-storage-pct'].includes(key)) {
+      if (nodeId === "core-mon" || ["cpu-utilization", "database-latency", "database-storage-pct"].includes(key)) {
         coreTelemetry.push(ent);
         return;
       }
-
-      if (nodeId !== 'core-mon' && nodeId !== 'monitors') {
+      if (nodeId !== "core-mon" && nodeId !== "monitors") {
         let rawPluginId = ent.plugin_id || nodeId;
-        if (rawPluginId === 'plugins' && key.startsWith('plugin-') && key.endsWith('-status')) {
-          rawPluginId = key.slice('plugin-'.length, -'-status'.length);
+        if (rawPluginId === "plugins" && key.startsWith("plugin-") && key.endsWith("-status")) {
+          rawPluginId = key.slice("plugin-".length, -"-status".length);
         }
-        const matchedPlugin = (window.currentActivePluginsData || []).find(pl => pl.id === rawPluginId);
-        let pName = matchedPlugin ? matchedPlugin.name : rawPluginId.replace(/^plugin-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-
+        const matchedPlugin = (window.currentActivePluginsData || []).find((pl) => pl.id === rawPluginId);
+        let pName = matchedPlugin ? matchedPlugin.name : rawPluginId.replace(/^plugin-/, "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
         if (!pluginGroups[pName]) {
           pluginGroups[pName] = [];
         }
         pluginGroups[pName].push(ent);
       }
     });
-
-    // Render Plugin Sensors
-    Object.keys(pluginGroups).sort().forEach(pName => {
+    Object.keys(pluginGroups).sort().forEach((pName) => {
       const pEntities = pluginGroups[pName].sort((a, b) => (a.name || a.entity_key).localeCompare(b.name || b.entity_key));
-      pEntities.forEach(ent => {
-        const unit = (ent.attributes && ent.attributes.unit) || ent.unit || '';
-        const displayName = ent.name || ent.entity_key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      pEntities.forEach((ent) => {
+        const unit = ent.attributes && ent.attributes.unit || ent.unit || "";
+        const displayName = ent.name || ent.entity_key.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
         const sensorId = window.getSensorIdForEntity ? window.getSensorIdForEntity(ent.node_id, ent.entity_key, ent.name, ent.type) : `${ent.node_id}.${ent.entity_key}`;
         const optVal = `ent-${ent.entity_key}`;
-
         window.historyAllSourceItems.push({
           value: optVal,
           name: displayName,
-          typeStr: (ent.type || 'sensor').toUpperCase(),
+          typeStr: (ent.type || "sensor").toUpperCase(),
           category: `plugin-${ent.node_id}`,
           categoryLabel: pName,
-          sensorId: sensorId,
+          sensorId,
           key: ent.entity_key,
-          source: 'entity',
-          unit: unit
+          source: "entity",
+          unit
         });
-
-        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">${displayName}</option>`;
+        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || "sensor"}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">${displayName}</option>`;
       });
     });
-
-    // C. Core System Telemetry
     if (coreTelemetry.length > 0) {
-      coreTelemetry.sort((a, b) => (a.name || a.entity_key).localeCompare(b.name || b.entity_key)).forEach(ent => {
-        const unit = (ent.attributes && ent.attributes.unit) || ent.unit || '';
-        const displayName = ent.name || ent.entity_key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const sensorId = window.getSensorIdForEntity ? window.getSensorIdForEntity(ent.node_id || 'core-mon', ent.entity_key, ent.name, ent.type) : `sensor.${ent.entity_key}`;
+      coreTelemetry.sort((a, b) => (a.name || a.entity_key).localeCompare(b.name || b.entity_key)).forEach((ent) => {
+        const unit = ent.attributes && ent.attributes.unit || ent.unit || "";
+        const displayName = ent.name || ent.entity_key.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        const sensorId = window.getSensorIdForEntity ? window.getSensorIdForEntity(ent.node_id || "core-mon", ent.entity_key, ent.name, ent.type) : `sensor.${ent.entity_key}`;
         const optVal = `ent-${ent.entity_key}`;
-
         window.historyAllSourceItems.push({
           value: optVal,
           name: displayName,
-          typeStr: (ent.type || 'sensor').toUpperCase(),
-          category: 'core',
-          categoryLabel: 'Core',
-          sensorId: sensorId,
+          typeStr: (ent.type || "sensor").toUpperCase(),
+          category: "core",
+          categoryLabel: "Core",
+          sensorId,
           key: ent.entity_key,
-          source: 'entity',
-          unit: unit
+          source: "entity",
+          unit
         });
-
-        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || 'sensor'}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">${displayName}</option>`;
+        optionsHtml += `<option value="${optVal}" data-source="entity" data-key="${ent.entity_key}" data-type="${ent.type || "sensor"}" data-unit="${unit}" data-name="${displayName}" data-sensor-id="${sensorId}">${displayName}</option>`;
       });
     }
-
     select.innerHTML = optionsHtml;
-
-    // Set initial selected item
     let activeItem = null;
     if (previousSelected) {
-      activeItem = window.historyAllSourceItems.find(i => i.value === previousSelected);
+      activeItem = window.historyAllSourceItems.find((i) => i.value === previousSelected);
     }
     if (!activeItem && window.historyAllSourceItems.length > 0) {
       activeItem = window.historyAllSourceItems[0];
     }
-
     if (activeItem) {
       select.value = activeItem.value;
-      const input = document.getElementById('history-combobox-input');
-      const clearBtn = document.getElementById('btn-history-clear-sensor');
+      const input = document.getElementById("history-combobox-input");
+      const clearBtn = document.getElementById("btn-history-clear-sensor");
       if (input) input.value = activeItem.name;
-      if (clearBtn) clearBtn.style.display = 'block';
+      if (clearBtn) clearBtn.style.display = "block";
       updateActiveQueryBanner(activeItem.name, activeItem.sensorId);
     }
-
-    // Ensure default date range initialized
-    const startInput = document.getElementById('history-custom-start');
-    const endInput = document.getElementById('history-custom-end');
+    const startInput = document.getElementById("history-custom-start");
+    const endInput = document.getElementById("history-custom-end");
     if (!startInput || !endInput || !startInput.value || !endInput.value) {
-      applyHistoryPreset('1h', false);
+      applyHistoryPreset("1h", false);
     }
-
     renderComboboxCategoryTabs();
     renderComboboxItems();
     loadHistoryAnalytics();
   } catch (err) {
-    console.error('Failed to populate history sources list:', err);
+    console.error("Failed to populate history sources list:", err);
   }
 }
-
 let historyChartInstance = null;
-
 function formatMetricValue(num, unit) {
-  if (typeof num !== 'number' || isNaN(num)) return '--';
-  let formatted = '';
+  if (typeof num !== "number" || isNaN(num)) return "--";
+  let formatted = "";
   if (Math.abs(num) >= 100) {
     formatted = num.toFixed(1);
   } else if (num % 1 === 0) {
@@ -7182,35 +6145,27 @@ function formatMetricValue(num, unit) {
   }
   return unit ? `${formatted} ${unit}` : formatted;
 }
-
 function isSensorStatusHealthy(val) {
-  if (val === null || val === undefined) return false;
+  if (val === null || val === void 0) return false;
   const s = String(val).toLowerCase().trim();
-  return ['online', 'ok', 'healthy', 'active', 'running', 'optimal', 'up', 'true', '1', 'on'].includes(s);
+  return ["online", "ok", "healthy", "active", "running", "optimal", "up", "true", "1", "on"].includes(s);
 }
-
 async function loadHistoryAnalytics() {
-  const select = document.getElementById('history-monitor-select');
-  const tableBody = document.getElementById('history-logs-table-body');
+  const select = document.getElementById("history-monitor-select");
+  const tableBody = document.getElementById("history-logs-table-body");
   if (!select || !select.value || !tableBody) return;
-
   const selectedOpt = select.options[select.selectedIndex];
   if (!selectedOpt) return;
-
-  const source = selectedOpt.getAttribute('data-source') || (select.value.startsWith('mon-') ? 'monitor' : 'entity');
-
-  // Compute date range from start & end inputs
-  const startInput = document.getElementById('history-custom-start');
-  const endInput = document.getElementById('history-custom-end');
-
-  let queryParams = '';
+  const source = selectedOpt.getAttribute("data-source") || (select.value.startsWith("mon-") ? "monitor" : "entity");
+  const startInput = document.getElementById("history-custom-start");
+  const endInput = document.getElementById("history-custom-end");
+  let queryParams = "";
   let hoursCount = 1;
-
   if (startInput && endInput && startInput.value && endInput.value) {
     let sTime = new Date(startInput.value).getTime();
     let eTime = new Date(endInput.value).getTime();
     if (isNaN(sTime) || isNaN(eTime)) {
-      applyHistoryPreset('1h', false);
+      applyHistoryPreset("1h", false);
       sTime = new Date(startInput.value).getTime();
       eTime = new Date(endInput.value).getTime();
     }
@@ -7224,87 +6179,66 @@ async function loadHistoryAnalytics() {
     const startISO = new Date(sTime).toISOString();
     const endISO = new Date(eTime).toISOString();
     queryParams = `?start_time=${encodeURIComponent(startISO)}&end_time=${encodeURIComponent(endISO)}`;
-    hoursCount = Math.max(0.1, (eTime - sTime) / (1000 * 60 * 60));
+    hoursCount = Math.max(0.1, (eTime - sTime) / (1e3 * 60 * 60));
   } else {
-    applyHistoryPreset('1h', false);
+    applyHistoryPreset("1h", false);
     const startISO = new Date(startInput.value).toISOString();
     const endISO = new Date(endInput.value).toISOString();
     queryParams = `?start_time=${encodeURIComponent(startISO)}&end_time=${encodeURIComponent(endISO)}`;
     hoursCount = 1;
   }
-
   tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">Loading analytics...</td></tr>`;
-
-  const loaderEl = document.getElementById('analytics-chart-loader');
-  if (loaderEl) loaderEl.style.display = 'flex';
-
-  await new Promise(resolve => setTimeout(resolve, 30));
-
+  const loaderEl = document.getElementById("analytics-chart-loader");
+  if (loaderEl) loaderEl.style.display = "flex";
+  await new Promise((resolve) => setTimeout(resolve, 30));
   const { httpUrl } = getApiUrls();
-
-  // Reference dynamic UI label elements
-  const lblCard1 = document.getElementById('history-stat-1-label');
-  const lblCard2 = document.getElementById('history-stat-2-label');
-  const lblCard3 = document.getElementById('history-stat-3-label');
-  const lblCard4 = document.getElementById('history-stat-4-label');
-  const chartUnitLbl = document.getElementById('history-chart-unit-label');
-  const tblHeader2 = document.getElementById('history-table-header-2');
-  const tblHeader3 = document.getElementById('history-table-header-3');
-
+  const lblCard1 = document.getElementById("history-stat-1-label");
+  const lblCard2 = document.getElementById("history-stat-2-label");
+  const lblCard3 = document.getElementById("history-stat-3-label");
+  const lblCard4 = document.getElementById("history-stat-4-label");
+  const chartUnitLbl = document.getElementById("history-chart-unit-label");
+  const tblHeader2 = document.getElementById("history-table-header-2");
+  const tblHeader3 = document.getElementById("history-table-header-3");
   try {
-    if (source === 'monitor') {
-      // ═════════════════════════════════════════════
-      // CASE 1: PROBERS & HEALTH MONITORS
-      // ═════════════════════════════════════════════
-      const monId = selectedOpt.getAttribute('data-id') || select.value.replace(/^mon-/, '');
-      const type = selectedOpt.getAttribute('data-type') || 'ping';
-
-      // Reset standard labels
-      if (lblCard1) lblCard1.textContent = 'Uptime Ratio';
-      if (lblCard2) lblCard2.textContent = 'Average Response';
-      if (lblCard3) lblCard3.textContent = 'Peak Latency';
-      if (lblCard4) lblCard4.textContent = 'Outages Detected';
-      if (chartUnitLbl) chartUnitLbl.textContent = 'LATENCY (MS) OVER TIME';
-      if (tblHeader2) tblHeader2.textContent = 'Event Status';
-      if (tblHeader3) tblHeader3.textContent = 'Response Latency';
-
+    if (source === "monitor") {
+      const monId = selectedOpt.getAttribute("data-id") || select.value.replace(/^mon-/, "");
+      const type = selectedOpt.getAttribute("data-type") || "ping";
+      if (lblCard1) lblCard1.textContent = "Uptime Ratio";
+      if (lblCard2) lblCard2.textContent = "Average Response";
+      if (lblCard3) lblCard3.textContent = "Peak Latency";
+      if (lblCard4) lblCard4.textContent = "Outages Detected";
+      if (chartUnitLbl) chartUnitLbl.textContent = "LATENCY (MS) OVER TIME";
+      if (tblHeader2) tblHeader2.textContent = "Event Status";
+      if (tblHeader3) tblHeader3.textContent = "Response Latency";
       const statusKey = `monitor-${monId}-status`;
       const latencyKey = `monitor-${monId}-latency`;
-
       const resStatus = await fetch(`${httpUrl}/api/monitors/logs/${statusKey}${queryParams}`);
       const statusLogs = resStatus.ok ? await resStatus.json() : [];
-
       const resLatency = await fetch(`${httpUrl}/api/monitors/logs/${latencyKey}${queryParams}`);
       const latencyLogs = resLatency.ok ? await resLatency.json() : [];
-
       if (statusLogs.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No log records found for this prober in the selected range.</td></tr>`;
         updateHistoryStats(0, 0, 0, 100);
-        drawHistoryChart([], [], [], 0, [], { mode: 'latency', label: 'Ping Response Latency', unit: 'ms' });
-        updateActiveQueryBanner(selectedOpt.text, selectedOpt.getAttribute('data-sensor-id'), 0);
-        if (loaderEl) loaderEl.style.display = 'none';
+        drawHistoryChart([], [], [], 0, [], { mode: "latency", label: "Ping Response Latency", unit: "ms" });
+        updateActiveQueryBanner(selectedOpt.text, selectedOpt.getAttribute("data-sensor-id"), 0);
+        if (loaderEl) loaderEl.style.display = "none";
         return;
       }
-
-      await new Promise(resolve => setTimeout(resolve, 5));
-
+      await new Promise((resolve) => setTimeout(resolve, 5));
       let totalLatency = 0;
       let maxLatency = 0;
       let healthyCount = 0;
       let outages = 0;
       let prevUp = true;
-
-      const sortedStatus = [...statusLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-      const sortedLatency = [...latencyLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
+      const sortedStatus = [...statusLogs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const sortedLatency = [...latencyLogs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       const chronologicalDetails = [];
-      const latencyTimes = sortedLatency.map(log => ({
+      const latencyTimes = sortedLatency.map((log) => ({
         time: new Date(log.timestamp).getTime(),
         value: log.value
       }));
-
       let latIdx = 0;
-      sortedStatus.forEach(statusLog => {
+      sortedStatus.forEach((statusLog) => {
         const statusTime = new Date(statusLog.timestamp).getTime();
         while (latIdx < latencyTimes.length - 1) {
           const thisDiff = Math.abs(latencyTimes[latIdx].time - statusTime);
@@ -7315,12 +6249,10 @@ async function loadHistoryAnalytics() {
             break;
           }
         }
-
         const closestLat = latencyTimes[latIdx];
         const minDiff = closestLat ? Math.abs(closestLat.time - statusTime) : Infinity;
-        const latVal = (closestLat && minDiff < 5000) ? parseFloat(closestLat.value) : 0.0;
+        const latVal = closestLat && minDiff < 5e3 ? parseFloat(closestLat.value) : 0;
         const isUpVal = isProbeStatusOnline(statusLog.value, type);
-
         chronologicalDetails.push({
           timestamp: statusLog.timestamp,
           status: statusLog.value,
@@ -7328,7 +6260,6 @@ async function loadHistoryAnalytics() {
           isUp: isUpVal
         });
       });
-
       chronologicalDetails.forEach((log, idx) => {
         totalLatency += log.latency;
         if (log.latency > maxLatency) maxLatency = log.latency;
@@ -7342,28 +6273,24 @@ async function loadHistoryAnalytics() {
           prevUp = false;
         }
       });
-
-      const avgLatency = chronologicalDetails.length > 0 ? (totalLatency / chronologicalDetails.length) : 0;
-      const uptimePct = chronologicalDetails.length > 0 ? (healthyCount / chronologicalDetails.length) * 100 : 100.0;
-
+      const avgLatency = chronologicalDetails.length > 0 ? totalLatency / chronologicalDetails.length : 0;
+      const uptimePct = chronologicalDetails.length > 0 ? healthyCount / chronologicalDetails.length * 100 : 100;
       updateHistoryStats(avgLatency, maxLatency, outages, uptimePct);
-
-      let tableRows = '';
+      let tableRows = "";
       const reversedDetails = [...chronologicalDetails].reverse();
-      reversedDetails.forEach(log => {
+      reversedDetails.forEach((log) => {
         const dt = new Date(log.timestamp).toLocaleString();
         let statusStr = log.status;
-        if (statusStr === 'up' || statusStr === 'UP' || statusStr === 'ONLINE') {
-          statusStr = 'ONLINE';
-        } else if (statusStr === 'down' || statusStr === 'DOWN' || statusStr === 'OFFLINE') {
-          statusStr = 'OFFLINE';
+        if (statusStr === "up" || statusStr === "UP" || statusStr === "ONLINE") {
+          statusStr = "ONLINE";
+        } else if (statusStr === "down" || statusStr === "DOWN" || statusStr === "OFFLINE") {
+          statusStr = "OFFLINE";
         } else {
           const numCode = parseInt(statusStr);
           if (!isNaN(numCode)) statusStr = `HTTP ${statusStr}`;
         }
         const isUp = log.isUp;
-        const color = isUp ? 'var(--color-optimal)' : '#f43f5e';
-
+        const color = isUp ? "var(--color-optimal)" : "#f43f5e";
         tableRows += `
           <tr style="border-bottom:1px solid var(--border-soft);">
             <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
@@ -7372,120 +6299,105 @@ async function loadHistoryAnalytics() {
           </tr>`;
       });
       tableBody.innerHTML = tableRows;
-
       const includeDate = hoursCount >= 24;
-      const labels = chronologicalDetails.map(log => {
+      const labels = chronologicalDetails.map((log) => {
         const d = new Date(log.timestamp);
         if (includeDate) {
-          const month = d.toLocaleDateString([], { month: 'short' });
-          const day = d.toLocaleDateString([], { day: 'numeric' });
-          const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+          const month = d.toLocaleDateString([], { month: "short" });
+          const day = d.toLocaleDateString([], { day: "numeric" });
+          const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
           return `${month} ${day} ${timeStr}`;
         } else {
-          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+          return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
         }
       });
-      const latencies = chronologicalDetails.map(log => log.latency);
-      const healthBooleans = chronologicalDetails.map(log => log.isUp);
-
+      const latencies = chronologicalDetails.map((log) => log.latency);
+      const healthBooleans = chronologicalDetails.map((log) => log.isUp);
       drawHistoryChart(labels, latencies, healthBooleans, avgLatency, chronologicalDetails, {
-        mode: 'latency',
+        mode: "latency",
         label: `${selectedOpt.text} Latency`,
-        unit: 'ms'
+        unit: "ms"
       });
-      updateActiveQueryBanner(selectedOpt.text, selectedOpt.getAttribute('data-sensor-id'), chronologicalDetails.length);
-
+      updateActiveQueryBanner(selectedOpt.text, selectedOpt.getAttribute("data-sensor-id"), chronologicalDetails.length);
     } else {
-      // ═════════════════════════════════════════════
-      // CASE 2: PLUGIN SENSORS & TELEMETRY ENTITIES
-      // ═════════════════════════════════════════════
-      const entityKey = selectedOpt.getAttribute('data-key') || select.value.replace(/^ent-/, '').replace(/^direct-/, '');
-      const metricName = selectedOpt.getAttribute('data-name') || selectedOpt.text;
-      const unit = selectedOpt.getAttribute('data-unit') || '';
-
+      const entityKey = selectedOpt.getAttribute("data-key") || select.value.replace(/^ent-/, "").replace(/^direct-/, "");
+      const metricName = selectedOpt.getAttribute("data-name") || selectedOpt.text;
+      const unit = selectedOpt.getAttribute("data-unit") || "";
       const res = await fetch(`${httpUrl}/api/monitors/logs/${entityKey}${queryParams}`);
       const logs = res.ok ? await res.json() : [];
-
       if (logs.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:var(--text-secondary);">No telemetry records found for <strong>${metricName}</strong> in the selected range.</td></tr>`;
-        const uptimeEl = document.getElementById('history-stat-uptime');
-        const avgEl = document.getElementById('history-stat-avg-latency');
-        const maxEl = document.getElementById('history-stat-max-latency');
-        const outagesEl = document.getElementById('history-stat-outages');
-        if (uptimeEl) { uptimeEl.textContent = '--'; uptimeEl.style.color = 'var(--text-secondary)'; }
-        if (avgEl) avgEl.textContent = '--';
-        if (maxEl) maxEl.textContent = '--';
-        if (outagesEl) { outagesEl.textContent = '--'; outagesEl.style.color = 'var(--text-secondary)'; }
-        drawHistoryChart([], [], [], 0, [], { mode: 'numeric', label: metricName, unit });
-        updateActiveQueryBanner(metricName, selectedOpt.getAttribute('data-sensor-id') || entityKey, 0);
-        if (loaderEl) loaderEl.style.display = 'none';
+        const uptimeEl = document.getElementById("history-stat-uptime");
+        const avgEl = document.getElementById("history-stat-avg-latency");
+        const maxEl = document.getElementById("history-stat-max-latency");
+        const outagesEl = document.getElementById("history-stat-outages");
+        if (uptimeEl) {
+          uptimeEl.textContent = "--";
+          uptimeEl.style.color = "var(--text-secondary)";
+        }
+        if (avgEl) avgEl.textContent = "--";
+        if (maxEl) maxEl.textContent = "--";
+        if (outagesEl) {
+          outagesEl.textContent = "--";
+          outagesEl.style.color = "var(--text-secondary)";
+        }
+        drawHistoryChart([], [], [], 0, [], { mode: "numeric", label: metricName, unit });
+        updateActiveQueryBanner(metricName, selectedOpt.getAttribute("data-sensor-id") || entityKey, 0);
+        if (loaderEl) loaderEl.style.display = "none";
         return;
       }
-
-      await new Promise(resolve => setTimeout(resolve, 5));
-
-      // Determine whether this sensor is numeric or binary/status
-      const numericCount = logs.filter(l => !isNaN(parseFloat(l.value))).length;
-      const isNumeric = numericCount >= (logs.length * 0.5);
-
-      const sortedLogs = [...logs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const numericCount = logs.filter((l) => !isNaN(parseFloat(l.value))).length;
+      const isNumeric = numericCount >= logs.length * 0.5;
+      const sortedLogs = [...logs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       const includeDate = hoursCount >= 24;
-      const labels = sortedLogs.map(log => {
+      const labels = sortedLogs.map((log) => {
         const d = new Date(log.timestamp);
         if (includeDate) {
-          const month = d.toLocaleDateString([], { month: 'short' });
-          const day = d.toLocaleDateString([], { day: 'numeric' });
-          const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+          const month = d.toLocaleDateString([], { month: "short" });
+          const day = d.toLocaleDateString([], { day: "numeric" });
+          const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
           return `${month} ${day} ${timeStr}`;
         } else {
-          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+          return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
         }
       });
-
       if (isNumeric) {
-        // ─────────────────────────────────────────
-        // SUBCASE 2A: NUMERIC TELEMETRY SENSOR
-        // ─────────────────────────────────────────
-        if (lblCard1) lblCard1.textContent = 'Current Reading';
-        if (lblCard2) lblCard2.textContent = 'Average Value';
-        if (lblCard3) lblCard3.textContent = 'Peak / Maximum';
-        if (lblCard4) lblCard4.textContent = 'Minimum / Samples';
-        if (chartUnitLbl) chartUnitLbl.textContent = `${(unit || 'METRIC VALUE').toUpperCase()} OVER TIME`;
-        if (tblHeader2) tblHeader2.textContent = 'Recorded Value';
-        if (tblHeader3) tblHeader3.textContent = 'Metric Source';
-
-        const numericVals = sortedLogs.map(l => parseFloat(l.value) || 0);
+        if (lblCard1) lblCard1.textContent = "Current Reading";
+        if (lblCard2) lblCard2.textContent = "Average Value";
+        if (lblCard3) lblCard3.textContent = "Peak / Maximum";
+        if (lblCard4) lblCard4.textContent = "Minimum / Samples";
+        if (chartUnitLbl) chartUnitLbl.textContent = `${(unit || "METRIC VALUE").toUpperCase()} OVER TIME`;
+        if (tblHeader2) tblHeader2.textContent = "Recorded Value";
+        if (tblHeader3) tblHeader3.textContent = "Metric Source";
+        const numericVals = sortedLogs.map((l) => parseFloat(l.value) || 0);
         const latestVal = numericVals[numericVals.length - 1];
         const sumVal = numericVals.reduce((acc, v) => acc + v, 0);
-        const avgVal = numericVals.length > 0 ? (sumVal / numericVals.length) : 0;
+        const avgVal = numericVals.length > 0 ? sumVal / numericVals.length : 0;
         const maxVal = Math.max(...numericVals);
         const minVal = Math.min(...numericVals);
-
-        const uptimeEl = document.getElementById('history-stat-uptime');
-        const avgEl = document.getElementById('history-stat-avg-latency');
-        const maxEl = document.getElementById('history-stat-max-latency');
-        const outagesEl = document.getElementById('history-stat-outages');
-
+        const uptimeEl = document.getElementById("history-stat-uptime");
+        const avgEl = document.getElementById("history-stat-avg-latency");
+        const maxEl = document.getElementById("history-stat-max-latency");
+        const outagesEl = document.getElementById("history-stat-outages");
         if (uptimeEl) {
           uptimeEl.textContent = formatMetricValue(latestVal, unit);
-          uptimeEl.style.color = 'var(--color-optimal)';
+          uptimeEl.style.color = "var(--color-optimal)";
         }
         if (avgEl) avgEl.textContent = formatMetricValue(avgVal, unit);
         if (maxEl) maxEl.textContent = formatMetricValue(maxVal, unit);
         if (outagesEl) {
           outagesEl.textContent = `${formatMetricValue(minVal, unit)} (${numericVals.length} pts)`;
-          outagesEl.style.color = '#38bdf8';
+          outagesEl.style.color = "#38bdf8";
         }
-
-        let tableRows = '';
+        let tableRows = "";
         const reversedLogs = [...sortedLogs].reverse();
-        reversedLogs.forEach(log => {
+        reversedLogs.forEach((log) => {
           const dt = new Date(log.timestamp).toLocaleString();
           const numV = parseFloat(log.value) || 0;
           const dev = numV - avgVal;
-          const devSign = dev > 0 ? '+' : '';
-          const devStr = Math.abs(dev) > 0.01 ? `${devSign}${dev.toFixed(2)}${unit ? ' ' + unit : ''}` : 'Avg Baseline';
-
+          const devSign = dev > 0 ? "+" : "";
+          const devStr = Math.abs(dev) > 0.01 ? `${devSign}${dev.toFixed(2)}${unit ? " " + unit : ""}` : "Avg Baseline";
           tableRows += `
             <tr style="border-bottom:1px solid var(--border-soft);">
               <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
@@ -7494,32 +6406,24 @@ async function loadHistoryAnalytics() {
             </tr>`;
         });
         tableBody.innerHTML = tableRows;
-
         const healthBooleans = sortedLogs.map(() => true);
-
         drawHistoryChart(labels, numericVals, healthBooleans, avgVal, sortedLogs, {
-          mode: 'numeric',
-          label: `${metricName}${unit ? ' (' + unit + ')' : ''}`,
-          unit: unit
+          mode: "numeric",
+          label: `${metricName}${unit ? " (" + unit + ")" : ""}`,
+          unit
         });
-        updateActiveQueryBanner(metricName, selectedOpt.getAttribute('data-sensor-id') || entityKey, sortedLogs.length);
-
+        updateActiveQueryBanner(metricName, selectedOpt.getAttribute("data-sensor-id") || entityKey, sortedLogs.length);
       } else {
-        // ─────────────────────────────────────────
-        // SUBCASE 2B: BINARY / STATUS SENSOR
-        // ─────────────────────────────────────────
-        if (lblCard1) lblCard1.textContent = 'Current State';
-        if (lblCard2) lblCard2.textContent = 'Optimal Ratio';
-        if (lblCard3) lblCard3.textContent = 'State Transitions';
-        if (lblCard4) lblCard4.textContent = 'Alert Incidents';
-        if (chartUnitLbl) chartUnitLbl.textContent = 'STATE TIMELINE (1=ONLINE/OK, 0=ALERT)';
-        if (tblHeader2) tblHeader2.textContent = 'Reported State';
-        if (tblHeader3) tblHeader3.textContent = 'Assessment';
-
+        if (lblCard1) lblCard1.textContent = "Current State";
+        if (lblCard2) lblCard2.textContent = "Optimal Ratio";
+        if (lblCard3) lblCard3.textContent = "State Transitions";
+        if (lblCard4) lblCard4.textContent = "Alert Incidents";
+        if (chartUnitLbl) chartUnitLbl.textContent = "STATE TIMELINE (1=ONLINE/OK, 0=ALERT)";
+        if (tblHeader2) tblHeader2.textContent = "Reported State";
+        if (tblHeader3) tblHeader3.textContent = "Assessment";
         let transitions = 0;
         let prevVal = null;
         let healthyCount = 0;
-
         sortedLogs.forEach((l, idx) => {
           const isH = isSensorStatusHealthy(l.value);
           if (isH) healthyCount++;
@@ -7528,37 +6432,32 @@ async function loadHistoryAnalytics() {
           }
           prevVal = l.value;
         });
-
         const latestState = sortedLogs[sortedLogs.length - 1].value;
         const isLatestHealthy = isSensorStatusHealthy(latestState);
-        const optimalRatio = sortedLogs.length > 0 ? (healthyCount / sortedLogs.length) * 100 : 100.0;
+        const optimalRatio = sortedLogs.length > 0 ? healthyCount / sortedLogs.length * 100 : 100;
         const alertIncidents = sortedLogs.length - healthyCount;
-
-        const uptimeEl = document.getElementById('history-stat-uptime');
-        const avgEl = document.getElementById('history-stat-avg-latency');
-        const maxEl = document.getElementById('history-stat-max-latency');
-        const outagesEl = document.getElementById('history-stat-outages');
-
+        const uptimeEl = document.getElementById("history-stat-uptime");
+        const avgEl = document.getElementById("history-stat-avg-latency");
+        const maxEl = document.getElementById("history-stat-max-latency");
+        const outagesEl = document.getElementById("history-stat-outages");
         if (uptimeEl) {
           uptimeEl.textContent = String(latestState).toUpperCase();
-          uptimeEl.style.color = isLatestHealthy ? 'var(--color-optimal)' : '#f43f5e';
+          uptimeEl.style.color = isLatestHealthy ? "var(--color-optimal)" : "#f43f5e";
         }
         if (avgEl) avgEl.textContent = `${optimalRatio.toFixed(1)}%`;
         if (maxEl) maxEl.textContent = String(transitions);
         if (outagesEl) {
           outagesEl.textContent = String(alertIncidents);
-          outagesEl.style.color = alertIncidents > 0 ? '#f43f5e' : 'var(--color-optimal)';
+          outagesEl.style.color = alertIncidents > 0 ? "#f43f5e" : "var(--color-optimal)";
         }
-
-        let tableRows = '';
+        let tableRows = "";
         const reversedLogs = [...sortedLogs].reverse();
-        reversedLogs.forEach(log => {
+        reversedLogs.forEach((log) => {
           const dt = new Date(log.timestamp).toLocaleString();
           const isH = isSensorStatusHealthy(log.value);
-          const color = isH ? 'var(--color-optimal)' : '#f43f5e';
+          const color = isH ? "var(--color-optimal)" : "#f43f5e";
           const badgeText = String(log.value).toUpperCase();
-          const noteText = isH ? 'Healthy / Normal' : 'Alert / Degraded State';
-
+          const noteText = isH ? "Healthy / Normal" : "Alert / Degraded State";
           tableRows += `
             <tr style="border-bottom:1px solid var(--border-soft);">
               <td style="padding:10px 14px; font-family:monospace; color:var(--text-secondary);">${dt}</td>
@@ -7567,140 +6466,121 @@ async function loadHistoryAnalytics() {
             </tr>`;
         });
         tableBody.innerHTML = tableRows;
-
-        const binaryVals = sortedLogs.map(l => isSensorStatusHealthy(l.value) ? 1 : 0);
-        const healthBooleans = binaryVals.map(v => v === 1);
-
+        const binaryVals = sortedLogs.map((l) => isSensorStatusHealthy(l.value) ? 1 : 0);
+        const healthBooleans = binaryVals.map((v) => v === 1);
         drawHistoryChart(labels, binaryVals, healthBooleans, null, sortedLogs, {
-          mode: 'status',
+          mode: "status",
           label: `${metricName} State`,
-          unit: 'State'
+          unit: "State"
         });
-        updateActiveQueryBanner(metricName, selectedOpt.getAttribute('data-sensor-id') || entityKey, sortedLogs.length);
+        updateActiveQueryBanner(metricName, selectedOpt.getAttribute("data-sensor-id") || entityKey, sortedLogs.length);
       }
     }
-
-    if (loaderEl) loaderEl.style.display = 'none';
+    if (loaderEl) loaderEl.style.display = "none";
   } catch (err) {
     tableBody.innerHTML = `<tr><td colspan="3" style="padding:24px; text-align:center; color:#f43f5e;">Error loading analytics: ${err.message}</td></tr>`;
-    if (loaderEl) loaderEl.style.display = 'none';
+    if (loaderEl) loaderEl.style.display = "none";
   }
 }
-
 function updateHistoryStats(avgLat, maxLat, outages, uptime) {
-  const avgEl = document.getElementById('history-stat-avg-latency');
-  const maxEl = document.getElementById('history-stat-max-latency');
-  const outagesEl = document.getElementById('history-stat-outages');
-  const uptimeEl = document.getElementById('history-stat-uptime');
-
+  const avgEl = document.getElementById("history-stat-avg-latency");
+  const maxEl = document.getElementById("history-stat-max-latency");
+  const outagesEl = document.getElementById("history-stat-outages");
+  const uptimeEl = document.getElementById("history-stat-uptime");
   if (avgEl) avgEl.textContent = `${avgLat.toFixed(1)} ms`;
   if (maxEl) maxEl.textContent = `${maxLat.toFixed(1)} ms`;
   if (outagesEl) outagesEl.textContent = String(outages);
   if (uptimeEl) {
     uptimeEl.textContent = `${uptime.toFixed(1)}%`;
-    if (uptime >= 99.0) {
-      uptimeEl.style.color = 'var(--color-optimal)';
-    } else if (uptime >= 95.0) {
-      uptimeEl.style.color = 'var(--accent-orange)';
+    if (uptime >= 99) {
+      uptimeEl.style.color = "var(--color-optimal)";
+    } else if (uptime >= 95) {
+      uptimeEl.style.color = "var(--accent-orange)";
     } else {
-      uptimeEl.style.color = '#f43f5e';
+      uptimeEl.style.color = "#f43f5e";
     }
   }
 }
-
-window.filterLogsTableToHighlight = function (timestampStr) {
-  const tableBody = document.getElementById('history-logs-table-body');
+window.filterLogsTableToHighlight = function(timestampStr) {
+  const tableBody = document.getElementById("history-logs-table-body");
   if (!tableBody) return;
   const refTime = new Date(timestampStr).getTime();
-
-  const rows = tableBody.querySelectorAll('tr');
-  rows.forEach(row => {
-    const cell = row.querySelector('td');
+  const rows = tableBody.querySelectorAll("tr");
+  rows.forEach((row) => {
+    const cell = row.querySelector("td");
     if (!cell) return;
     const rowTime = new Date(cell.textContent.trim()).getTime();
     if (isNaN(rowTime)) return;
-
-    if (Math.abs(refTime - rowTime) <= 120000) {
-      row.style.display = '';
-      if (Math.abs(refTime - rowTime) <= 15000) {
-        row.style.background = 'rgba(59, 130, 246, 0.18)';
+    if (Math.abs(refTime - rowTime) <= 12e4) {
+      row.style.display = "";
+      if (Math.abs(refTime - rowTime) <= 15e3) {
+        row.style.background = "rgba(59, 130, 246, 0.18)";
       } else {
-        row.style.background = '';
+        row.style.background = "";
       }
     } else {
-      row.style.display = 'none';
+      row.style.display = "none";
     }
   });
 };
-
-window.clearLogsTableFilter = function () {
-  const tableBody = document.getElementById('history-logs-table-body');
+window.clearLogsTableFilter = function() {
+  const tableBody = document.getElementById("history-logs-table-body");
   if (!tableBody) return;
-  const rows = tableBody.querySelectorAll('tr');
-  rows.forEach(row => {
-    row.style.display = '';
-    row.style.background = '';
+  const rows = tableBody.querySelectorAll("tr");
+  rows.forEach((row) => {
+    row.style.display = "";
+    row.style.background = "";
   });
 };
-
 function drawHistoryChart(labels, values, healths, avgValue, chronologicalDetails, options = {}) {
-  const canvas = document.getElementById('analytics-chart-canvas');
+  const canvas = document.getElementById("analytics-chart-canvas");
   if (!canvas) return;
-
-  if (typeof Chart === 'undefined') {
+  if (typeof Chart === "undefined") {
     console.warn("Chart.js is not loaded. Skipping chart rendering.");
     return;
   }
-
   if (historyChartInstance) {
     historyChartInstance.destroy();
   }
-
-  const mode = options.mode || 'latency';
-  const label = options.label || 'Metric Value';
-  const unit = options.unit || '';
-
-  const ctx = canvas.getContext('2d');
+  const mode = options.mode || "latency";
+  const label = options.label || "Metric Value";
+  const unit = options.unit || "";
+  const ctx = canvas.getContext("2d");
   const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-
-  let borderColor = '#3b82f6';
-  if (mode === 'numeric') {
-    borderColor = '#06b6d4';
-    gradient.addColorStop(0, 'rgba(6, 182, 212, 0.35)');
-    gradient.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
-  } else if (mode === 'status') {
-    borderColor = '#10b981';
-    gradient.addColorStop(0, 'rgba(16, 185, 129, 0.35)');
-    gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+  let borderColor = "#3b82f6";
+  if (mode === "numeric") {
+    borderColor = "#06b6d4";
+    gradient.addColorStop(0, "rgba(6, 182, 212, 0.35)");
+    gradient.addColorStop(1, "rgba(6, 182, 212, 0.0)");
+  } else if (mode === "status") {
+    borderColor = "#10b981";
+    gradient.addColorStop(0, "rgba(16, 185, 129, 0.35)");
+    gradient.addColorStop(1, "rgba(16, 185, 129, 0.0)");
   } else {
-    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
-    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+    gradient.addColorStop(0, "rgba(59, 130, 246, 0.4)");
+    gradient.addColorStop(1, "rgba(59, 130, 246, 0.0)");
   }
-
-  const pointColors = healths.map(h => h ? 'var(--color-optimal)' : '#f43f5e');
-
+  const pointColors = healths.map((h) => h ? "var(--color-optimal)" : "#f43f5e");
   const mainDataset = {
-    label: label,
+    label,
     data: values,
-    borderColor: borderColor,
+    borderColor,
     borderWidth: 2,
     backgroundColor: gradient,
     fill: true,
-    tension: mode === 'status' ? 0.0 : 0.3,
-    stepped: mode === 'status' ? 'before' : false,
+    tension: mode === "status" ? 0 : 0.3,
+    stepped: mode === "status" ? "before" : false,
     pointBackgroundColor: pointColors,
     pointBorderColor: pointColors,
     pointHoverRadius: 6,
     pointRadius: values.length > 50 ? 2 : 4
   };
-
   const datasets = [mainDataset];
-
-  if (typeof avgValue === 'number' && values.length > 0 && mode !== 'status') {
+  if (typeof avgValue === "number" && values.length > 0 && mode !== "status") {
     datasets.push({
       label: `Average (${formatMetricValue(avgValue, unit)})`,
       data: Array(values.length).fill(avgValue),
-      borderColor: 'rgba(244, 63, 94, 0.5)',
+      borderColor: "rgba(244, 63, 94, 0.5)",
       borderWidth: 1.5,
       borderDash: [5, 5],
       fill: false,
@@ -7708,45 +6588,41 @@ function drawHistoryChart(labels, values, healths, avgValue, chronologicalDetail
       pointHoverRadius: 0
     });
   }
-
   const yAxisConfig = {
-    grid: { color: 'rgba(255,255,255,0.06)' },
+    grid: { color: "rgba(255,255,255,0.06)" },
     ticks: {
-      color: '#cbd5e1',
+      color: "#cbd5e1",
       font: {
         family: "'Inter', system-ui, -apple-system, sans-serif",
         size: 11,
-        weight: '500'
+        weight: "500"
       },
-      callback: function (val) {
-        if (mode === 'status') {
-          return val === 1 ? 'ONLINE' : (val === 0 ? 'ALERT' : '');
+      callback: function(val) {
+        if (mode === "status") {
+          return val === 1 ? "ONLINE" : val === 0 ? "ALERT" : "";
         }
         return unit ? `${val} ${unit}` : val;
       }
     },
     suggestedMin: 0
   };
-
-  if (mode === 'status') {
+  if (mode === "status") {
     yAxisConfig.min = -0.2;
     yAxisConfig.max = 1.2;
     yAxisConfig.ticks.stepSize = 1;
   }
-
   historyChartInstance = new Chart(ctx, {
-    type: 'line',
+    type: "line",
     data: {
-      labels: labels,
-      datasets: datasets
+      labels,
+      datasets
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       onHover: (event, activeElements) => {
-        const detailsEl = document.getElementById('history-logs-advanced-details');
+        const detailsEl = document.getElementById("history-logs-advanced-details");
         if (!detailsEl || !detailsEl.open) return;
-
         if (activeElements && activeElements.length > 0) {
           const idx = activeElements[0].index;
           const selectedLog = chronologicalDetails[idx];
@@ -7760,35 +6636,35 @@ function drawHistoryChart(labels, values, healths, avgValue, chronologicalDetail
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: 'rgba(15, 23, 42, 0.95)',
-          titleColor: '#fff',
-          bodyColor: '#e2e8f0',
+          backgroundColor: "rgba(15, 23, 42, 0.95)",
+          titleColor: "#fff",
+          bodyColor: "#e2e8f0",
           callbacks: {
-            title: function (context) {
+            title: function(context) {
               const idx = context[0].dataIndex;
               const logItem = chronologicalDetails[idx];
               if (logItem && logItem.timestamp) {
                 const date = new Date(logItem.timestamp);
                 return date.toLocaleString([], {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
                   hour12: false
                 });
               }
               return context[0].label;
             },
-            label: function (context) {
+            label: function(context) {
               const idx = context.dataIndex;
               const logItem = chronologicalDetails[idx];
-              if (mode === 'status' && logItem) {
-                return ` State: ${String(logItem.value || (logItem.status)).toUpperCase()}`;
+              if (mode === "status" && logItem) {
+                return ` State: ${String(logItem.value || logItem.status).toUpperCase()}`;
               }
-              if (mode === 'latency') {
+              if (mode === "latency") {
                 return ` Latency: ${context.parsed.y.toFixed(2)} ms`;
               }
               return ` ${label}: ${context.parsed.y} ${unit}`.trim();
@@ -7796,14 +6672,14 @@ function drawHistoryChart(labels, values, healths, avgValue, chronologicalDetail
           },
           titleFont: {
             family: "'Inter', system-ui, -apple-system, sans-serif",
-            weight: '600',
+            weight: "600",
             size: 11
           },
           bodyFont: {
             family: "'Inter', system-ui, -apple-system, sans-serif",
             size: 11
           },
-          borderColor: 'var(--border-soft)',
+          borderColor: "var(--border-soft)",
           borderWidth: 1,
           padding: 10,
           displayColors: true
@@ -7811,13 +6687,13 @@ function drawHistoryChart(labels, values, healths, avgValue, chronologicalDetail
       },
       scales: {
         x: {
-          grid: { color: 'rgba(255,255,255,0.06)' },
+          grid: { color: "rgba(255,255,255,0.06)" },
           ticks: {
-            color: '#cbd5e1',
+            color: "#cbd5e1",
             font: {
               family: "'Inter', system-ui, -apple-system, sans-serif",
               size: 11,
-              weight: '500'
+              weight: "500"
             },
             maxRotation: 0,
             maxTicksLimit: 8
@@ -7829,99 +6705,78 @@ function drawHistoryChart(labels, values, healths, avgValue, chronologicalDetail
   });
 }
 
-// ─────────────────────────────────────────
-// HOST MANAGER PAGE LOGIC
-// ─────────────────────────────────────────
-
-window.hostsViewLayout = localStorage.getItem('hp_hosts_layout') || 'grid';
-
-window.setHostsLayout = function (layout) {
+// --- [Module: src/07-hosts-manager.ts] ---
+window.hostsViewLayout = localStorage.getItem("hp_hosts_layout") || "grid";
+window.setHostsLayout = function(layout) {
   window.hostsViewLayout = layout;
-  localStorage.setItem('hp_hosts_layout', layout);
-
-  const btnGrid = document.getElementById('btn-hosts-grid');
-  const btnList = document.getElementById('btn-hosts-list');
+  localStorage.setItem("hp_hosts_layout", layout);
+  const btnGrid = document.getElementById("btn-hosts-grid");
+  const btnList = document.getElementById("btn-hosts-list");
   if (btnGrid && btnList) {
-    const gridIcon = btnGrid.querySelector('i, svg');
-    const listIcon = btnList.querySelector('i, svg');
-    if (layout === 'grid') {
-      btnGrid.style.background = 'rgba(255, 255, 255, 0.08)';
-      if (gridIcon) gridIcon.style.color = '#fff';
-      btnList.style.background = 'none';
-      if (listIcon) listIcon.style.color = 'var(--text-secondary)';
+    const gridIcon = btnGrid.querySelector("i, svg");
+    const listIcon = btnList.querySelector("i, svg");
+    if (layout === "grid") {
+      btnGrid.style.background = "rgba(255, 255, 255, 0.08)";
+      if (gridIcon) gridIcon.style.color = "#fff";
+      btnList.style.background = "none";
+      if (listIcon) listIcon.style.color = "var(--text-secondary)";
     } else {
-      btnList.style.background = 'rgba(255, 255, 255, 0.08)';
-      if (listIcon) listIcon.style.color = '#fff';
-      btnGrid.style.background = 'none';
-      if (gridIcon) gridIcon.style.color = 'var(--text-secondary)';
+      btnList.style.background = "rgba(255, 255, 255, 0.08)";
+      if (listIcon) listIcon.style.color = "#fff";
+      btnGrid.style.background = "none";
+      if (gridIcon) gridIcon.style.color = "var(--text-secondary)";
     }
   }
-
   loadHosts();
 };
-
 function showHostsView() {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent && mainContent.classList.contains('edit-mode')) {
-    const editToggleBtn = document.getElementById('edit-toggle-btn');
-    if (editToggleBtn) editToggleBtn.click();
+  const mainContent = document.getElementById("main-content");
+  if (mainContent && mainContent.classList.contains("edit-mode")) {
+    const editToggleBtn2 = document.getElementById("edit-toggle-btn");
+    if (editToggleBtn2) editToggleBtn2.click();
   }
-
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'none';
-
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
+  if (editToggleBtn) editToggleBtn.style.display = "none";
   hideAllViews();
-
-  const hostsView = document.getElementById('hosts-view');
-  if (hostsView) hostsView.classList.remove('hide');
-
-  const navHosts = document.getElementById('nav-hosts');
-  if (navHosts) navHosts.classList.add('active');
-
-  // Set visual toggle active style on load based on cached preference
+  const hostsView = document.getElementById("hosts-view");
+  if (hostsView) hostsView.classList.remove("hide");
+  const navHosts = document.getElementById("nav-hosts");
+  if (navHosts) navHosts.classList.add("active");
   const layout = window.hostsViewLayout;
-  const btnGrid = document.getElementById('btn-hosts-grid');
-  const btnList = document.getElementById('btn-hosts-list');
+  const btnGrid = document.getElementById("btn-hosts-grid");
+  const btnList = document.getElementById("btn-hosts-list");
   if (btnGrid && btnList) {
-    const gridIcon = btnGrid.querySelector('i, svg');
-    const listIcon = btnList.querySelector('i, svg');
-    if (layout === 'grid') {
-      btnGrid.style.background = 'rgba(255, 255, 255, 0.08)';
-      if (gridIcon) gridIcon.style.color = '#fff';
-      btnList.style.background = 'none';
-      if (listIcon) listIcon.style.color = 'var(--text-secondary)';
+    const gridIcon = btnGrid.querySelector("i, svg");
+    const listIcon = btnList.querySelector("i, svg");
+    if (layout === "grid") {
+      btnGrid.style.background = "rgba(255, 255, 255, 0.08)";
+      if (gridIcon) gridIcon.style.color = "#fff";
+      btnList.style.background = "none";
+      if (listIcon) listIcon.style.color = "var(--text-secondary)";
     } else {
-      btnList.style.background = 'rgba(255, 255, 255, 0.08)';
-      if (listIcon) listIcon.style.color = '#fff';
-      btnGrid.style.background = 'none';
-      if (gridIcon) gridIcon.style.color = 'var(--text-secondary)';
+      btnList.style.background = "rgba(255, 255, 255, 0.08)";
+      if (listIcon) listIcon.style.color = "#fff";
+      btnGrid.style.background = "none";
+      if (gridIcon) gridIcon.style.color = "var(--text-secondary)";
     }
   }
-
   window.currentHostsData = null;
   window.currentActivePluginsData = null;
   loadHosts();
 }
-
-window.showLayoutView = function () {
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'none';
-
+window.showLayoutView = function() {
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
+  if (editToggleBtn) editToggleBtn.style.display = "none";
   hideAllViews();
-
-  const layoutView = document.getElementById('layout-view');
-  if (layoutView) layoutView.classList.remove('hide');
-
-  const navLayout = document.getElementById('nav-layout');
-  if (navLayout) navLayout.classList.add('active');
-
+  const layoutView = document.getElementById("layout-view");
+  if (layoutView) layoutView.classList.remove("hide");
+  const navLayout = document.getElementById("nav-layout");
+  if (navLayout) navLayout.classList.add("active");
   loadLayoutHierarchy();
 };
-
 async function loadLayoutHierarchy() {
-  const container = document.getElementById('layout-tree-container');
+  const container = document.getElementById("layout-tree-container");
   if (!container) return;
-
   const { httpUrl } = getApiUrls();
   container.innerHTML = `
     <div style="text-align:center; padding:32px; color:var(--text-secondary);">
@@ -7929,7 +6784,6 @@ async function loadLayoutHierarchy() {
       <p>Loading infrastructure hierarchy...</p>
     </div>
   `;
-
   try {
     const [depsRes, hostsRes, monRes, plugRes] = await Promise.all([
       fetch(`${httpUrl}/api/dependencies`),
@@ -7937,34 +6791,27 @@ async function loadLayoutHierarchy() {
       fetch(`${httpUrl}/api/monitors`),
       fetch(`${httpUrl}/api/plugins/installed`)
     ]);
-
     const deps = depsRes.ok ? await depsRes.json() : [];
     const hosts = hostsRes.ok ? await hostsRes.json() : [];
     const monitors = monRes.ok ? await monRes.json() : [];
     const plugins = plugRes.ok ? await plugRes.json() : [];
-
-    // Maps for lookups
     const targetMap = {};
     const hostMonitorsMap = {};
-
-    hosts.forEach(h => {
-      targetMap[`host-${h.id}`] = { id: h.id, name: h.name, type: 'Host', target: h.target, icon: 'server' };
+    hosts.forEach((h) => {
+      targetMap[`host-${h.id}`] = { id: h.id, name: h.name, type: "Host", target: h.target, icon: "server" };
       hostMonitorsMap[h.id] = [];
     });
-
-    monitors.forEach(m => {
-      targetMap[`monitor-${m.id}`] = { id: m.id, name: m.name, type: m.type.toUpperCase(), target: m.target, icon: 'activity', host_id: m.host_id };
+    monitors.forEach((m) => {
+      targetMap[`monitor-${m.id}`] = { id: m.id, name: m.name, type: m.type.toUpperCase(), target: m.target, icon: "activity", host_id: m.host_id };
       if (m.host_id && hostMonitorsMap[m.host_id]) {
         hostMonitorsMap[m.host_id].push(m);
       }
     });
-
-    plugins.forEach(p => {
-      const pTargetInfo = { id: p.id, name: `Plugin: ${p.name}`, type: 'Plugin', target: `v${p.version}`, icon: 'puzzle' };
+    plugins.forEach((p) => {
+      const pTargetInfo = { id: p.id, name: `Plugin: ${p.name}`, type: "Plugin", target: `v${p.version}`, icon: "puzzle" };
       targetMap[`plugin-${p.id}-status`] = pTargetInfo;
       targetMap[`plugin-${p.id}`] = pTargetInfo;
     });
-
     if (deps.length === 0) {
       container.innerHTML = `
         <div style="text-align:center; padding:40px; color:var(--text-secondary); border: 1px dashed var(--border-soft); border-radius: 8px;">
@@ -7981,22 +6828,17 @@ async function loadLayoutHierarchy() {
       if (window.lucide) window.lucide.createIcons();
       return;
     }
-
-    // Group dependencies by parent target key
     const parentGroups = {};
-    deps.forEach(dep => {
+    deps.forEach((dep) => {
       if (!parentGroups[dep.parent_target]) {
         parentGroups[dep.parent_target] = [];
       }
       parentGroups[dep.parent_target].push(dep);
     });
-
     let html = `<div style="display:flex; flex-direction:column; gap:20px;">`;
-
-    Object.keys(parentGroups).forEach(parentKey => {
-      const parentObj = targetMap[parentKey] || { name: parentKey, type: 'Node', icon: 'hard-drive' };
+    Object.keys(parentGroups).forEach((parentKey) => {
+      const parentObj = targetMap[parentKey] || { name: parentKey, type: "Node", icon: "hard-drive" };
       const childDeps = parentGroups[parentKey];
-
       html += `
         <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:10px; padding:16px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
           <!-- Parent Target Header -->
@@ -8011,28 +6853,26 @@ async function loadLayoutHierarchy() {
               </div>
             </div>
             <span style="font-size:0.7rem; background:rgba(59,130,246,0.1); color:var(--accent-blue); padding:3px 8px; border-radius:4px; font-weight:600;">
-              ${childDeps.length} Dependent Target${childDeps.length > 1 ? 's' : ''}
+              ${childDeps.length} Dependent Target${childDeps.length > 1 ? "s" : ""}
             </span>
           </div>
 
           <!-- Nested Child Nodes Tree -->
           <div style="display:flex; flex-direction:column; gap:10px; padding-left:12px; border-left:2px solid rgba(59,130,246,0.2); margin-left:14px;">
       `;
-
-      childDeps.forEach(dep => {
-        const childObj = targetMap[dep.child_target] || { name: dep.child_target, type: 'Node', icon: 'cpu' };
-        const isHost = dep.child_target.startsWith('host-');
-        const hostId = isHost ? parseInt(dep.child_target.split('-')[1]) : null;
+      childDeps.forEach((dep) => {
+        const childObj = targetMap[dep.child_target] || { name: dep.child_target, type: "Node", icon: "cpu" };
+        const isHost = dep.child_target.startsWith("host-");
+        const hostId = isHost ? parseInt(dep.child_target.split("-")[1]) : null;
         const probes = hostId && hostMonitorsMap[hostId] ? hostMonitorsMap[hostId] : [];
-
         html += `
           <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border-soft); border-radius:8px; padding:12px 14px;">
             <div style="display:flex; align-items:center; justify-content:space-between;">
               <div style="display:flex; align-items:center; gap:10px;">
-                <i data-lucide="${childObj.icon}" style="width:16px; height:16px; color:${isHost ? '#34d399' : '#a7f3d0'};"></i>
+                <i data-lucide="${childObj.icon}" style="width:16px; height:16px; color:${isHost ? "#34d399" : "#a7f3d0"};"></i>
                 <div>
                   <div style="font-weight:600; font-size:0.85rem; color:#f3f4f6;">${childObj.name}</div>
-                  <div style="font-size:0.7rem; color:#9ca3af;">${childObj.type} ${childObj.target ? `(${childObj.target})` : ''}</div>
+                  <div style="font-size:0.7rem; color:#9ca3af;">${childObj.type} ${childObj.target ? `(${childObj.target})` : ""}</div>
                 </div>
               </div>
               <button onclick="deleteDependencyLink(${dep.id})" title="Remove Dependency Link" style="background:none; border:none; color:var(--semantic-red); opacity:0.8; cursor:pointer; padding:6px; border-radius:4px; display:flex; align-items:center;">
@@ -8040,8 +6880,6 @@ async function loadLayoutHierarchy() {
               </button>
             </div>
         `;
-
-        // Render associated probes grouped under host
         if (isHost && probes.length > 0) {
           html += `
             <div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border-soft); display:flex; flex-direction:column; gap:6px; padding-left:12px;">
@@ -8050,7 +6888,7 @@ async function loadLayoutHierarchy() {
               </div>
               <div style="display:flex; flex-wrap:wrap; gap:6px;">
           `;
-          probes.forEach(p => {
+          probes.forEach((p) => {
             html += `
               <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); padding:4px 8px; border-radius:4px; font-size:0.72rem; color:#e5e7eb;">
                 <i data-lucide="activity" style="width:12px; height:12px; color:var(--accent-blue);"></i>
@@ -8064,48 +6902,36 @@ async function loadLayoutHierarchy() {
             </div>
           `;
         }
-
         html += `</div>`;
       });
-
       html += `
           </div>
         </div>
       `;
     });
-
     html += `</div>`;
     container.innerHTML = html;
     if (window.lucide) window.lucide.createIcons();
-
   } catch (err) {
     console.error("Failed to load layout hierarchy:", err);
     container.innerHTML = `<p style="color:var(--semantic-red); text-align:center; padding:16px;">Error loading infrastructure hierarchy: ${err.message}</p>`;
   }
 }
-
-// State for custom dependency dropdowns
 window.depModalState = {
   targets: [],
   parent: null,
   child: null
 };
-
-window.openAddDependencyModal = async function () {
+window.openAddDependencyModal = async function() {
   const { httpUrl } = getApiUrls();
-  
-  // Reset state
   window.depModalState.parent = null;
   window.depModalState.child = null;
-  
-  const parentInput = document.getElementById('dep-modal-parent-select');
-  const childInput = document.getElementById('dep-modal-child-select');
-  if (parentInput) parentInput.value = '';
-  if (childInput) childInput.value = '';
-  
-  // Reset trigger displays
-  const parentDisplay = document.getElementById('dep-parent-selected-display');
-  const childDisplay = document.getElementById('dep-child-selected-display');
+  const parentInput = document.getElementById("dep-modal-parent-select");
+  const childInput = document.getElementById("dep-modal-child-select");
+  if (parentInput) parentInput.value = "";
+  if (childInput) childInput.value = "";
+  const parentDisplay = document.getElementById("dep-parent-selected-display");
+  const childDisplay = document.getElementById("dep-child-selected-display");
   if (parentDisplay) {
     parentDisplay.innerHTML = `
       <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px; display:flex; align-items:center; justify-content:center;">
@@ -8126,133 +6952,105 @@ window.openAddDependencyModal = async function () {
         <span style="font-size:0.7rem; color:#64748b;">VM or Managed Host</span>
       </div>`;
   }
-  
-  document.getElementById('dep-parent-trigger')?.classList.remove('active');
-  document.getElementById('dep-child-trigger')?.classList.remove('active');
-  const livePreview = document.getElementById('dep-topology-live-preview');
-  if (livePreview) livePreview.style.display = 'none';
-  
-  // Close any open popovers
-  document.getElementById('dep-parent-dropdown-menu')?.classList.remove('open');
-  document.getElementById('dep-child-dropdown-menu')?.classList.remove('open');
-  
-  openModal('modal-add-dependency');
-
-  const parentList = document.getElementById('dep-parent-items-list');
-  const childList = document.getElementById('dep-child-items-list');
+  document.getElementById("dep-parent-trigger")?.classList.remove("active");
+  document.getElementById("dep-child-trigger")?.classList.remove("active");
+  const livePreview = document.getElementById("dep-topology-live-preview");
+  if (livePreview) livePreview.style.display = "none";
+  document.getElementById("dep-parent-dropdown-menu")?.classList.remove("open");
+  document.getElementById("dep-child-dropdown-menu")?.classList.remove("open");
+  openModal("modal-add-dependency");
+  const parentList = document.getElementById("dep-parent-items-list");
+  const childList = document.getElementById("dep-child-items-list");
   if (parentList) parentList.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:0.78rem;">Loading targets...</div>';
   if (childList) childList.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-secondary); font-size:0.78rem;">Loading targets...</div>';
-
   try {
     const [hostsRes, monRes, plugRes] = await Promise.all([
       fetch(`${httpUrl}/api/hosts`),
       fetch(`${httpUrl}/api/monitors`),
       fetch(`${httpUrl}/api/plugins/installed`)
     ]);
-
     const hosts = hostsRes.ok ? await hostsRes.json() : [];
     const monitors = monRes.ok ? await monRes.json() : [];
     const plugins = plugRes.ok ? await plugRes.json() : [];
-
-    // Filter standalone probes only
-    const standaloneProbes = monitors.filter(m => {
+    const standaloneProbes = monitors.filter((m) => {
       if (m.host_id) return false;
-      const baseName = typeof getBaseHostName === 'function' ? getBaseHostName(m.name) : m.name;
-      return !hosts.some(h => h.name.toLowerCase().trim() === baseName.toLowerCase().trim());
+      const baseName = typeof getBaseHostName === "function" ? getBaseHostName(m.name) : m.name;
+      return !hosts.some((h) => h.name.toLowerCase().trim() === baseName.toLowerCase().trim());
     });
-
-    // Compile list of available targets
     const availableTargets = [];
-    hosts.forEach(h => {
+    hosts.forEach((h) => {
       availableTargets.push({
         id: `host-${h.id}`,
         name: h.name,
         target: h.target,
-        type: 'host',
-        category: 'Hosts & Hypervisors (Grouped VMs)',
-        icon: 'server',
-        badge: 'VM / Host'
+        type: "host",
+        category: "Hosts & Hypervisors (Grouped VMs)",
+        icon: "server",
+        badge: "VM / Host"
       });
     });
-
-    plugins.forEach(p => {
+    plugins.forEach((p) => {
       availableTargets.push({
         id: `plugin-${p.id}-status`,
         name: `Plugin: ${p.name}`,
         target: `Local Daemon (v${p.version})`,
-        type: 'plugin',
-        category: 'Installed Plugins & Hypervisor Integrations',
-        icon: 'puzzle',
-        badge: 'PLUGIN'
+        type: "plugin",
+        category: "Installed Plugins & Hypervisor Integrations",
+        icon: "puzzle",
+        badge: "PLUGIN"
       });
     });
-
-    standaloneProbes.forEach(m => {
+    standaloneProbes.forEach((m) => {
       availableTargets.push({
         id: `monitor-${m.id}`,
         name: m.name,
         target: m.target || m.type.toUpperCase(),
-        type: 'monitor',
-        category: 'Standalone Unbound Probes',
-        icon: 'activity',
+        type: "monitor",
+        category: "Standalone Unbound Probes",
+        icon: "activity",
         badge: m.type.toUpperCase()
       });
     });
-
     window.depModalState.targets = availableTargets;
-
-    // Render options for parent and child
-    renderDepDropdownItems('parent', availableTargets);
-    renderDepDropdownItems('child', availableTargets);
-
+    renderDepDropdownItems("parent", availableTargets);
+    renderDepDropdownItems("child", availableTargets);
   } catch (e) {
     console.error("Failed to populate dependency modal:", e);
     if (parentList) parentList.innerHTML = `<div style="padding:12px; text-align:center; color:var(--semantic-red); font-size:0.78rem;">Failed to load targets: ${e.message}</div>`;
     if (childList) childList.innerHTML = `<div style="padding:12px; text-align:center; color:var(--semantic-red); font-size:0.78rem;">Failed to load targets: ${e.message}</div>`;
   }
 };
-
-function renderDepDropdownItems(type, targets, filter = '') {
+function renderDepDropdownItems(type, targets, filter = "") {
   const container = document.getElementById(`dep-${type}-items-list`);
   if (!container) return;
-
   const currentVal = document.getElementById(`dep-modal-${type}-select`)?.value;
-  const q = (filter || '').toLowerCase().trim();
-
-  const filtered = (targets || []).filter(t => {
+  const q = (filter || "").toLowerCase().trim();
+  const filtered = (targets || []).filter((t) => {
     if (!q) return true;
-    return (t.name && t.name.toLowerCase().includes(q)) || 
-           (t.target && t.target.toLowerCase().includes(q)) || 
-           (t.category && t.category.toLowerCase().includes(q));
+    return t.name && t.name.toLowerCase().includes(q) || t.target && t.target.toLowerCase().includes(q) || t.category && t.category.toLowerCase().includes(q);
   });
-
   if (filtered.length === 0) {
     container.innerHTML = '<div style="padding:16px; text-align:center; color:#64748b; font-size:0.75rem;">No matching targets found</div>';
     return;
   }
-
-  // Group by category
   const groups = {};
-  filtered.forEach(t => {
+  filtered.forEach((t) => {
     if (!groups[t.category]) groups[t.category] = [];
     groups[t.category].push(t);
   });
-
-  let html = '';
-  Object.keys(groups).forEach(cat => {
+  let html = "";
+  Object.keys(groups).forEach((cat) => {
     html += `
       <div class="custom-dep-group-header">
-        <i data-lucide="${cat.includes('Host') ? 'server' : 'radio'}" style="width:12px; height:12px; color:#60a5fa;"></i>
+        <i data-lucide="${cat.includes("Host") ? "server" : "radio"}" style="width:12px; height:12px; color:#60a5fa;"></i>
         <span>${cat}</span>
       </div>`;
-    
-    groups[cat].forEach(t => {
+    groups[cat].forEach((t) => {
       const isSelected = t.id === currentVal;
-      const safeName = (t.name || '').replace(/'/g, "\\'");
-      const safeTarget = (t.target || '').replace(/'/g, "\\'");
-      
+      const safeName = (t.name || "").replace(/'/g, "\\'");
+      const safeTarget = (t.target || "").replace(/'/g, "\\'");
       html += `
-        <div class="custom-dep-option ${isSelected ? 'selected' : ''}" onclick="selectCustomDepTarget('${type}', '${t.id}', '${safeName}', '${safeTarget}', '${t.icon}', '${t.badge}')">
+        <div class="custom-dep-option ${isSelected ? "selected" : ""}" onclick="selectCustomDepTarget('${type}', '${t.id}', '${safeName}', '${safeTarget}', '${t.icon}', '${t.badge}')">
           <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
             <div style="background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.25); border-radius:6px; padding:6px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
               <i data-lucide="${t.icon}" style="width:15px; height:15px; color:#60a5fa;"></i>
@@ -8264,58 +7062,46 @@ function renderDepDropdownItems(type, targets, filter = '') {
           </div>
           <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
             <span class="target-addr">${t.badge}</span>
-            ${isSelected ? '<i data-lucide="check" style="width:14px; height:14px; color:#3b82f6;"></i>' : ''}
+            ${isSelected ? '<i data-lucide="check" style="width:14px; height:14px; color:#3b82f6;"></i>' : ""}
           </div>
         </div>`;
     });
   });
-
   container.innerHTML = html;
   if (window.lucide) window.lucide.createIcons();
 }
-
-window.toggleDepDropdown = function (type, event) {
+window.toggleDepDropdown = function(type, event) {
   if (event) event.stopPropagation();
   const menu = document.getElementById(`dep-${type}-dropdown-menu`);
   const chevron = document.getElementById(`dep-${type}-chevron`);
   const trigger = document.getElementById(`dep-${type}-trigger`);
   if (!menu) return;
-
-  const isOpen = menu.classList.contains('open');
-
-  // Close all
-  document.querySelectorAll('.custom-dep-popover').forEach(p => p.classList.remove('open'));
-  document.querySelectorAll('.custom-dep-trigger').forEach(t => t.classList.remove('active'));
-  const pChev = document.getElementById('dep-parent-chevron');
-  const cChev = document.getElementById('dep-child-chevron');
-  if (pChev) pChev.style.transform = 'rotate(0deg)';
-  if (cChev) cChev.style.transform = 'rotate(0deg)';
-
+  const isOpen = menu.classList.contains("open");
+  document.querySelectorAll(".custom-dep-popover").forEach((p) => p.classList.remove("open"));
+  document.querySelectorAll(".custom-dep-trigger").forEach((t) => t.classList.remove("active"));
+  const pChev = document.getElementById("dep-parent-chevron");
+  const cChev = document.getElementById("dep-child-chevron");
+  if (pChev) pChev.style.transform = "rotate(0deg)";
+  if (cChev) cChev.style.transform = "rotate(0deg)";
   if (!isOpen) {
-    menu.classList.add('open');
-    if (trigger) trigger.classList.add('active');
-    if (chevron) chevron.style.transform = 'rotate(180deg)';
-    
-    // Focus search input
-    const searchInput = menu.querySelector('input');
+    menu.classList.add("open");
+    if (trigger) trigger.classList.add("active");
+    if (chevron) chevron.style.transform = "rotate(180deg)";
+    const searchInput = menu.querySelector("input");
     if (searchInput) {
-      searchInput.value = '';
+      searchInput.value = "";
       setTimeout(() => searchInput.focus(), 50);
       renderDepDropdownItems(type, window.depModalState.targets || []);
     }
   }
 };
-
-window.filterDepDropdown = function (type, query) {
+window.filterDepDropdown = function(type, query) {
   renderDepDropdownItems(type, window.depModalState.targets || [], query);
 };
-
-window.selectCustomDepTarget = function (type, id, name, target, icon, badge) {
+window.selectCustomDepTarget = function(type, id, name, target, icon, badge) {
   const hiddenInput = document.getElementById(`dep-modal-${type}-select`);
   if (hiddenInput) hiddenInput.value = id;
-
   window.depModalState[type] = { id, name, target, icon, badge };
-
   const displayEl = document.getElementById(`dep-${type}-selected-display`);
   if (displayEl) {
     displayEl.innerHTML = `
@@ -8327,118 +7113,101 @@ window.selectCustomDepTarget = function (type, id, name, target, icon, badge) {
         <span style="font-size:0.7rem; color:#94a3b8; font-family:monospace;">${target || badge}</span>
       </div>`;
   }
-
-  // Close dropdown
-  document.getElementById(`dep-${type}-dropdown-menu`)?.classList.remove('open');
-  document.getElementById(`dep-${type}-trigger`)?.classList.remove('active');
+  document.getElementById(`dep-${type}-dropdown-menu`)?.classList.remove("open");
+  document.getElementById(`dep-${type}-trigger`)?.classList.remove("active");
   const chev = document.getElementById(`dep-${type}-chevron`);
-  if (chev) chev.style.transform = 'rotate(0deg)';
-
+  if (chev) chev.style.transform = "rotate(0deg)";
   updateDepLivePreview();
   if (window.lucide) window.lucide.createIcons();
 };
-
 function updateDepLivePreview() {
-  const previewCard = document.getElementById('dep-topology-live-preview');
+  const previewCard = document.getElementById("dep-topology-live-preview");
   const parentObj = window.depModalState.parent;
   const childObj = window.depModalState.child;
-
   if (!previewCard) return;
-
   if (!parentObj || !childObj) {
-    previewCard.style.display = 'none';
+    previewCard.style.display = "none";
     return;
   }
-
-  previewCard.style.display = 'flex';
-
-  const previewParent = document.getElementById('preview-parent-text');
-  const previewChild = document.getElementById('preview-child-text');
-  const previewBadge = document.getElementById('preview-status-badge');
-  const previewDesc = document.getElementById('preview-explanation-text');
-
+  previewCard.style.display = "flex";
+  const previewParent = document.getElementById("preview-parent-text");
+  const previewChild = document.getElementById("preview-child-text");
+  const previewBadge = document.getElementById("preview-status-badge");
+  const previewDesc = document.getElementById("preview-explanation-text");
   if (parentObj.id === childObj.id) {
     if (previewParent) previewParent.innerHTML = `<i data-lucide="server" style="width:14px; height:14px;"></i> ${parentObj.name}`;
     if (previewChild) previewChild.innerHTML = `<i data-lucide="server" style="width:14px; height:14px;"></i> ${childObj.name}`;
     if (previewBadge) {
-      previewBadge.textContent = 'Invalid Selection';
-      previewBadge.style.color = '#f87171';
-      previewBadge.style.background = 'rgba(239, 68, 68, 0.15)';
-      previewBadge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+      previewBadge.textContent = "Invalid Selection";
+      previewBadge.style.color = "#f87171";
+      previewBadge.style.background = "rgba(239, 68, 68, 0.15)";
+      previewBadge.style.borderColor = "rgba(239, 68, 68, 0.3)";
     }
     if (previewDesc) {
-      previewDesc.innerHTML = `<span style="color:#f87171;">⚠️ A node cannot be configured as its own parent.</span>`;
+      previewDesc.innerHTML = `<span style="color:#f87171;">\u26A0\uFE0F A node cannot be configured as its own parent.</span>`;
     }
   } else {
     if (previewParent) previewParent.innerHTML = `<i data-lucide="server" style="width:14px; height:14px;"></i> ${parentObj.name}`;
     if (previewChild) previewChild.innerHTML = `<i data-lucide="server" style="width:14px; height:14px;"></i> ${childObj.name}`;
     if (previewBadge) {
-      previewBadge.textContent = 'Ready to Link';
-      previewBadge.style.color = '#4ade80';
-      previewBadge.style.background = 'rgba(34, 197, 94, 0.15)';
-      previewBadge.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+      previewBadge.textContent = "Ready to Link";
+      previewBadge.style.color = "#4ade80";
+      previewBadge.style.background = "rgba(34, 197, 94, 0.15)";
+      previewBadge.style.borderColor = "rgba(34, 197, 94, 0.3)";
     }
     if (previewDesc) {
       previewDesc.innerHTML = `When <strong>${parentObj.name}</strong> goes offline, alerts for <strong>${childObj.name}</strong> and its child services will be held.`;
     }
   }
 }
-
-// Close custom dropdowns when clicking outside
-window.addEventListener('click', function (e) {
-  if (!e.target.closest('.custom-dep-select-wrapper')) {
-    document.querySelectorAll('.custom-dep-popover').forEach(p => p.classList.remove('open'));
-    document.querySelectorAll('.custom-dep-trigger').forEach(t => t.classList.remove('active'));
-    const pChev = document.getElementById('dep-parent-chevron');
-    const cChev = document.getElementById('dep-child-chevron');
-    if (pChev) pChev.style.transform = 'rotate(0deg)';
-    if (cChev) cChev.style.transform = 'rotate(0deg)';
+window.addEventListener("click", function(e) {
+  if (!e.target.closest(".custom-dep-select-wrapper")) {
+    document.querySelectorAll(".custom-dep-popover").forEach((p) => p.classList.remove("open"));
+    document.querySelectorAll(".custom-dep-trigger").forEach((t) => t.classList.remove("active"));
+    const pChev = document.getElementById("dep-parent-chevron");
+    const cChev = document.getElementById("dep-child-chevron");
+    if (pChev) pChev.style.transform = "rotate(0deg)";
+    if (cChev) cChev.style.transform = "rotate(0deg)";
   }
 });
-
-window.saveDependencyLinkFromModal = async function () {
+window.saveDependencyLinkFromModal = async function() {
   const { httpUrl } = getApiUrls();
-  const parentVal = document.getElementById('dep-modal-parent-select')?.value;
-  const childVal = document.getElementById('dep-modal-child-select')?.value;
-
+  const parentVal = document.getElementById("dep-modal-parent-select")?.value;
+  const childVal = document.getElementById("dep-modal-child-select")?.value;
   if (!parentVal || !childVal) {
     alert("Please select both a Parent Target and a Child Target.");
     return;
   }
-
   if (parentVal === childVal) {
     alert("A target cannot be assigned as its own parent.");
     return;
   }
-
   try {
     const res = await fetch(`${httpUrl}/api/dependencies`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         parent_target: parentVal,
         child_target: childVal
       })
     });
-
     if (res.ok) {
-      closeModal('modal-add-dependency');
+      closeModal("modal-add-dependency");
       showToast("Infrastructure dependency established", "success");
       loadLayoutHierarchy();
     } else {
       const err = await res.json();
-      alert(`Failed to establish dependency: ${err.detail || 'Error'}`);
+      alert(`Failed to establish dependency: ${err.detail || "Error"}`);
     }
   } catch (e) {
     alert(`Error creating dependency link: ${e.message}`);
   }
 };
-
-window.deleteDependencyLink = async function (depId) {
+window.deleteDependencyLink = async function(depId) {
   if (!await showConfirm("Are you sure you want to remove this dependency link?", "Remove Link")) return;
   const { httpUrl } = getApiUrls();
   try {
-    const res = await fetch(`${httpUrl}/api/dependencies/${depId}`, { method: 'DELETE' });
+    const res = await fetch(`${httpUrl}/api/dependencies/${depId}`, { method: "DELETE" });
     if (res.ok) {
       showToast("Dependency link removed", "success");
       loadLayoutHierarchy();
@@ -8449,73 +7218,63 @@ window.deleteDependencyLink = async function (depId) {
     alert(`Error removing dependency link: ${e.message}`);
   }
 };
-
 window.currentHostsData = null;
 window.currentActivePluginsData = null;
-
-window.filterHostsList = function () {
+window.filterHostsList = function() {
   loadHosts(false);
 };
-
 async function loadHosts(forceFetch = false) {
   const { httpUrl } = getApiUrls();
-  const container = document.getElementById('hosts-list-container');
+  const container = document.getElementById("hosts-list-container");
   if (!container) return;
-
   try {
     if (forceFetch || !window.currentHostsData || !window.currentActivePluginsData) {
       container.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:32px; color:var(--text-secondary);">Loading hosts and plugins...</p>`;
       const [hostsRes, pluginsRes, monitorsRes] = await Promise.all([
         fetch(`${httpUrl}/api/hosts`),
-        fetch(`${httpUrl}/api/plugins/installed`).catch(e => { console.error(e); return { ok: false }; }),
-        fetch(`${httpUrl}/api/monitors`).catch(e => { console.error(e); return { ok: false }; })
+        fetch(`${httpUrl}/api/plugins/installed`).catch((e) => {
+          console.error(e);
+          return { ok: false };
+        }),
+        fetch(`${httpUrl}/api/monitors`).catch((e) => {
+          console.error(e);
+          return { ok: false };
+        })
       ]);
-
       if (!hostsRes.ok) throw new Error(`HTTP ${hostsRes.status}`);
       const rawHosts = await hostsRes.json();
-      const seenHostIds = new Set();
-      window.currentHostsData = (Array.isArray(rawHosts) ? rawHosts : []).filter(h => {
+      const seenHostIds = /* @__PURE__ */ new Set();
+      window.currentHostsData = (Array.isArray(rawHosts) ? rawHosts : []).filter((h) => {
         if (!h || !h.id) return false;
         if (seenHostIds.has(h.id)) return false;
         seenHostIds.add(h.id);
         return true;
       });
-      window.currentHosts = window.currentHostsData; // Keep reference for edit forms
-
+      window.currentHosts = window.currentHostsData;
       let plugins = [];
       if (pluginsRes && pluginsRes.ok) {
         plugins = await pluginsRes.json();
       }
       window.currentActivePluginsData = plugins;
-      console.log("loadHosts: fetched installed plugins from API. Installed plugins found:", window.currentActivePluginsData.map(p => p.id));
-
+      console.log("loadHosts: fetched installed plugins from API. Installed plugins found:", window.currentActivePluginsData.map((p) => p.id));
       let monitors = [];
       if (monitorsRes && monitorsRes.ok) {
         monitors = await monitorsRes.json();
       }
       window.currentMonitorsData = monitors;
     }
-
-    console.log("loadHosts: current active plugins in cache:", window.currentActivePluginsData ? window.currentActivePluginsData.map(p => p.id) : null);
-
-    // Read search term
-    const searchInput = document.getElementById('host-search');
-    const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : '';
-
-    const filteredHosts = window.currentHostsData.filter(host => {
-      const intTgt = (host.target_internal || host.target || '').toLowerCase();
-      const extTgt = (host.target_external || '').toLowerCase();
-      return host.name.toLowerCase().includes(searchVal) ||
-        intTgt.includes(searchVal) || extTgt.includes(searchVal);
+    console.log("loadHosts: current active plugins in cache:", window.currentActivePluginsData ? window.currentActivePluginsData.map((p) => p.id) : null);
+    const searchInput = document.getElementById("host-search");
+    const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : "";
+    const filteredHosts = window.currentHostsData.filter((host) => {
+      const intTgt = (host.target_internal || host.target || "").toLowerCase();
+      const extTgt = (host.target_external || "").toLowerCase();
+      return host.name.toLowerCase().includes(searchVal) || intTgt.includes(searchVal) || extTgt.includes(searchVal);
     });
-
-    const filteredActivePlugins = window.currentActivePluginsData.filter(p => {
-      return p.name.toLowerCase().includes(searchVal) ||
-        p.id.toLowerCase().includes(searchVal) ||
-        (p.description && p.description.toLowerCase().includes(searchVal));
+    const filteredActivePlugins = window.currentActivePluginsData.filter((p) => {
+      return p.name.toLowerCase().includes(searchVal) || p.id.toLowerCase().includes(searchVal) || p.description && p.description.toLowerCase().includes(searchVal);
     });
     console.log("loadHosts: filtered active plugins count:", filteredActivePlugins.length);
-
     if (filteredHosts.length === 0 && filteredActivePlugins.length === 0) {
       container.innerHTML = `
       <div style="grid-column: 1/-1; text-align:center; padding:48px 24px; border: 1px dashed var(--border-soft); border-radius: 8px;">
@@ -8524,104 +7283,88 @@ async function loadHosts(forceFetch = false) {
       </div>`;
       return;
     }
-
-    const layout = window.hostsViewLayout || 'grid';
-
-    // Render hosts HTML
-    const hostsHtmlList = filteredHosts.map(host => {
+    const layout = window.hostsViewLayout || "grid";
+    const hostsHtmlList = filteredHosts.map((host) => {
       const activeCheckers = [];
-      if (host.ping_enabled) activeCheckers.push('Ping');
-      if (host.http_enabled) activeCheckers.push('HTTP');
-      if (host.https_enabled) activeCheckers.push('HTTPS');
-      if (host.ssl_enabled) activeCheckers.push('SSL');
-      if (host.port_enabled) activeCheckers.push(`Port ${host.port_number || ''}`);
-
-      const checkersHtml = activeCheckers.length > 0
-        ? activeCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(' ')
-        : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
-
-      // Smart status evaluation (Internal vs External)
-      const hostMonitors = (window.currentMonitorsData || []).filter(m => m.host_id === host.id);
-      const internalMonitors = hostMonitors.filter(m => !m.name.includes('[External') && !m.name.includes('(SSL)'));
-      const externalMonitors = hostMonitors.filter(m => m.name.includes('[External') || m.name.includes('(SSL)'));
-
+      if (host.ping_enabled) activeCheckers.push("Ping");
+      if (host.http_enabled) activeCheckers.push("HTTP");
+      if (host.https_enabled) activeCheckers.push("HTTPS");
+      if (host.ssl_enabled) activeCheckers.push("SSL");
+      if (host.port_enabled) activeCheckers.push(`Port ${host.port_number || ""}`);
+      const checkersHtml = activeCheckers.length > 0 ? activeCheckers.map((c) => `<span style="font-size:0.65rem; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase;">${c}</span>`).join(" ") : `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active checks</span>`;
+      const hostMonitors = (window.currentMonitorsData || []).filter((m) => m.host_id === host.id);
+      const internalMonitors = hostMonitors.filter((m) => !m.name.includes("[External") && !m.name.includes("(SSL)"));
+      const externalMonitors = hostMonitors.filter((m) => m.name.includes("[External") || m.name.includes("(SSL)"));
       function isProbeOnline(m) {
-        const ent = (cachedEntities && cachedEntities[`monitor-${m.id}-status`]) ? cachedEntities[`monitor-${m.id}-status`].value : m.last_status;
+        const ent = cachedEntities && cachedEntities[`monitor-${m.id}-status`] ? cachedEntities[`monitor-${m.id}-status`].value : m.last_status;
         return isProbeStatusOnline(ent || m.last_status, m.type);
       }
-
       const internalPass = internalMonitors.filter(isProbeOnline).length;
       const internalTotal = internalMonitors.length;
-      const internalUp = internalTotal > 0 ? (internalPass === internalTotal) : null;
+      const internalUp = internalTotal > 0 ? internalPass === internalTotal : null;
       const internalAny = internalTotal > 0 && internalPass > 0;
-
       const externalPass = externalMonitors.filter(isProbeOnline).length;
       const externalTotal = externalMonitors.length;
-      const externalUp = externalTotal > 0 ? (externalPass === externalTotal) : null;
+      const externalUp = externalTotal > 0 ? externalPass === externalTotal : null;
       const externalAny = externalTotal > 0 && externalPass > 0;
-
-      let statusPillHtml = '';
+      let statusPillHtml = "";
       if (internalTotal > 0 && externalTotal > 0) {
         if (internalUp && externalUp) {
-          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">🟢 ALL ONLINE</span>`;
+          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">\u{1F7E2} ALL ONLINE</span>`;
         } else if (internalAny && externalAny) {
-          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="${internalPass}/${internalTotal} internal and ${externalPass}/${externalTotal} external probes passing">🟡 DEGRADED</span>`;
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="${internalPass}/${internalTotal} internal and ${externalPass}/${externalTotal} external probes passing">\u{1F7E1} DEGRADED</span>`;
         } else if (internalAny && !externalAny) {
-          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="LAN is online, but external domain is failing">🟡 EXTERNAL DOWN</span>`;
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="LAN is online, but external domain is failing">\u{1F7E1} EXTERNAL DOWN</span>`;
         } else if (!internalAny && externalAny) {
-          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="External domain responding, but internal LAN IP is unreachable">🟡 INTERNAL DOWN</span>`;
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="External domain responding, but internal LAN IP is unreachable">\u{1F7E1} INTERNAL DOWN</span>`;
         } else {
-          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">🔴 OFFLINE</span>`;
+          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px; font-weight:700;">\u{1F534} OFFLINE</span>`;
         }
       } else if (internalTotal > 0) {
         if (internalUp) {
-          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">🟢 ONLINE</span>`;
+          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">\u{1F7E2} ONLINE</span>`;
         } else if (internalAny) {
-          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="${internalPass}/${internalTotal} probes passing">🟡 DEGRADED</span>`;
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="${internalPass}/${internalTotal} probes passing">\u{1F7E1} DEGRADED</span>`;
         } else {
-          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">🔴 OFFLINE</span>`;
+          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">\u{1F534} OFFLINE</span>`;
         }
       } else if (externalTotal > 0) {
         if (externalUp) {
-          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">🟢 ONLINE</span>`;
+          statusPillHtml = `<span class="status-pill stable" style="font-size:0.6rem; padding:2px 7px;">\u{1F7E2} ONLINE</span>`;
         } else if (externalAny) {
-          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="${externalPass}/${externalTotal} probes passing">🟡 DEGRADED</span>`;
+          statusPillHtml = `<span class="status-pill caution" style="font-size:0.6rem; padding:2px 7px; font-weight:700;" title="${externalPass}/${externalTotal} probes passing">\u{1F7E1} DEGRADED</span>`;
         } else {
-          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">🔴 OFFLINE</span>`;
+          statusPillHtml = `<span class="status-pill critical" style="font-size:0.6rem; padding:2px 7px;">\u{1F534} OFFLINE</span>`;
         }
       } else {
         statusPillHtml = `<span class="status-pill default" style="font-size:0.6rem; padding:2px 7px;">STANDBY</span>`;
       }
-
-      const internalTarget = host.target_internal || (!host.target_external ? host.target : '') || '';
-      const externalTarget = host.target_external || '';
-
-      const outageBannerHtml = (internalAny && !externalAny && externalTotal > 0) ? `
+      const internalTarget = host.target_internal || (!host.target_external ? host.target : "") || "";
+      const externalTarget = host.target_external || "";
+      const outageBannerHtml = internalAny && !externalAny && externalTotal > 0 ? `
         <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:4px 8px; margin-bottom:8px; font-size:0.68rem; color:#fde047; display:flex; align-items:center; gap:6px;">
           <i data-lucide="alert-triangle" style="width:13px; height:13px; color:#fbbf24; flex-shrink:0;"></i>
           <span>External WAN domain unreachable. Internal LAN is operational.</span>
-        </div>` : (!internalAny && externalAny && internalTotal > 0) ? `
+        </div>` : !internalAny && externalAny && internalTotal > 0 ? `
         <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:4px 8px; margin-bottom:8px; font-size:0.68rem; color:#fde047; display:flex; align-items:center; gap:6px;">
           <i data-lucide="alert-triangle" style="width:13px; height:13px; color:#fbbf24; flex-shrink:0;"></i>
           <span>Internal LAN IP unreachable. External proxy is responding.</span>
-        </div>` : '';
-
+        </div>` : "";
       const targetsDisplayHtml = `
         <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:10px;">
           ${internalTarget ? `
           <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:#e2e8f0; font-family:monospace;">
             <span style="font-size:0.62rem; background:rgba(59,130,246,0.15); color:var(--accent-blue); padding:1px 5px; border-radius:3px; font-weight:700; font-family:sans-serif; letter-spacing:0.5px;">LAN</span>
             <span>${internalTarget}</span>
-          </div>` : ''}
+          </div>` : ""}
           ${externalTarget ? `
           <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:#94a3b8; font-family:monospace;">
             <span style="font-size:0.62rem; background:rgba(16,185,129,0.15); color:#34d399; padding:1px 5px; border-radius:3px; font-weight:700; font-family:sans-serif; letter-spacing:0.5px;">WAN</span>
             <span>${externalTarget}</span>
-          </div>` : ''}
+          </div>` : ""}
         </div>
       `;
-
-      if (layout === 'grid') {
+      if (layout === "grid") {
         return `
         <div class="host-card-item" style="padding: 16px; margin: 0; background:rgba(255,255,255,0.02); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid var(--border-soft); cursor:pointer; box-sizing:border-box;" onclick="openHostDetail(${host.id})">
           <div>
@@ -8671,57 +7414,44 @@ async function loadHosts(forceFetch = false) {
         </div>`;
       }
     });
-
-    // Render running plugins HTML
-    const pluginsHtmlList = filteredActivePlugins.map(p => {
-      // Find all entity values published by this plugin
-      const entities = Object.values(cachedEntities || {}).filter(item =>
-        item.plugin_id === p.id ||
-        item.node_id === p.id ||
-        item.node_id === `plugin-${p.id}` ||
-        (item.node_id === 'plugins' && item.entity_key.includes(p.id))
+    const pluginsHtmlList = filteredActivePlugins.map((p) => {
+      const entities = Object.values(cachedEntities || {}).filter(
+        (item) => item.plugin_id === p.id || item.node_id === p.id || item.node_id === `plugin-${p.id}` || item.node_id === "plugins" && item.entity_key.includes(p.id)
       );
-
-      const activeCheckers = entities.map(e => e.name || e.entity_key);
-      let checkersHtml = '';
+      const activeCheckers = entities.map((e) => e.name || e.entity_key);
+      let checkersHtml = "";
       if (activeCheckers.length > 0) {
         const visibleCheckers = activeCheckers.slice(0, 3);
         const remainingCount = activeCheckers.length - visibleCheckers.length;
-        checkersHtml = visibleCheckers.map(c => `<span style="font-size:0.65rem; background:rgba(239, 108, 0, 0.15); color:var(--accent-orange); border:1px solid rgba(239, 108, 0, 0.3); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px;" title="${c}">${c}</span>`).join(' ');
+        checkersHtml = visibleCheckers.map((c) => `<span style="font-size:0.65rem; background:rgba(239, 108, 0, 0.15); color:var(--accent-orange); border:1px solid rgba(239, 108, 0, 0.3); border-radius:4px; padding:3px 8px; font-weight:600; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px;" title="${c}">${c}</span>`).join(" ");
         if (remainingCount > 0) {
           checkersHtml += ` <span style="font-size:0.65rem; background:rgba(255,255,255,0.06); color:var(--text-secondary); border:1px solid var(--border-soft); border-radius:4px; padding:3px 8px; font-weight:600;" title="${remainingCount} more entities reported">+${remainingCount} more</span>`;
         }
       } else {
         checkersHtml = `<span style="font-size:0.65rem; color:var(--text-secondary); font-style:italic;">No active entries reported</span>`;
       }
-
       const pluginHostId = `'plugin-${p.id}'`;
       const entityKeyStatus = `plugin-${p.id}-status`;
-      const entityVal = (cachedEntities && cachedEntities[entityKeyStatus]) ? cachedEntities[entityKeyStatus] : null;
-
-      let statusLabel = 'STOPPED';
-      let statusClass = 'default';
-
-      const runningStatus = entityVal ? (entityVal.attributes?.status || entityVal.value || 'stopped').toLowerCase() : (p.enabled ? 'running' : 'stopped');
-
-      if (runningStatus === 'running' || runningStatus === 'on') {
-        statusLabel = 'RUNNING';
-        statusClass = 'stable';
-      } else if (runningStatus === 'idle') {
-        statusLabel = 'IDLE';
-        statusClass = 'caution';
-      } else if (runningStatus === 'crashed') {
-        statusLabel = 'CRASHED';
-        statusClass = 'critical';
+      const entityVal = cachedEntities && cachedEntities[entityKeyStatus] ? cachedEntities[entityKeyStatus] : null;
+      let statusLabel = "STOPPED";
+      let statusClass = "default";
+      const runningStatus = entityVal ? (entityVal.attributes?.status || entityVal.value || "stopped").toLowerCase() : p.enabled ? "running" : "stopped";
+      if (runningStatus === "running" || runningStatus === "on") {
+        statusLabel = "RUNNING";
+        statusClass = "stable";
+      } else if (runningStatus === "idle") {
+        statusLabel = "IDLE";
+        statusClass = "caution";
+      } else if (runningStatus === "crashed") {
+        statusLabel = "CRASHED";
+        statusClass = "critical";
       } else {
-        statusLabel = 'STOPPED';
-        statusClass = 'default';
+        statusLabel = "STOPPED";
+        statusClass = "default";
       }
-
-      const isStopped = (statusLabel === 'STOPPED' || statusLabel === 'CRASHED');
-      const opacityStyle = isStopped ? 'opacity: 0.6; filter: grayscale(40%);' : '';
-
-      if (layout === 'grid') {
+      const isStopped = statusLabel === "STOPPED" || statusLabel === "CRASHED";
+      const opacityStyle = isStopped ? "opacity: 0.6; filter: grayscale(40%);" : "";
+      if (layout === "grid") {
         return `
           <div class="host-card-item" style="padding: 16px; margin: 0; background:rgba(239, 108, 0, 0.03); display:flex; flex-direction:column; justify-content:space-between; min-height:160px; border-radius:8px; border:1px solid rgba(239, 108, 0, 0.25); cursor:pointer; box-sizing:border-box; ${opacityStyle}" onclick="openHostDetail(${pluginHostId})">
             <div>
@@ -8769,237 +7499,191 @@ async function loadHosts(forceFetch = false) {
           </div>`;
       }
     });
-
-    if (layout === 'grid') {
+    if (layout === "grid") {
       container.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;";
     } else {
       container.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
     }
-
-    container.innerHTML = [...hostsHtmlList, ...pluginsHtmlList].join('');
-
+    container.innerHTML = [...hostsHtmlList, ...pluginsHtmlList].join("");
     if (window.lucide) window.lucide.createIcons();
-
   } catch (err) {
     container.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:32px; color:#f43f5e;">Failed to load hosts: ${err.message}</p>`;
   }
 }
-
 window.showHostsView = showHostsView;
-window.toggleHostPollingInterval = function (useDefault) {
-  const slider = document.getElementById('host-polling-interval');
-  const badge = document.getElementById('host-polling-interval-val');
-  const desc = document.getElementById('host-polling-interval-desc');
-  const defaultVal = (window.currentSettingsData && window.currentSettingsData.telemetry_interval !== undefined)
-    ? parseInt(window.currentSettingsData.telemetry_interval)
-    : 3;
-
+window.toggleHostPollingInterval = function(useDefault) {
+  const slider = document.getElementById("host-polling-interval");
+  const badge = document.getElementById("host-polling-interval-val");
+  const desc = document.getElementById("host-polling-interval-desc");
+  const defaultVal = window.currentSettingsData && window.currentSettingsData.telemetry_interval !== void 0 ? parseInt(window.currentSettingsData.telemetry_interval) : 3;
   if (slider) {
     slider.disabled = useDefault;
-    slider.style.opacity = useDefault ? '0.5' : '1';
+    slider.style.opacity = useDefault ? "0.5" : "1";
     if (useDefault) {
       slider.value = defaultVal;
       if (badge) badge.textContent = `${defaultVal}s`;
     }
   }
   if (desc) {
-    desc.textContent = useDefault
-      ? 'Currently adopting the global baseline telemetry interval configured in Settings.'
-      : 'Custom manual stats collection frequency for this specific host device.';
+    desc.textContent = useDefault ? "Currently adopting the global baseline telemetry interval configured in Settings." : "Custom manual stats collection frequency for this specific host device.";
   }
 };
-
-window.openAddHostModal = function () {
-  const defaultVal = (window.currentSettingsData && window.currentSettingsData.telemetry_interval !== undefined)
-    ? parseInt(window.currentSettingsData.telemetry_interval)
-    : 3;
-
-  document.getElementById('host-modal-title').textContent = 'Configure New Host';
-  document.getElementById('host-modal-id').value = '';
-  document.getElementById('host-name').value = '';
-  document.getElementById('host-target').value = '';
-  const intInput = document.getElementById('host-target-internal');
-  if (intInput) intInput.value = '';
-  const extInput = document.getElementById('host-target-external');
-  if (extInput) extInput.value = '';
-  const legInput = document.getElementById('host-target');
-  if (legInput) legInput.value = '';
-
-  document.getElementById('host-check-ping').checked = false;
-  document.getElementById('host-check-http').checked = false;
-  document.getElementById('host-check-https').checked = false;
-  document.getElementById('host-check-ssl').checked = false;
-  document.getElementById('host-check-port').checked = false;
-  document.getElementById('host-port-number').value = '';
-  document.getElementById('host-port-number').disabled = true;
-
-  const pingTarget = document.getElementById('host-check-ping-target');
-  if (pingTarget) pingTarget.value = 'both';
-  const httpTarget = document.getElementById('host-check-http-target');
-  if (httpTarget) httpTarget.value = 'both';
-  const httpsTarget = document.getElementById('host-check-https-target');
-  if (httpsTarget) httpsTarget.value = 'both';
-  const sslTarget = document.getElementById('host-check-ssl-target');
-  if (sslTarget) sslTarget.value = 'external';
-  const portTarget = document.getElementById('host-check-port-target');
-  if (portTarget) portTarget.value = 'internal';
-
-  const intervalEl = document.getElementById('host-polling-interval');
+window.openAddHostModal = function() {
+  const defaultVal = window.currentSettingsData && window.currentSettingsData.telemetry_interval !== void 0 ? parseInt(window.currentSettingsData.telemetry_interval) : 3;
+  document.getElementById("host-modal-title").textContent = "Configure New Host";
+  document.getElementById("host-modal-id").value = "";
+  document.getElementById("host-name").value = "";
+  document.getElementById("host-target").value = "";
+  const intInput = document.getElementById("host-target-internal");
+  if (intInput) intInput.value = "";
+  const extInput = document.getElementById("host-target-external");
+  if (extInput) extInput.value = "";
+  const legInput = document.getElementById("host-target");
+  if (legInput) legInput.value = "";
+  document.getElementById("host-check-ping").checked = false;
+  document.getElementById("host-check-http").checked = false;
+  document.getElementById("host-check-https").checked = false;
+  document.getElementById("host-check-ssl").checked = false;
+  document.getElementById("host-check-port").checked = false;
+  document.getElementById("host-port-number").value = "";
+  document.getElementById("host-port-number").disabled = true;
+  const pingTarget = document.getElementById("host-check-ping-target");
+  if (pingTarget) pingTarget.value = "both";
+  const httpTarget = document.getElementById("host-check-http-target");
+  if (httpTarget) httpTarget.value = "both";
+  const httpsTarget = document.getElementById("host-check-https-target");
+  if (httpsTarget) httpsTarget.value = "both";
+  const sslTarget = document.getElementById("host-check-ssl-target");
+  if (sslTarget) sslTarget.value = "external";
+  const portTarget = document.getElementById("host-check-port-target");
+  if (portTarget) portTarget.value = "internal";
+  const intervalEl = document.getElementById("host-polling-interval");
   if (intervalEl) {
     intervalEl.value = 3;
-    document.getElementById('host-polling-interval-val').textContent = '3s';
+    document.getElementById("host-polling-interval-val").textContent = "3s";
   }
-  const defaultCheckbox = document.getElementById('host-use-default-interval');
+  const defaultCheckbox = document.getElementById("host-use-default-interval");
   if (defaultCheckbox) defaultCheckbox.checked = true;
-
-  const defaultLabel = document.getElementById('host-system-default-label');
+  const defaultLabel = document.getElementById("host-system-default-label");
   if (defaultLabel) defaultLabel.textContent = `${defaultVal}s`;
-
   toggleHostPollingInterval(true);
-
-  window.openModal('host-modal');
+  window.openModal("host-modal");
 };
-
-window.openEditHostModal = function (hostId) {
-  const host = (window.currentHosts || []).find(h => h.id === hostId);
+window.openEditHostModal = function(hostId) {
+  const host = (window.currentHosts || []).find((h) => h.id === hostId);
   if (!host) return;
-
-  const defaultVal = (window.currentSettingsData && window.currentSettingsData.telemetry_interval !== undefined)
-    ? parseInt(window.currentSettingsData.telemetry_interval)
-    : 3;
-
-  document.getElementById('host-modal-title').textContent = 'Modify Host Device';
-  document.getElementById('host-modal-id').value = host.id;
-  document.getElementById('host-name').value = host.name;
-  document.getElementById('host-target').value = host.target || '';
-  
-  const intTarget = host.target_internal || (!host.target_external ? host.target : '') || '';
-  const extTarget = host.target_external || '';
-  const intInput = document.getElementById('host-target-internal');
+  const defaultVal = window.currentSettingsData && window.currentSettingsData.telemetry_interval !== void 0 ? parseInt(window.currentSettingsData.telemetry_interval) : 3;
+  document.getElementById("host-modal-title").textContent = "Modify Host Device";
+  document.getElementById("host-modal-id").value = host.id;
+  document.getElementById("host-name").value = host.name;
+  document.getElementById("host-target").value = host.target || "";
+  const intTarget = host.target_internal || (!host.target_external ? host.target : "") || "";
+  const extTarget = host.target_external || "";
+  const intInput = document.getElementById("host-target-internal");
   if (intInput) intInput.value = intTarget;
-  const extInput = document.getElementById('host-target-external');
+  const extInput = document.getElementById("host-target-external");
   if (extInput) extInput.value = extTarget;
-  const legInput = document.getElementById('host-target');
+  const legInput = document.getElementById("host-target");
   if (legInput) legInput.value = intTarget || extTarget;
-
-  document.getElementById('host-check-ping').checked = host.ping_enabled;
-  document.getElementById('host-check-http').checked = host.http_enabled;
-  document.getElementById('host-check-https').checked = host.https_enabled;
-  document.getElementById('host-check-ssl').checked = host.ssl_enabled;
-  document.getElementById('host-check-port').checked = host.port_enabled;
-  document.getElementById('host-port-number').value = host.port_number || '';
-  document.getElementById('host-port-number').disabled = !host.port_enabled;
-
-  const editPingTarget = document.getElementById('host-check-ping-target');
-  if (editPingTarget) editPingTarget.value = host.ping_target || 'both';
-  const editHttpTarget = document.getElementById('host-check-http-target');
-  if (editHttpTarget) editHttpTarget.value = host.http_target || 'both';
-  const editHttpsTarget = document.getElementById('host-check-https-target');
-  if (editHttpsTarget) editHttpsTarget.value = host.https_target || 'both';
-  const editSslTarget = document.getElementById('host-check-ssl-target');
-  if (editSslTarget) editSslTarget.value = host.ssl_target || 'external';
-  const editPortTarget = document.getElementById('host-check-port-target');
-  if (editPortTarget) editPortTarget.value = host.port_target || 'internal';
-
-  const isDefault = (!host.polling_interval || host.polling_interval === defaultVal);
-  const defaultCheckbox = document.getElementById('host-use-default-interval');
+  document.getElementById("host-check-ping").checked = host.ping_enabled;
+  document.getElementById("host-check-http").checked = host.http_enabled;
+  document.getElementById("host-check-https").checked = host.https_enabled;
+  document.getElementById("host-check-ssl").checked = host.ssl_enabled;
+  document.getElementById("host-check-port").checked = host.port_enabled;
+  document.getElementById("host-port-number").value = host.port_number || "";
+  document.getElementById("host-port-number").disabled = !host.port_enabled;
+  const editPingTarget = document.getElementById("host-check-ping-target");
+  if (editPingTarget) editPingTarget.value = host.ping_target || "both";
+  const editHttpTarget = document.getElementById("host-check-http-target");
+  if (editHttpTarget) editHttpTarget.value = host.http_target || "both";
+  const editHttpsTarget = document.getElementById("host-check-https-target");
+  if (editHttpsTarget) editHttpsTarget.value = host.https_target || "both";
+  const editSslTarget = document.getElementById("host-check-ssl-target");
+  if (editSslTarget) editSslTarget.value = host.ssl_target || "external";
+  const editPortTarget = document.getElementById("host-check-port-target");
+  if (editPortTarget) editPortTarget.value = host.port_target || "internal";
+  const isDefault = !host.polling_interval || host.polling_interval === defaultVal;
+  const defaultCheckbox = document.getElementById("host-use-default-interval");
   if (defaultCheckbox) defaultCheckbox.checked = isDefault;
-
-  const defaultLabel = document.getElementById('host-system-default-label');
+  const defaultLabel = document.getElementById("host-system-default-label");
   if (defaultLabel) defaultLabel.textContent = `${defaultVal}s`;
-
-  const intervalEl = document.getElementById('host-polling-interval');
+  const intervalEl = document.getElementById("host-polling-interval");
   if (intervalEl) {
     intervalEl.value = host.polling_interval || 3;
-    document.getElementById('host-polling-interval-val').textContent = (host.polling_interval || 3) + 's';
+    document.getElementById("host-polling-interval-val").textContent = (host.polling_interval || 3) + "s";
     intervalEl.value = host.polling_interval || defaultVal;
-    document.getElementById('host-polling-interval-val').textContent = (host.polling_interval || defaultVal) + 's';
+    document.getElementById("host-polling-interval-val").textContent = (host.polling_interval || defaultVal) + "s";
   }
-
   toggleHostPollingInterval(isDefault);
-
-  window.openModal('host-modal');
+  window.openModal("host-modal");
 };
-
-window.submitSaveHost = async function () {
+window.submitSaveHost = async function() {
   const { httpUrl } = getApiUrls();
-  const id = document.getElementById('host-modal-id').value;
-  const name = document.getElementById('host-name').value.trim();
-  const targetInternal = (document.getElementById('host-target-internal')?.value || '').trim() || null;
-  const targetExternal = (document.getElementById('host-target-external')?.value || '').trim() || null;
-
-  if (!name || (!targetInternal && !targetExternal)) {
+  const id = document.getElementById("host-modal-id").value;
+  const name = document.getElementById("host-name").value.trim();
+  const targetInternal = (document.getElementById("host-target-internal")?.value || "").trim() || null;
+  const targetExternal = (document.getElementById("host-target-external")?.value || "").trim() || null;
+  if (!name || !targetInternal && !targetExternal) {
     alert("Host Name and at least one Target address (Internal or External) are required.");
     return;
   }
-
-  const useDefault = document.getElementById('host-use-default-interval')?.checked ?? false;
-  const defaultVal = (window.currentSettingsData && window.currentSettingsData.telemetry_interval !== undefined)
-    ? parseInt(window.currentSettingsData.telemetry_interval)
-    : 3;
-  const pollingInterval = useDefault ? defaultVal : parseInt(document.getElementById('host-polling-interval')?.value || defaultVal);
-
+  const useDefault = document.getElementById("host-use-default-interval")?.checked ?? false;
+  const defaultVal = window.currentSettingsData && window.currentSettingsData.telemetry_interval !== void 0 ? parseInt(window.currentSettingsData.telemetry_interval) : 3;
+  const pollingInterval = useDefault ? defaultVal : parseInt(document.getElementById("host-polling-interval")?.value || defaultVal);
   const payload = {
-    name: name,
+    name,
     target: targetInternal || targetExternal,
     target_internal: targetInternal,
     target_external: targetExternal,
     use_default_interval: useDefault,
     polling_interval: pollingInterval,
-    ping_enabled: document.getElementById('host-check-ping').checked,
-    ping_target: document.getElementById('host-check-ping-target')?.value || 'both',
-    http_enabled: document.getElementById('host-check-http').checked,
-    http_target: document.getElementById('host-check-http-target')?.value || 'both',
-    https_enabled: document.getElementById('host-check-https').checked,
-    https_target: document.getElementById('host-check-https-target')?.value || 'both',
-    ssl_enabled: document.getElementById('host-check-ssl').checked,
-    ssl_target: document.getElementById('host-check-ssl-target')?.value || 'external',
-    port_enabled: document.getElementById('host-check-port').checked,
-    port_target: document.getElementById('host-check-port-target')?.value || 'internal',
-    port_number: document.getElementById('host-check-port').checked
-      ? parseInt(document.getElementById('host-port-number').value) || null
-      : null
+    ping_enabled: document.getElementById("host-check-ping").checked,
+    ping_target: document.getElementById("host-check-ping-target")?.value || "both",
+    http_enabled: document.getElementById("host-check-http").checked,
+    http_target: document.getElementById("host-check-http-target")?.value || "both",
+    https_enabled: document.getElementById("host-check-https").checked,
+    https_target: document.getElementById("host-check-https-target")?.value || "both",
+    ssl_enabled: document.getElementById("host-check-ssl").checked,
+    ssl_target: document.getElementById("host-check-ssl-target")?.value || "external",
+    port_enabled: document.getElementById("host-check-port").checked,
+    port_target: document.getElementById("host-check-port-target")?.value || "internal",
+    port_number: document.getElementById("host-check-port").checked ? parseInt(document.getElementById("host-port-number").value) || null : null
   };
-
   try {
     let response;
     if (id) {
       response = await fetch(`${httpUrl}/api/hosts/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
     } else {
       response = await fetch(`${httpUrl}/api/hosts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
     }
-
     if (!response.ok) {
       const errData = await response.json();
       throw new Error(errData.detail || `HTTP ${response.status}`);
     }
-
-    closeModal('host-modal');
+    closeModal("host-modal");
     window.currentHostsData = null;
     loadHosts(true);
-    if (typeof showToast === 'function') {
+    if (typeof showToast === "function") {
       showToast(id ? "Host configuration updated" : "New host added successfully", "success");
     }
   } catch (err) {
     alert(`Failed to save host details: ${err.message}`);
   }
 };
-
-window.deleteHost = async function (id) {
+window.deleteHost = async function(id) {
   if (!await showConfirm("Are you sure you want to delete this host? This will also remove all its monitored check probes.", "Delete Host")) return;
-
   const { httpUrl } = getApiUrls();
   try {
     const response = await fetch(`${httpUrl}/api/hosts/${id}`, {
-      method: 'DELETE'
+      method: "DELETE"
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     window.currentHostsData = null;
@@ -9008,239 +7692,182 @@ window.deleteHost = async function (id) {
     alert(`Failed to delete host: ${err.message}`);
   }
 };
-
-window.generateSupportLogs = async function () {
-  if (typeof showToast === 'function') showToast("Compiling support logs...", "info");
+window.generateSupportLogs = async function() {
+  if (typeof showToast === "function") showToast("Compiling support logs...", "info");
   try {
     const { httpUrl } = getApiUrls();
     const res = await fetch(`${httpUrl}/api/support/logs`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-
-    const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+    const dateStr = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
     const filename = `homepulse-support-logs-${dateStr}.json`;
-
-    // Download JSON file
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
-    const downloadAnchor = document.createElement('a');
+    const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", dataStr);
     downloadAnchor.setAttribute("download", filename);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-
-    if (typeof showToast === 'function') showToast("Support logs downloaded successfully!", "success");
+    if (typeof showToast === "function") showToast("Support logs downloaded successfully!", "success");
   } catch (err) {
-    if (typeof showToast === 'function') showToast(`Support log generation failed: ${err.message}`, "error");
+    if (typeof showToast === "function") showToast(`Support log generation failed: ${err.message}`, "error");
     else alert(`Support log generation failed: ${err.message}`);
   }
 };
-
-window.getSensorIdForEntity = function (nodeId, entityKey, name, type) {
-  if (nodeId === 'core-mon') {
-    if (entityKey === 'cpu-utilization') return 'sensor.cpu_utilization';
-    if (entityKey === 'memory-saturation') return 'sensor.memory_saturation';
-    if (entityKey === 'network-throughput') return 'sensor.network_throughput';
-    if (entityKey === 'server-room-temp') return 'sensor.cpu_temperature';
-    if (entityKey === 'database-status') return 'sensor.database_status';
-    if (entityKey === 'database-latency') return 'sensor.database_latency';
-    if (entityKey === 'database-storage-pct') return 'sensor.database_storage_pct';
+window.getSensorIdForEntity = function(nodeId, entityKey, name, type) {
+  if (nodeId === "core-mon") {
+    if (entityKey === "cpu-utilization") return "sensor.cpu_utilization";
+    if (entityKey === "memory-saturation") return "sensor.memory_saturation";
+    if (entityKey === "network-throughput") return "sensor.network_throughput";
+    if (entityKey === "server-room-temp") return "sensor.cpu_temperature";
+    if (entityKey === "database-status") return "sensor.database_status";
+    if (entityKey === "database-latency") return "sensor.database_latency";
+    if (entityKey === "database-storage-pct") return "sensor.database_storage_pct";
   }
-
-  if (nodeId === 'monitors') {
+  if (nodeId === "monitors") {
     const match = entityKey.match(/^monitor-(\d+)-(status|latency)$/);
     if (match) {
       const monId = match[1];
       const category = match[2];
-
       const slugify = (str) => {
-        return str
-          .toLowerCase()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/[\s_-]+/g, '_')
-          .replace(/^-+|-+$/g, '');
+        return str.toLowerCase().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "_").replace(/^-+|-+$/g, "");
       };
-
       let monNameSlug = `monitor_${monId}`;
-      let monType = 'ping';
-
+      let monType = "ping";
       if (name) {
-        monNameSlug = slugify(name
-          .replace(/\s+Status$/i, '')
-          .replace(/\s+Latency$/i, '')
-          .replace(/\s+Check$/i, '')
-          .replace(/\s*\(Ping\)$/i, '')
-          .replace(/\s*\(HTTP\)$/i, '')
-          .replace(/\s*\(HTTPS\)$/i, '')
-          .replace(/\s*\(SSL\)$/i, '')
-          .replace(/\s*\(Port\)$/i, '')
+        monNameSlug = slugify(
+          name.replace(/\s+Status$/i, "").replace(/\s+Latency$/i, "").replace(/\s+Check$/i, "").replace(/\s*\(Ping\)$/i, "").replace(/\s*\(HTTP\)$/i, "").replace(/\s*\(HTTPS\)$/i, "").replace(/\s*\(SSL\)$/i, "").replace(/\s*\(Port\)$/i, "")
         );
       }
       if (type) {
         monType = type;
       }
-
-      if (category === 'status') {
-        const domain = (monType === 'ping') ? 'ping' : 'binary_sensor';
+      if (category === "status") {
+        const domain = monType === "ping" ? "ping" : "binary_sensor";
         return `${domain}.${monNameSlug}`;
       } else {
         return `sensor.${monNameSlug}_latency`;
       }
     }
   }
-
-  return `${nodeId}.${entityKey}`.replace(/-/g, '_');
+  return `${nodeId}.${entityKey}`.replace(/-/g, "_");
 };
-
-window.resolveSensorIdToEntityRef = function (sensorId) {
+window.resolveSensorIdToEntityRef = function(sensorId) {
   if (!cachedEntities) return null;
-  const matched = Object.keys(cachedEntities).find(key => {
+  const matched = Object.keys(cachedEntities).find((key) => {
     const item = cachedEntities[key];
     const id = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
     return id === sensorId;
   });
-
   if (matched) {
     const item = cachedEntities[matched];
     return { nodeId: item.node_id, entityKey: item.entity_key };
   }
-
-  const parts = sensorId.split('.');
+  const parts = sensorId.split(".");
   if (parts.length === 2) {
     const slug = parts[1];
-    if (slug === 'cpu_utilization') return { nodeId: 'core-mon', entityKey: 'cpu-utilization' };
-    if (slug === 'memory_saturation') return { nodeId: 'core-mon', entityKey: 'memory-saturation' };
-    if (slug === 'network_throughput') return { nodeId: 'core-mon', entityKey: 'network-throughput' };
-    if (slug === 'cpu_temperature') return { nodeId: 'core-mon', entityKey: 'server-room-temp' };
-    if (slug === 'database_status') return { nodeId: 'core-mon', entityKey: 'database-status' };
-    if (slug === 'database_latency') return { nodeId: 'core-mon', entityKey: 'database-latency' };
-    if (slug === 'database_storage_pct') return { nodeId: 'core-mon', entityKey: 'database-storage-pct' };
+    if (slug === "cpu_utilization") return { nodeId: "core-mon", entityKey: "cpu-utilization" };
+    if (slug === "memory_saturation") return { nodeId: "core-mon", entityKey: "memory-saturation" };
+    if (slug === "network_throughput") return { nodeId: "core-mon", entityKey: "network-throughput" };
+    if (slug === "cpu_temperature") return { nodeId: "core-mon", entityKey: "server-room-temp" };
+    if (slug === "database_status") return { nodeId: "core-mon", entityKey: "database-status" };
+    if (slug === "database_latency") return { nodeId: "core-mon", entityKey: "database-latency" };
+    if (slug === "database_storage_pct") return { nodeId: "core-mon", entityKey: "database-storage-pct" };
   }
   return null;
 };
-
-window.openHostDetail = async function (hostId) {
-  if (typeof hostId === 'string' && hostId.startsWith('plugin-')) {
+window.openHostDetail = async function(hostId) {
+  if (typeof hostId === "string" && hostId.startsWith("plugin-")) {
     const pluginId = hostId.substring(7);
-
-    // Fetch installed list to get details
     let plugin = null;
     try {
       const { httpUrl } = getApiUrls();
       const res = await fetch(`${httpUrl}/api/plugins/installed`);
       if (res.ok) {
         const plugins = await res.json();
-        plugin = plugins.find(p => p.id === pluginId);
+        plugin = plugins.find((p) => p.id === pluginId);
       }
     } catch (e) {
       console.error("Failed to load plugin details inside host manager:", e);
     }
-
     if (!plugin) {
-      plugin = { id: pluginId, name: pluginId, version: '1.0.0' };
+      plugin = { id: pluginId, name: pluginId, version: "1.0.0" };
     }
-
-    document.getElementById('host-detail-title-full').textContent = `Plugin: ${plugin.name}`;
-    document.getElementById('host-detail-target-full').textContent = `Local Daemon (v${plugin.version})`;
-
-    // Hide system telemetry stats panel
-    const statsSection = document.getElementById('host-detail-stats-section-full');
-    if (statsSection) statsSection.style.display = 'none';
-
-    // Fetch and populate probers/entries list for this plugin
-    const probersList = document.getElementById('host-detail-probers-list-full');
-    if (probersList) {
-      // Find all custom entities reported by this plugin
-      const entities = Object.values(cachedEntities || {}).filter(item =>
-        item.plugin_id === pluginId ||
-        item.node_id === pluginId ||
-        item.node_id === `plugin-${pluginId}` ||
-        (item.node_id === 'plugins' && item.entity_key.includes(pluginId))
+    document.getElementById("host-detail-title-full").textContent = `Plugin: ${plugin.name}`;
+    document.getElementById("host-detail-target-full").textContent = `Local Daemon (v${plugin.version})`;
+    const statsSection2 = document.getElementById("host-detail-stats-section-full");
+    if (statsSection2) statsSection2.style.display = "none";
+    const probersList2 = document.getElementById("host-detail-probers-list-full");
+    if (probersList2) {
+      const entities = Object.values(cachedEntities || {}).filter(
+        (item) => item.plugin_id === pluginId || item.node_id === pluginId || item.node_id === `plugin-${pluginId}` || item.node_id === "plugins" && item.entity_key.includes(pluginId)
       );
-
       if (entities.length === 0) {
-        probersList.innerHTML = `<span style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">No entity telemetry reported by this plugin yet.</span>`;
+        probersList2.innerHTML = `<span style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">No entity telemetry reported by this plugin yet.</span>`;
       } else {
-        probersList.innerHTML = entities.map(m => {
-          const statusVal = m.value !== undefined ? m.value : 'unknown';
+        probersList2.innerHTML = entities.map((m) => {
+          const statusVal = m.value !== void 0 ? m.value : "unknown";
           const sValUpper = String(statusVal).trim().toUpperCase();
-          const isOnline = isProbeStatusOnline(statusVal) || sValUpper === 'ON' || sValUpper === 'ACTIVE' || sValUpper === 'RUNNING' || sValUpper === 'OK' || sValUpper === 'IDLE' || sValUpper === 'PASSED';
-          const statusClass = isOnline ? 'online' : 'offline';
-          const statusLabel = typeof statusVal === 'string' ? statusVal.toUpperCase() : statusVal;
-
+          const isOnline = isProbeStatusOnline(statusVal) || sValUpper === "ON" || sValUpper === "ACTIVE" || sValUpper === "RUNNING" || sValUpper === "OK" || sValUpper === "IDLE" || sValUpper === "PASSED";
+          const statusClass = isOnline ? "online" : "offline";
+          const statusLabel = typeof statusVal === "string" ? statusVal.toUpperCase() : statusVal;
           const sensorIdStatus = window.getSensorIdForEntity(m.node_id, m.entity_key, m.name, m.type);
-
-          // Get extra details from attributes if present
-          let detailsHtml = '';
+          let detailsHtml = "";
           if (m.attributes && Object.keys(m.attributes).length > 0) {
             const formatBytes = (bytes) => {
-              if (bytes === 0) return '0 B';
+              if (bytes === 0) return "0 B";
               if (!bytes || isNaN(bytes)) return bytes;
               const k = 1024;
-              const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+              const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
               let i = Math.floor(Math.log(bytes) / Math.log(k));
               if (i < 0) i = 0;
               if (i >= sizes.length) i = sizes.length - 1;
-              return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+              return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
             };
-
-            detailsHtml = Object.keys(m.attributes)
-              .filter(attr => attr !== 'status' && attr !== 'version')
-              .map(attr => {
-                let val = m.attributes[attr];
-                const keyLower = attr.toLowerCase();
-                // Format sizes/bytes to human readable form
-                if (typeof val === 'number' && (keyLower.includes('bytes') || keyLower === 'size' || keyLower.includes('_size') || keyLower.includes('capacity') || keyLower.includes('bandwidth'))) {
-                  val = formatBytes(val);
-                } else if (typeof val === 'object' && val !== null) {
-                  // Table rendering for arrays of objects
-                  if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object' && val[0] !== null) {
-                    const uniqueId = `table-${m.node_id}-${m.entity_key}-${attr}`.replace(/[^a-zA-Z0-9-]/g, '_');
-
-                    const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                    // Look up parent manifest to see if a schema matches
-                    let columns = [];
-                    const lookupPluginId = m.plugin_id || m.node_id;
-                    const p = window.currentActivePluginsData ? window.currentActivePluginsData.find(pl => pl.id === lookupPluginId) : null;
-                    if (p && p.entities && p.entities[m.entity_key] && p.entities[m.entity_key].ui_schema && p.entities[m.entity_key].ui_schema.columns) {
-                      columns = p.entities[m.entity_key].ui_schema.columns;
-                    } else {
-                      columns = Object.keys(val[0]);
-                    }
-
-                    // Headers
-                    const headersHtml = columns.map(k => `<th style="text-align: left; padding: 6px; font-size: 0.7rem; text-transform: capitalize; border-bottom: 1px solid var(--border-soft); color: var(--text-secondary);">${escapeHtml(String(k).replace(/_/g, ' '))}</th>`).join('');
-
-                    // Rows
-                    const rowsHtml = val.map(row => {
-                      const cellsHtml = columns.map(k => {
-                        let cellVal = row[k];
-                        if (cellVal === undefined || cellVal === null) cellVal = '-';
-                        if (typeof cellVal === 'object' && cellVal !== null) {
-                          if (cellVal.$date) {
-                            cellVal = new Date(cellVal.$date).toLocaleString();
-                          } else {
-                            cellVal = JSON.stringify(cellVal);
-                          }
+            detailsHtml = Object.keys(m.attributes).filter((attr) => attr !== "status" && attr !== "version").map((attr) => {
+              let val = m.attributes[attr];
+              const keyLower = attr.toLowerCase();
+              if (typeof val === "number" && (keyLower.includes("bytes") || keyLower === "size" || keyLower.includes("_size") || keyLower.includes("capacity") || keyLower.includes("bandwidth"))) {
+                val = formatBytes(val);
+              } else if (typeof val === "object" && val !== null) {
+                if (Array.isArray(val) && val.length > 0 && typeof val[0] === "object" && val[0] !== null) {
+                  const uniqueId = `table-${m.node_id}-${m.entity_key}-${attr}`.replace(/[^a-zA-Z0-9-]/g, "_");
+                  const escapeHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+                  let columns = [];
+                  const lookupPluginId = m.plugin_id || m.node_id;
+                  const p = window.currentActivePluginsData ? window.currentActivePluginsData.find((pl) => pl.id === lookupPluginId) : null;
+                  if (p && p.entities && p.entities[m.entity_key] && p.entities[m.entity_key].ui_schema && p.entities[m.entity_key].ui_schema.columns) {
+                    columns = p.entities[m.entity_key].ui_schema.columns;
+                  } else {
+                    columns = Object.keys(val[0]);
+                  }
+                  const headersHtml = columns.map((k) => `<th style="text-align: left; padding: 6px; font-size: 0.7rem; text-transform: capitalize; border-bottom: 1px solid var(--border-soft); color: var(--text-secondary);">${escapeHtml(String(k).replace(/_/g, " "))}</th>`).join("");
+                  const rowsHtml = val.map((row) => {
+                    const cellsHtml = columns.map((k) => {
+                      let cellVal = row[k];
+                      if (cellVal === void 0 || cellVal === null) cellVal = "-";
+                      if (typeof cellVal === "object" && cellVal !== null) {
+                        if (cellVal.$date) {
+                          cellVal = new Date(cellVal.$date).toLocaleString();
+                        } else {
+                          cellVal = JSON.stringify(cellVal);
                         }
-                        if (typeof cellVal === 'number' && (k.toLowerCase().includes('bytes') || k.toLowerCase().includes('size'))) {
-                          cellVal = formatBytes(cellVal);
-                        }
-                        return `<td style="padding: 6px; font-size: 0.72rem; vertical-align: top; border-bottom: 1px dashed rgba(255,255,255,0.05); color: #e2e8f0; font-family: monospace;">${escapeHtml(cellVal)}</td>`;
-                      }).join('');
-                      return `<tr class="table-row" style="transition: background 0.15s;">${cellsHtml}</tr>`;
-                    }).join('');
-
-                    // Search input
-                    const searchInputHtml = val.length > 1 ? `
+                      }
+                      if (typeof cellVal === "number" && (k.toLowerCase().includes("bytes") || k.toLowerCase().includes("size"))) {
+                        cellVal = formatBytes(cellVal);
+                      }
+                      return `<td style="padding: 6px; font-size: 0.72rem; vertical-align: top; border-bottom: 1px dashed rgba(255,255,255,0.05); color: #e2e8f0; font-family: monospace;">${escapeHtml(cellVal)}</td>`;
+                    }).join("");
+                    return `<tr class="table-row" style="transition: background 0.15s;">${cellsHtml}</tr>`;
+                  }).join("");
+                  const searchInputHtml = val.length > 1 ? `
                       <div style="margin-bottom: 8px;">
                         <input id="search-input-${uniqueId}" type="text" placeholder="Query filtered ${attr}..." 
                                style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-soft); border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; color: #fff; width: 100%; box-sizing: border-box;"
                                onkeyup="window.filterEmbedTable('${uniqueId}')">
                       </div>
-                    ` : '';
-
-                    val = `
+                    ` : "";
+                  val = `
                       <div id="wrapper-${uniqueId}" style="margin-top: 6px; background: rgba(0,0,0,0.15); border: 1px solid var(--border-soft); border-radius: 6px; padding: 8px; width: 100%; box-sizing: border-box;">
                         ${searchInputHtml}
                         <div style="overflow-x: auto; width: 100%;">
@@ -9255,25 +7882,23 @@ window.openHostDetail = async function (hostId) {
                         </div>
                       </div>
                     `;
-                  } else {
-                    const safeJson = String(JSON.stringify(val, null, 2) ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    val = `<pre style="margin: 2px 0 0 0; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.65rem; color: #fff; background: rgba(0,0,0,0.22); padding: 5px; border-radius: 4px; line-height: 1.3;">${safeJson}</pre>`;
-                  }
                 } else {
-                  const safeVal = String(val ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                  val = `<span style="color:#fff; word-break: break-all;">${safeVal}</span>`;
+                  const safeJson = String(JSON.stringify(val, null, 2) ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                  val = `<pre style="margin: 2px 0 0 0; white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.65rem; color: #fff; background: rgba(0,0,0,0.22); padding: 5px; border-radius: 4px; line-height: 1.3;">${safeJson}</pre>`;
                 }
-                const isEmbed = typeof val === 'string' && (val.includes('<pre') || val.includes('<div'));
-                return `<div style="margin-top: 6px; line-height: 1.4;">${attr}: ${isEmbed ? val : val}</div>`;
-              })
-              .join('');
+              } else {
+                const safeVal = String(val ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                val = `<span style="color:#fff; word-break: break-all;">${safeVal}</span>`;
+              }
+              const isEmbed = typeof val === "string" && (val.includes("<pre") || val.includes("<div"));
+              return `<div style="margin-top: 6px; line-height: 1.4;">${attr}: ${isEmbed ? val : val}</div>`;
+            }).join("");
           }
-
           return `
             <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:0.8rem; font-weight:700; color:#fff;">${m.name}</span>
-                <span class="status-pill ${statusClass === 'online' ? 'stable' : 'critical'}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
+                <span class="status-pill ${statusClass === "online" ? "stable" : "critical"}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
               </div>
               <div style="font-size:0.7rem; color:var(--text-secondary); display:flex; flex-direction:column; gap:2px;">
                 <div>Type: <span style="color:#fff;">${m.type}</span></div>
@@ -9296,108 +7921,90 @@ window.openHostDetail = async function (hostId) {
               </div>
             </div>
           `;
-        }).join('');
+        }).join("");
         if (window.lucide) window.lucide.createIcons();
       }
     }
-
-    // Repurpose edit button for plugins to jump directly to the plugin configuration
-    const editBtn = document.getElementById('btn-edit-host-from-detail-full');
-    if (editBtn) {
-      editBtn.style.display = 'inline-flex';
-      editBtn.innerHTML = '<i data-lucide="settings" style="width:14px; height:14px;"></i> Configure Plugin';
-      editBtn.onclick = () => {
+    const editBtn2 = document.getElementById("btn-edit-host-from-detail-full");
+    if (editBtn2) {
+      editBtn2.style.display = "inline-flex";
+      editBtn2.innerHTML = '<i data-lucide="settings" style="width:14px; height:14px;"></i> Configure Plugin';
+      editBtn2.onclick = () => {
         showPluginsView();
         setTimeout(() => {
-          const card = Array.from(document.querySelectorAll('#installed-plugins-list .plugin-card')).find(el => el.innerHTML.includes(`'${pluginId}'`));
+          const card = Array.from(document.querySelectorAll("#installed-plugins-list .plugin-card")).find((el) => el.innerHTML.includes(`'${pluginId}'`));
           if (card) {
-            const det = card.querySelector('details');
+            const det = card.querySelector("details");
             if (det) det.open = true;
-            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.scrollIntoView({ behavior: "smooth", block: "center" });
           }
         }, 150);
       };
       if (window.lucide) window.lucide.createIcons();
     }
-
-    // Show host detail view full page
     hideAllViews();
-    const hostDetailView = document.getElementById('host-detail-view');
-    if (hostDetailView) {
-      hostDetailView.classList.remove('hide');
+    const hostDetailView2 = document.getElementById("host-detail-view");
+    if (hostDetailView2) {
+      hostDetailView2.classList.remove("hide");
     }
     return;
   }
-
   if (!window.currentHosts) return;
-  const host = window.currentHosts.find(h => h.id === hostId);
+  const host = window.currentHosts.find((h) => h.id === hostId);
   if (!host) return;
-
-  const editBtnRestore = document.getElementById('btn-edit-host-from-detail-full');
+  const editBtnRestore = document.getElementById("btn-edit-host-from-detail-full");
   if (editBtnRestore) {
-    editBtnRestore.style.display = 'inline-flex';
+    editBtnRestore.style.display = "inline-flex";
     editBtnRestore.innerHTML = '<i data-lucide="edit-2" style="width:14px; height:14px;"></i> Edit Host';
     editBtnRestore.onclick = () => editHostFromDetail();
   }
-
-  document.getElementById('host-detail-title-full').textContent = host.name;
-  document.getElementById('host-detail-target-full').textContent = host.target;
-  const intTgt = host.target_internal || host.target || '';
-  const extTgt = host.target_external ? ` • External: ${host.target_external}` : '';
-  document.getElementById('host-detail-target-full').textContent = `LAN: ${intTgt}${extTgt}`;
-
-  // Show system telemetry stats if Core Monitor Host (127.0.0.1)
-  const isCore = host.target === '127.0.0.1' || host.name.includes("Core Monitor");
-  const statsSection = document.getElementById('host-detail-stats-section-full');
+  document.getElementById("host-detail-title-full").textContent = host.name;
+  document.getElementById("host-detail-target-full").textContent = host.target;
+  const intTgt = host.target_internal || host.target || "";
+  const extTgt = host.target_external ? ` \u2022 External: ${host.target_external}` : "";
+  document.getElementById("host-detail-target-full").textContent = `LAN: ${intTgt}${extTgt}`;
+  const isCore = host.target === "127.0.0.1" || host.name.includes("Core Monitor");
+  const statsSection = document.getElementById("host-detail-stats-section-full");
   if (statsSection) {
     if (isCore) {
-      statsSection.style.display = 'block';
-
-      const cpu = (cachedEntities && cachedEntities['cpu-utilization']) ? cachedEntities['cpu-utilization'].value : '--';
-      const mem = (cachedEntities && cachedEntities['memory-saturation']) ? cachedEntities['memory-saturation'].value : '--';
-      const net = (cachedEntities && cachedEntities['network-throughput']) ? cachedEntities['network-throughput'].value : '--';
-      const temp = (cachedEntities && cachedEntities['server-room-temp']) ? cachedEntities['server-room-temp'].value : '--';
-
-      document.getElementById('host-detail-cpu-val-full').textContent = `${cpu}%`;
-      document.getElementById('host-detail-mem-val-full').textContent = `${mem}%`;
-      document.getElementById('host-detail-net-val-full').textContent = `${net} MB/s`;
-      document.getElementById('host-detail-temp-val-full').textContent = `${temp}°C`;
+      statsSection.style.display = "block";
+      const cpu = cachedEntities && cachedEntities["cpu-utilization"] ? cachedEntities["cpu-utilization"].value : "--";
+      const mem = cachedEntities && cachedEntities["memory-saturation"] ? cachedEntities["memory-saturation"].value : "--";
+      const net = cachedEntities && cachedEntities["network-throughput"] ? cachedEntities["network-throughput"].value : "--";
+      const temp = cachedEntities && cachedEntities["server-room-temp"] ? cachedEntities["server-room-temp"].value : "--";
+      document.getElementById("host-detail-cpu-val-full").textContent = `${cpu}%`;
+      document.getElementById("host-detail-mem-val-full").textContent = `${mem}%`;
+      document.getElementById("host-detail-net-val-full").textContent = `${net} MB/s`;
+      document.getElementById("host-detail-temp-val-full").textContent = `${temp}\xB0C`;
     } else {
-      statsSection.style.display = 'none';
+      statsSection.style.display = "none";
     }
   }
-
-  // Fetch checkers linked to this host ID
-  const probersList = document.getElementById('host-detail-probers-list-full');
+  const probersList = document.getElementById("host-detail-probers-list-full");
   if (probersList) {
     probersList.innerHTML = `<p style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">Querying probers list...</p>`;
-
     try {
       const { httpUrl } = getApiUrls();
       const res = await fetch(`${httpUrl}/api/monitors`);
       if (res.ok) {
         const monitors = await res.json();
-        const hostMonitors = monitors.filter(m => m.host_id === hostId);
-
+        const hostMonitors = monitors.filter((m) => m.host_id === hostId);
         if (hostMonitors.length === 0) {
           probersList.innerHTML = `<span style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">No checkers configured for this host node.</span>`;
         } else {
-          probersList.innerHTML = hostMonitors.map(m => {
-            const statusVal = (cachedEntities && cachedEntities[`monitor-${m.id}-status`]) ? cachedEntities[`monitor-${m.id}-status`].value : (m.last_status || 'unknown');
-            const latencyVal = (cachedEntities && cachedEntities[`monitor-${m.id}-latency`]) ? cachedEntities[`monitor-${m.id}-latency`].value : (m.last_latency !== null && m.last_latency !== undefined ? m.last_latency : '--');
-
-            const sensorIdStatus = window.getSensorIdForEntity('monitors', `monitor-${m.id}-status`, m.name, m.type);
-            const sensorIdLatency = window.getSensorIdForEntity('monitors', `monitor-${m.id}-latency`, m.name, m.type);
-
+          probersList.innerHTML = hostMonitors.map((m) => {
+            const statusVal = cachedEntities && cachedEntities[`monitor-${m.id}-status`] ? cachedEntities[`monitor-${m.id}-status`].value : m.last_status || "unknown";
+            const latencyVal = cachedEntities && cachedEntities[`monitor-${m.id}-latency`] ? cachedEntities[`monitor-${m.id}-latency`].value : m.last_latency !== null && m.last_latency !== void 0 ? m.last_latency : "--";
+            const sensorIdStatus = window.getSensorIdForEntity("monitors", `monitor-${m.id}-status`, m.name, m.type);
+            const sensorIdLatency = window.getSensorIdForEntity("monitors", `monitor-${m.id}-latency`, m.name, m.type);
             const isOnline = isProbeStatusOnline(statusVal, m.type);
-            const statusClass = isOnline ? 'online' : 'offline';
-            const statusLabel = isOnline ? (statusVal === 'up' || statusVal === 'online' ? 'Online' : statusVal.toUpperCase()) : statusVal.toUpperCase();
-
+            const statusClass = isOnline ? "online" : "offline";
+            const statusLabel = isOnline ? statusVal === "up" || statusVal === "online" ? "Online" : statusVal.toUpperCase() : statusVal.toUpperCase();
             return `
               <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                   <span style="font-size:0.8rem; font-weight:700; color:#fff;">${m.name}</span>
-                  <span class="status-pill ${statusClass === 'online' ? 'stable' : 'critical'}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
+                  <span class="status-pill ${statusClass === "online" ? "stable" : "critical"}" style="font-size:0.6rem; padding: 2px 6px;">${statusLabel}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:var(--text-secondary);">
                   <span>Target: <span style="font-family:monospace; color:#fff;">${m.target}</span></span>
@@ -9433,7 +8040,7 @@ window.openHostDetail = async function (hostId) {
                 </div>
               </div>
             `;
-          }).join('');
+          }).join("");
           if (window.lucide) window.lucide.createIcons();
         }
       } else {
@@ -9443,36 +8050,29 @@ window.openHostDetail = async function (hostId) {
       probersList.innerHTML = `<span style="font-size:0.75rem; color:#f43f5e;">Error processing checkers: ${e.message}</span>`;
     }
   }
-
-  // Connect Edit Configuration Button inside overview
-  const editBtn = document.getElementById('btn-edit-host-from-detail-full');
+  const editBtn = document.getElementById("btn-edit-host-from-detail-full");
   if (editBtn) {
-    editBtn.style.display = ''; // restore visibility
-    editBtn.onclick = function () {
+    editBtn.style.display = "";
+    editBtn.onclick = function() {
       openEditHostModal(hostId);
     };
   }
-
-  // Hide other views and show the host-detail-view full page
   hideAllViews();
-  const hostDetailView = document.getElementById('host-detail-view');
+  const hostDetailView = document.getElementById("host-detail-view");
   if (hostDetailView) {
-    hostDetailView.classList.remove('hide');
+    hostDetailView.classList.remove("hide");
   }
 };
 
-// ─────────────────────────────────────────
-// PLUGINS MANAGEMENT INTEGRATION LOGIC
-// ─────────────────────────────────────────
-
-window.checkPluginsForUpdates = async function () {
-  const btn = document.getElementById('btn-plugins-check-updates');
-  let originalHTML = '';
+// --- [Module: src/08-plugins-ui.ts] ---
+window.checkPluginsForUpdates = async function() {
+  const btn = document.getElementById("btn-plugins-check-updates");
+  let originalHTML = "";
   if (btn) {
     originalHTML = btn.innerHTML;
     btn.disabled = true;
-    btn.style.opacity = '0.7';
-    btn.style.cursor = 'not-allowed';
+    btn.style.opacity = "0.7";
+    btn.style.cursor = "not-allowed";
     btn.innerHTML = `
       <svg class="chart-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="animation: spin-loader 0.85s linear infinite; margin: 0; display: inline-block; vertical-align: middle;">
         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" style="opacity:0.25;"></circle>
@@ -9481,45 +8081,40 @@ window.checkPluginsForUpdates = async function () {
       Checking...
     `;
   }
-
   showToast("Checking marketplace for plugin updates...", "info");
-
   try {
     await Promise.all([
       loadInstalledPlugins(true),
       loadMarketplacePlugins(true)
     ]);
-
     let updateCount = 0;
     const updatePlugins = [];
     if (window.installedPluginsData && window.marketplacePluginsData) {
-      window.installedPluginsData.forEach(p => {
-        const marketplacePlugin = window.marketplacePluginsData.find(m => m.id === p.id);
+      window.installedPluginsData.forEach((p) => {
+        const marketplacePlugin = window.marketplacePluginsData.find((m) => m.id === p.id);
         if (marketplacePlugin && marketplacePlugin.version !== p.version) {
           updateCount++;
           updatePlugins.push(p.name);
         }
       });
     }
-
     if (updateCount > 0) {
-      showToast(`Update available for ${updateCount} plugin(s): ${updatePlugins.join(', ')}`, 'success');
+      showToast(`Update available for ${updateCount} plugin(s): ${updatePlugins.join(", ")}`, "success");
     } else {
-      showToast("All plugins are up to date.", 'success');
+      showToast("All plugins are up to date.", "success");
     }
   } catch (err) {
-    showToast(`Failed to check for updates: ${err.message}`, 'error');
+    showToast(`Failed to check for updates: ${err.message}`, "error");
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.style.opacity = '';
-      btn.style.cursor = 'pointer';
+      btn.style.opacity = "";
+      btn.style.cursor = "pointer";
       btn.innerHTML = originalHTML;
     }
   }
 };
-
-window.copySensorId = function (text, el) {
+window.copySensorId = function(text, el) {
   if (!text) return;
   navigator.clipboard.writeText(text).then(() => {
     if (el) {
@@ -9531,195 +8126,166 @@ window.copySensorId = function (text, el) {
         if (window.lucide) window.lucide.createIcons();
       }, 1500);
     }
-    if (typeof showToast === 'function') {
+    if (typeof showToast === "function") {
       showToast(`Copied Sensor ID: ${text}`, "info");
     }
-  }).catch(err => {
+  }).catch((err) => {
     console.error("Failed to copy sensor ID:", err);
   });
 };
-
-function showPluginsView(initialTab = 'installed') {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent && mainContent.classList.contains('edit-mode')) {
-    const editToggleBtn = document.getElementById('edit-toggle-btn');
-    if (editToggleBtn) editToggleBtn.click();
+function showPluginsView(initialTab = "installed") {
+  const mainContent = document.getElementById("main-content");
+  if (mainContent && mainContent.classList.contains("edit-mode")) {
+    const editToggleBtn2 = document.getElementById("edit-toggle-btn");
+    if (editToggleBtn2) editToggleBtn2.click();
   }
-
-  const editToggleBtn = document.getElementById('edit-toggle-btn');
-  if (editToggleBtn) editToggleBtn.style.display = 'none';
-
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
+  if (editToggleBtn) editToggleBtn.style.display = "none";
   hideAllViews();
-
-  const pluginsView = document.getElementById('plugins-view');
-  if (pluginsView) pluginsView.classList.remove('hide');
-
-  const navPlugins = document.getElementById('nav-plugins');
+  const pluginsView = document.getElementById("plugins-view");
+  if (pluginsView) pluginsView.classList.remove("hide");
+  const navPlugins = document.getElementById("nav-plugins");
   if (navPlugins) {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    navPlugins.classList.add('active');
+    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+    navPlugins.classList.add("active");
   }
-
-  // Hook search block on input dynamically
-  const searchInput = document.getElementById('plugin-search');
+  const searchInput = document.getElementById("plugin-search");
   if (searchInput && !searchInput.dataset.hooked) {
-    searchInput.dataset.hooked = 'true';
-    searchInput.addEventListener('input', () => {
-      const activeTabBtn = document.querySelector('#plugins-view .tab-btn.active');
-      const activeTab = activeTabBtn && activeTabBtn.id.includes('marketplace') ? 'marketplace' : 'installed';
-      if (activeTab === 'installed') {
+    searchInput.dataset.hooked = "true";
+    searchInput.addEventListener("input", () => {
+      const activeTabBtn = document.querySelector("#plugins-view .tab-btn.active");
+      const activeTab = activeTabBtn && activeTabBtn.id.includes("marketplace") ? "marketplace" : "installed";
+      if (activeTab === "installed") {
         loadInstalledPlugins();
       } else {
         loadMarketplacePlugins();
       }
     });
   }
-
-  // Hook drag prevention loops dynamically on first open
-  document.querySelectorAll('.nav-item, #toggle-sidebar, .brand').forEach(el => {
-    el.setAttribute('draggable', 'false');
-    el.addEventListener('dragstart', (e) => {
+  document.querySelectorAll(".nav-item, #toggle-sidebar, .brand").forEach((el) => {
+    el.setAttribute("draggable", "false");
+    el.addEventListener("dragstart", (e) => {
       e.preventDefault();
       return false;
     });
   });
-
   switchPluginTab(initialTab);
 }
-
-window.navigateToPluginStore = function () {
-  showPluginsView('marketplace');
+window.navigateToPluginStore = function() {
+  showPluginsView("marketplace");
 };
-
-window.switchPluginTab = function (tab) {
-  // Clear search query when changing tabs
-  const searchInput = document.getElementById('plugin-search');
-  if (searchInput) searchInput.value = '';
-
+window.switchPluginTab = function(tab) {
+  const searchInput = document.getElementById("plugin-search");
+  if (searchInput) searchInput.value = "";
   const tabs = {
-    installed: document.getElementById('plugin-tab-installed'),
-    marketplace: document.getElementById('plugin-tab-marketplace')
+    installed: document.getElementById("plugin-tab-installed"),
+    marketplace: document.getElementById("plugin-tab-marketplace")
   };
   const sections = {
-    installed: document.getElementById('plugin-sec-installed'),
-    marketplace: document.getElementById('plugin-sec-marketplace')
+    installed: document.getElementById("plugin-sec-installed"),
+    marketplace: document.getElementById("plugin-sec-marketplace")
   };
-
-  Object.keys(sections).forEach(key => {
+  Object.keys(sections).forEach((key) => {
     if (sections[key]) {
-      sections[key].style.display = (key === tab) ? 'block' : 'none';
+      sections[key].style.display = key === tab ? "block" : "none";
     }
   });
-
-  Object.keys(tabs).forEach(key => {
+  Object.keys(tabs).forEach((key) => {
     const btn = tabs[key];
     if (btn) {
       if (key === tab) {
-        btn.classList.add('active');
-        btn.style.borderBottom = '2px solid var(--accent-orange)';
-        btn.style.color = 'var(--text-primary)';
-        btn.style.fontWeight = '700';
+        btn.classList.add("active");
+        btn.style.borderBottom = "2px solid var(--accent-orange)";
+        btn.style.color = "var(--text-primary)";
+        btn.style.fontWeight = "700";
       } else {
-        btn.classList.remove('active');
-        btn.style.borderBottom = 'none';
-        btn.style.color = 'var(--text-secondary)';
-        btn.style.fontWeight = '500';
+        btn.classList.remove("active");
+        btn.style.borderBottom = "none";
+        btn.style.color = "var(--text-secondary)";
+        btn.style.fontWeight = "500";
       }
     }
   });
-
-  if (tab === 'installed') {
+  if (tab === "installed") {
     loadInstalledPlugins();
-  } else if (tab === 'marketplace') {
+  } else if (tab === "marketplace") {
     loadMarketplacePlugins();
   }
 };
-
-window.switchPluginsLayout = function (layout) {
+window.switchPluginsLayout = function(layout) {
   window.pluginsViewLayout = layout;
-
-  const btnGrid = document.getElementById('btn-plugins-grid');
-  const btnList = document.getElementById('btn-plugins-list');
-
+  const btnGrid = document.getElementById("btn-plugins-grid");
+  const btnList = document.getElementById("btn-plugins-list");
   if (btnGrid && btnList) {
-    const iconGrid = btnGrid.querySelector('svg, i');
-    const iconList = btnList.querySelector('svg, i');
-    if (layout === 'grid') {
-      btnGrid.classList.add('active');
-      btnGrid.style.background = 'rgba(255,255,255,0.08)';
-      if (iconGrid) iconGrid.style.color = '#fff';
-
-      btnList.classList.remove('active');
-      btnList.style.background = 'none';
-      if (iconList) iconList.style.color = 'var(--text-secondary)';
+    const iconGrid = btnGrid.querySelector("svg, i");
+    const iconList = btnList.querySelector("svg, i");
+    if (layout === "grid") {
+      btnGrid.classList.add("active");
+      btnGrid.style.background = "rgba(255,255,255,0.08)";
+      if (iconGrid) iconGrid.style.color = "#fff";
+      btnList.classList.remove("active");
+      btnList.style.background = "none";
+      if (iconList) iconList.style.color = "var(--text-secondary)";
     } else {
-      btnList.classList.add('active');
-      btnList.style.background = 'rgba(255,255,255,0.08)';
-      if (iconList) iconList.style.color = '#fff';
-
-      btnGrid.classList.remove('active');
-      btnGrid.style.background = 'none';
-      if (iconGrid) iconGrid.style.color = 'var(--text-secondary)';
+      btnList.classList.add("active");
+      btnList.style.background = "rgba(255,255,255,0.08)";
+      if (iconList) iconList.style.color = "#fff";
+      btnGrid.classList.remove("active");
+      btnGrid.style.background = "none";
+      if (iconGrid) iconGrid.style.color = "var(--text-secondary)";
     }
   }
-
-  // Rerender active view
-  const activeTabBtn = document.querySelector('#plugins-view .tab-btn.active');
-  const activeTab = activeTabBtn && activeTabBtn.id.includes('marketplace') ? 'marketplace' : 'installed';
-  if (activeTab === 'installed') {
+  const activeTabBtn = document.querySelector("#plugins-view .tab-btn.active");
+  const activeTab = activeTabBtn && activeTabBtn.id.includes("marketplace") ? "marketplace" : "installed";
+  if (activeTab === "installed") {
     loadInstalledPlugins();
   } else {
     loadMarketplacePlugins();
   }
 };
-
 async function loadInstalledPlugins(forceFetch = false) {
-  const listContainer = document.getElementById('installed-plugins-list');
+  const listContainer = document.getElementById("installed-plugins-list");
   if (!listContainer) return;
-
-  // Track details open status and current input values before rendering
-  const openPluginDetails = new Set();
+  const openPluginDetails = /* @__PURE__ */ new Set();
   const currentInputValues = {};
   let focusedInputSelector = null;
   let selectionStart = null;
   let selectionEnd = null;
-
-  // Query and save states from the existing DOM
-  listContainer.querySelectorAll('details').forEach(el => {
-    const input = el.querySelector('.plugin-config-input');
+  listContainer.querySelectorAll("details").forEach((el) => {
+    const input = el.querySelector(".plugin-config-input");
     if (input && el.open) {
-      const pluginId = input.getAttribute('data-plugin-id');
+      const pluginId = input.getAttribute("data-plugin-id");
       if (pluginId) {
         openPluginDetails.add(pluginId);
       }
     }
   });
-
-  listContainer.querySelectorAll('.plugin-config-input').forEach(input => {
-    const pluginId = input.getAttribute('data-plugin-id');
-    const key = input.getAttribute('data-key');
+  listContainer.querySelectorAll(".plugin-config-input").forEach((input) => {
+    const pluginId = input.getAttribute("data-plugin-id");
+    const key = input.getAttribute("data-key");
     if (pluginId && key) {
       currentInputValues[`${pluginId}:${key}`] = input.value;
     }
   });
-
-  if (document.activeElement && document.activeElement.classList.contains('plugin-config-input')) {
-    const pluginId = document.activeElement.getAttribute('data-plugin-id');
-    const key = document.activeElement.getAttribute('data-key');
+  if (document.activeElement && document.activeElement.classList.contains("plugin-config-input")) {
+    const pluginId = document.activeElement.getAttribute("data-plugin-id");
+    const key = document.activeElement.getAttribute("data-key");
     if (pluginId && key) {
       focusedInputSelector = `.plugin-config-input[data-plugin-id="${pluginId}"][data-key="${key}"]`;
       selectionStart = document.activeElement.selectionStart;
       selectionEnd = document.activeElement.selectionEnd;
     }
   }
-
   const { httpUrl } = getApiUrls();
   if (forceFetch || !window.installedPluginsData || !window.marketplacePluginsData) {
     listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0;">Loading installed plugins...</p>`;
     try {
       const [instRes, catRes] = await Promise.all([
         fetch(`${httpUrl}/api/plugins/installed`),
-        fetch(`${httpUrl}/api/plugins/marketplace`).catch(e => { console.error(e); return { ok: false }; })
+        fetch(`${httpUrl}/api/plugins/marketplace`).catch((e) => {
+          console.error(e);
+          return { ok: false };
+        })
       ]);
       if (!instRes.ok) throw new Error(`HTTP ${instRes.status}`);
       window.installedPluginsData = await instRes.json();
@@ -9733,74 +8299,60 @@ async function loadInstalledPlugins(forceFetch = false) {
       return;
     }
   }
-
-  // Read search term
-  const searchInput = document.getElementById('plugin-search');
-  const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : '';
-
-  const filtered = window.installedPluginsData.filter(p => {
-    return p.name.toLowerCase().includes(searchVal) ||
-      p.id.toLowerCase().includes(searchVal) ||
-      (p.description && p.description.toLowerCase().includes(searchVal));
+  const searchInput = document.getElementById("plugin-search");
+  const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : "";
+  const filtered = window.installedPluginsData.filter((p) => {
+    return p.name.toLowerCase().includes(searchVal) || p.id.toLowerCase().includes(searchVal) || p.description && p.description.toLowerCase().includes(searchVal);
   });
-
   if (filtered.length === 0) {
     listContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0;">No matching installed plugins found.</p>`;
     return;
   }
-
-  const layout = window.pluginsViewLayout || 'grid';
-  if (layout === 'grid') {
+  const layout = window.pluginsViewLayout || "grid";
+  if (layout === "grid") {
     listContainer.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;";
   } else {
     listContainer.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
   }
-
-  listContainer.innerHTML = filtered.map(p => {
+  listContainer.innerHTML = filtered.map((p) => {
     const entityKeyStatus = `plugin-${p.id}-status`;
-    const entityVal = (cachedEntities && cachedEntities[entityKeyStatus]) ? cachedEntities[entityKeyStatus] : null;
-    const runningStatus = entityVal ? (entityVal.attributes?.status || 'stopped') : (p.enabled ? 'running' : 'stopped');
-
-    const marketplacePlugin = (window.marketplacePluginsData || []).find(m => m.id === p.id);
+    const entityVal = cachedEntities && cachedEntities[entityKeyStatus] ? cachedEntities[entityKeyStatus] : null;
+    const runningStatus = entityVal ? entityVal.attributes?.status || "stopped" : p.enabled ? "running" : "stopped";
+    const marketplacePlugin = (window.marketplacePluginsData || []).find((m) => m.id === p.id);
     const hasUpdate = marketplacePlugin && marketplacePlugin.version !== p.version;
-
-    let badgeColor = '#ef4444'; // Red for stopped/crashed
+    let badgeColor = "#ef4444";
     let statusText = runningStatus;
-    if (runningStatus === 'running') badgeColor = '#10b981'; // Green
-    if (runningStatus === 'crashed') badgeColor = '#f59e0b'; // Amber
+    if (runningStatus === "running") badgeColor = "#10b981";
+    if (runningStatus === "crashed") badgeColor = "#f59e0b";
     if (hasUpdate) {
-      badgeColor = '#eab308'; // Yellow
-      statusText = 'update available';
+      badgeColor = "#eab308";
+      statusText = "update available";
     }
-
-    let cardBg = 'rgba(255,255,255,0.02)';
-    let cardBorder = 'var(--border-soft)';
-    let updateBtnHTML = '';
+    let cardBg = "rgba(255,255,255,0.02)";
+    let cardBorder = "var(--border-soft)";
+    let updateBtnHTML = "";
     if (hasUpdate) {
-      cardBg = 'rgba(234,179,8,0.03)';
-      cardBorder = '#eab308';
+      cardBg = "rgba(234,179,8,0.03)";
+      cardBorder = "#eab308";
       updateBtnHTML = `
         <button class="btn btn-primary" onclick="installSelectedPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:#eab308; border-color:#eab308; color:#000; font-weight:700;">
           Update to v${marketplacePlugin.version}
         </button>
       `;
     }
-
     const schema = p.settings_schema || {};
     const config = p.config || {};
-    let configFieldsHTML = '';
-
+    let configFieldsHTML = "";
     if (Object.keys(schema).length > 0) {
-      configFieldsHTML = Object.keys(schema).map(key => {
+      configFieldsHTML = Object.keys(schema).map((key) => {
         const field = schema[key];
         const savedVal = currentInputValues[`${p.id}:${key}`];
-        const val = savedVal !== undefined ? savedVal : (config[key] !== undefined ? config[key] : (field.default !== undefined ? field.default : ''));
-        const label = field.label || key.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const isPassword = field.type === 'password' || field.secret;
-        const inputType = isPassword ? 'password' : (field.type === 'integer' ? 'number' : 'text');
-
+        const val = savedVal !== void 0 ? savedVal : config[key] !== void 0 ? config[key] : field.default !== void 0 ? field.default : "";
+        const label = field.label || key.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        const isPassword = field.type === "password" || field.secret;
+        const inputType = isPassword ? "password" : field.type === "integer" ? "number" : "text";
         if (isPassword) {
-          const uniqueInputId = `secret-${p.id}-${key}`.replace(/[^a-zA-Z0-9-]/g, '_');
+          const uniqueInputId = `secret-${p.id}-${key}`.replace(/[^a-zA-Z0-9-]/g, "_");
           return `
             <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px; width: 100%;">
               <label style="font-size:0.75rem; color:#fff; font-weight:600;">${label}</label>
@@ -9813,38 +8365,36 @@ async function loadInstalledPlugins(forceFetch = false) {
             </div>
           `;
         }
-
         return `
           <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px; width: 100%;">
             <label style="font-size:0.75rem; color:#fff; font-weight:600;">${label}</label>
             <input type="${inputType}" class="settings-input plugin-config-input" data-plugin-id="${p.id}" data-key="${key}" value="${val}" style="padding: 8px 12px; font-size:0.8rem; width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.22); border: 1px solid var(--border-soft); border-radius: 4px; color:#fff;">
           </div>
         `;
-      }).join('');
+      }).join("");
     } else {
       configFieldsHTML = `<p style="color:var(--text-secondary); font-size:0.7rem; font-style:italic;">No setup parameters required for this module.</p>`;
     }
-
-    if (layout === 'grid') {
+    if (layout === "grid") {
       return `
         <div class="plugin-card" style="background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
               <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#fff;">${p.name} <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">(v${p.version})</span></h4>
-              <p style="margin:4px 0 0 0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ''}</p>
+              <p style="margin:4px 0 0 0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ""}</p>
             </div>
             
             <div style="display:flex; align-items:center; gap:12px;">
-              <span class="status-pill" style="background:${badgeColor}; color:${hasUpdate ? '#000' : '#fff'}; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px; font-weight:${hasUpdate ? '700' : 'normal'};">${statusText}</span>
+              <span class="status-pill" style="background:${badgeColor}; color:${hasUpdate ? "#000" : "#fff"}; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px; font-weight:${hasUpdate ? "700" : "normal"};">${statusText}</span>
               
               <label class="switch">
-                <input type="checkbox" ${p.enabled ? 'checked' : ''} onclick="toggleInstalledPlugin('${p.id}')">
+                <input type="checkbox" ${p.enabled ? "checked" : ""} onclick="toggleInstalledPlugin('${p.id}')">
                 <span class="slider-checkbox round"></span>
               </label>
             </div>
           </div>
 
-          <details ${openPluginDetails.has(p.id) ? 'open' : ''} style="border-top:1px dashed var(--border-soft); padding-top:12px; margin-top:8px;">
+          <details ${openPluginDetails.has(p.id) ? "open" : ""} style="border-top:1px dashed var(--border-soft); padding-top:12px; margin-top:8px;">
             <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600;">Configuration setup & credentials</summary>
             <div style="padding-top:12px; display:flex; flex-direction:column; gap:4px; max-width: 100%;">
               ${configFieldsHTML}
@@ -9852,7 +8402,7 @@ async function loadInstalledPlugins(forceFetch = false) {
                 ${updateBtnHTML}
                 <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
                 <button class="btn btn-secondary" onclick="openHostDetail('plugin-${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd;">View Telemetry</button>
-                ${p.has_readme ? `<button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', false)" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Readme</button>` : ''}
+                ${p.has_readme ? `<button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', false)" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Readme</button>` : ""}
                 <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
                 <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>
                 <button class="btn btn-danger" onclick="uninstallPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fecaca; margin-left:auto;">Uninstall</button>
@@ -9866,15 +8416,15 @@ async function loadInstalledPlugins(forceFetch = false) {
         <div style="background: ${cardBg}; border: 1px solid ${cardBorder}; border-radius: 8px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
           <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
             <h4 style="margin:0; font-size:0.9rem; font-weight:700; color:#fff;">${p.name} <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">(v${p.version})</span></h4>
-            <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ''}</p>
+            <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ""}</p>
           </div>
           <div style="display:flex; align-items:center; gap:16px;">
-            <span class="status-pill" style="background:${badgeColor}; color:${hasUpdate ? '#000' : '#fff'}; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px; font-weight:${hasUpdate ? '700' : 'normal'};">${statusText}</span>
+            <span class="status-pill" style="background:${badgeColor}; color:${hasUpdate ? "#000" : "#fff"}; text-transform:uppercase; font-size:0.6rem; padding: 3px 8px; border-radius: 4px; font-weight:${hasUpdate ? "700" : "normal"};">${statusText}</span>
             <label class="switch">
-              <input type="checkbox" ${p.enabled ? 'checked' : ''} onclick="toggleInstalledPlugin('${p.id}')">
+              <input type="checkbox" ${p.enabled ? "checked" : ""} onclick="toggleInstalledPlugin('${p.id}')">
               <span class="slider-checkbox round"></span>
             </label>
-            <details ${openPluginDetails.has(p.id) ? 'open' : ''} style="position:relative;">
+            <details ${openPluginDetails.has(p.id) ? "open" : ""} style="position:relative;">
               <summary style="font-size:0.75rem; color:var(--accent-orange); cursor:pointer; outline:none; font-weight:600; list-style:none;">Config</summary>
               <div style="position:absolute; right:0; top:24px; background:#181614; border:1px solid var(--border-soft); border-radius:8px; padding:16px; min-width:320px; z-index:100; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
                 ${configFieldsHTML}
@@ -9882,7 +8432,7 @@ async function loadInstalledPlugins(forceFetch = false) {
                   ${updateBtnHTML}
                   <button class="btn btn-primary" onclick="savePluginConfig('${p.id}')" style="font-size:0.7rem; padding:6px 12px;">Save Params</button>
                   <button class="btn btn-secondary" onclick="openHostDetail('plugin-${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd;">View Telemetry</button>
-                  ${p.has_readme ? `<button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', false)" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Readme</button>` : ''}
+                  ${p.has_readme ? `<button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', false)" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Readme</button>` : ""}
                   <button class="btn btn-secondary" onclick="showPluginLogs('${p.id}', '${p.name}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">Logs</button>
                   <button class="btn btn-danger" onclick="killPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">Force Kill</button>
                   <button class="btn btn-danger" onclick="uninstallPlugin('${p.id}')" style="font-size:0.7rem; padding:6px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fecaca;">Uninstall</button>
@@ -9893,9 +8443,7 @@ async function loadInstalledPlugins(forceFetch = false) {
         </div>
       `;
     }
-  }).join('');
-
-  // Restore focus and selection cursor range
+  }).join("");
   if (focusedInputSelector) {
     const restoreEl = listContainer.querySelector(focusedInputSelector);
     if (restoreEl) {
@@ -9905,19 +8453,14 @@ async function loadInstalledPlugins(forceFetch = false) {
           restoreEl.setSelectionRange(selectionStart, selectionEnd);
         }
       } catch (e) {
-        // Safe fail for number inputs
       }
     }
   }
 }
-
 async function loadMarketplacePlugins(forceFetch = false) {
-  const storeContainer = document.getElementById('marketplace-plugins-list');
+  const storeContainer = document.getElementById("marketplace-plugins-list");
   if (!storeContainer) return;
-
   const { httpUrl } = getApiUrls();
-
-  // Decoupled installed state: fetch fresh local info on every store view load.
   let installed = [];
   try {
     const instRes = await fetch(`${httpUrl}/api/plugins/installed`);
@@ -9926,7 +8469,6 @@ async function loadMarketplacePlugins(forceFetch = false) {
     console.error("Failed to load active installed list:", e);
   }
   window.installedPluginsListForMarketplace = installed;
-
   if (forceFetch || !window.marketplacePluginsData) {
     storeContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:24px 0; grid-column:1/-1;">Loading plugins catalog from Github index repository...</p>`;
     try {
@@ -9938,36 +8480,26 @@ async function loadMarketplacePlugins(forceFetch = false) {
       return;
     }
   }
-
-  const searchInput = document.getElementById('plugin-search');
-  const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : '';
-
-  const filtered = window.marketplacePluginsData.filter(p => {
-    return p.name.toLowerCase().includes(searchVal) ||
-      p.id.toLowerCase().includes(searchVal) ||
-      (p.description && p.description.toLowerCase().includes(searchVal));
+  const searchInput = document.getElementById("plugin-search");
+  const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : "";
+  const filtered = window.marketplacePluginsData.filter((p) => {
+    return p.name.toLowerCase().includes(searchVal) || p.id.toLowerCase().includes(searchVal) || p.description && p.description.toLowerCase().includes(searchVal);
   });
-
   if (filtered.length === 0) {
     storeContainer.innerHTML = `<p style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:32px 0; grid-column:1/-1;">No matching marketplace plugins found.</p>`;
     return;
   }
-
   const targetInstalled = window.installedPluginsListForMarketplace || [];
-  const installedIds = targetInstalled.map(i => i.id);
-
-  const layout = window.pluginsViewLayout || 'grid';
-
-  if (layout === 'grid') {
+  const installedIds = targetInstalled.map((i) => i.id);
+  const layout = window.pluginsViewLayout || "grid";
+  if (layout === "grid") {
     storeContainer.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;";
   } else {
     storeContainer.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
   }
-
-  storeContainer.innerHTML = filtered.map(p => {
+  storeContainer.innerHTML = filtered.map((p) => {
     const isInstalled = installedIds.includes(p.id);
-    const isOutdated = isInstalled && (targetInstalled.find(i => i.id === p.id)?.version !== p.version);
-
+    const isOutdated = isInstalled && targetInstalled.find((i) => i.id === p.id)?.version !== p.version;
     let actionBtnHTML = `
       <button class="btn btn-primary" onclick="installSelectedPlugin('${p.id}')" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:12px;">
         Install Plugin
@@ -9988,13 +8520,12 @@ async function loadMarketplacePlugins(forceFetch = false) {
         `;
       }
     }
-
-    if (layout === 'grid') {
+    if (layout === "grid") {
       const readmeBtnHTML = p.has_readme ? `
         <button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', true)" style="width:100%; font-size:0.75rem; padding:8px 0; margin-top:6px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">
           Readme
         </button>
-      ` : '';
+      ` : "";
       return `
         <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 18px; display:flex; flex-direction:column; justify-content:space-between;">
           <div>
@@ -10002,21 +8533,21 @@ async function loadMarketplacePlugins(forceFetch = false) {
               <h4 style="margin:0; font-size:0.9rem; font-weight:700; color:#fff;">${p.name}</h4>
               <span style="font-size:0.65rem; background:rgba(255,255,255,0.08); color:var(--text-secondary); padding:2px 6px; border-radius:3px;">v${p.version}</span>
             </div>
-            <p style="margin:8px 0 0 0; font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">${p.description || ''}</p>
+            <p style="margin:8px 0 0 0; font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">${p.description || ""}</p>
           </div>
           <div style="margin-top:12px; display:flex; flex-direction:column; gap:4px;">
-            ${actionBtnHTML.replace('margin-top:12px;', 'margin-top:0;')}
-            ${readmeBtnHTML.replace('margin-top:6px;', 'margin-top:0;')}
+            ${actionBtnHTML.replace("margin-top:12px;", "margin-top:0;")}
+            ${readmeBtnHTML.replace("margin-top:6px;", "margin-top:0;")}
           </div>
         </div>
       `;
     } else {
-      let listActionBtnHTML = actionBtnHTML.replace('margin-top:12px;', 'margin-top:0;');
+      let listActionBtnHTML = actionBtnHTML.replace("margin-top:12px;", "margin-top:0;");
       const listReadmeBtnHTML = p.has_readme ? `
         <button class="btn btn-secondary" onclick="showPluginReadme('${p.id}', true)" style="font-size:0.75rem; padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-soft); color:#e4e4e7;">
           Readme
         </button>
-      ` : '';
+      ` : "";
       return `
         <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-soft); border-radius: 8px; padding: 12px 18px; display:flex; justify-content:space-between; align-items:center;">
           <div style="display:flex; flex-direction:column; gap:4px;">
@@ -10024,7 +8555,7 @@ async function loadMarketplacePlugins(forceFetch = false) {
               <h4 style="margin:0; font-size:0.9rem; font-weight:700; color:#fff;">${p.name}</h4>
               <span style="font-size:0.65rem; background:rgba(255,255,255,0.08); color:var(--text-secondary); padding:2px 6px; border-radius:3px;">v${p.version}</span>
             </div>
-            <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ''}</p>
+            <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">${p.description || ""}</p>
           </div>
           <div style="min-width:145px; display: flex; justify-content: flex-end; align-items:center; gap:8px;">
             ${listReadmeBtnHTML}
@@ -10033,27 +8564,24 @@ async function loadMarketplacePlugins(forceFetch = false) {
         </div>
       `;
     }
-  }).join('');
+  }).join("");
 }
-
-window.installSelectedPlugin = async function (pluginId) {
-  const buttons = Array.from(document.querySelectorAll('button')).filter(btn => {
-    const oc = btn.getAttribute('onclick') || '';
-    return oc.includes('installSelectedPlugin') && oc.includes(pluginId);
+window.installSelectedPlugin = async function(pluginId) {
+  const buttons = Array.from(document.querySelectorAll("button")).filter((btn) => {
+    const oc = btn.getAttribute("onclick") || "";
+    return oc.includes("installSelectedPlugin") && oc.includes(pluginId);
   });
-
-  const originalState = buttons.map(btn => ({
+  const originalState = buttons.map((btn) => ({
     element: btn,
     innerHTML: btn.innerHTML,
     disabled: btn.disabled,
     opacity: btn.style.opacity,
     cursor: btn.style.cursor
   }));
-
-  buttons.forEach(btn => {
+  buttons.forEach((btn) => {
     btn.disabled = true;
-    btn.style.opacity = '0.7';
-    btn.style.cursor = 'not-allowed';
+    btn.style.opacity = "0.7";
+    btn.style.cursor = "not-allowed";
     btn.innerHTML = `
       <span style="display:inline-flex; align-items:center; gap:8px; justify-content:center; width:100%;">
         <svg class="chart-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="animation: spin-loader 0.85s linear infinite; margin: 0; display: inline-block;">
@@ -10064,23 +8592,22 @@ window.installSelectedPlugin = async function (pluginId) {
       </span>
     `;
   });
-
-  showToast(`Initiating download loop for "${pluginId}"...`, 'info');
+  showToast(`Initiating download loop for "${pluginId}"...`, "info");
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/plugins/install/${pluginId}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}` }
     });
     if (res.ok) {
       window.installedPluginsData = null;
       window.marketplacePluginsData = null;
-      showToast(`Successfully extracted "${pluginId}" files. Spawning env build...`, 'success');
-      switchPluginTab('installed');
+      showToast(`Successfully extracted "${pluginId}" files. Spawning env build...`, "success");
+      switchPluginTab("installed");
     } else {
       const data = await res.json();
-      alert(`Installation failure: ${data.detail || 'unknown error'}`);
-      originalState.forEach(state => {
+      alert(`Installation failure: ${data.detail || "unknown error"}`);
+      originalState.forEach((state) => {
         state.element.disabled = state.disabled;
         state.element.innerHTML = state.innerHTML;
         state.element.style.opacity = state.opacity;
@@ -10088,8 +8615,8 @@ window.installSelectedPlugin = async function (pluginId) {
       });
     }
   } catch (err) {
-    showToast(`Install request failed: ${err.message}`, 'error');
-    originalState.forEach(state => {
+    showToast(`Install request failed: ${err.message}`, "error");
+    originalState.forEach((state) => {
       state.element.disabled = state.disabled;
       state.element.innerHTML = state.innerHTML;
       state.element.style.opacity = state.opacity;
@@ -10097,41 +8624,35 @@ window.installSelectedPlugin = async function (pluginId) {
     });
   }
 };
-
-window.toggleInstalledPlugin = async function (pluginId) {
-  const checkbox = document.querySelector(`input[type="checkbox"][onclick*="toggleInstalledPlugin('${pluginId}')"]`) ||
-    document.querySelector(`input[type="checkbox"][onclick*="toggleInstalledPlugin(\"${pluginId}\")"]`);
-
+window.toggleInstalledPlugin = async function(pluginId) {
+  const checkbox = document.querySelector(`input[type="checkbox"][onclick*="toggleInstalledPlugin('${pluginId}')"]`) || document.querySelector(`input[type="checkbox"][onclick*="toggleInstalledPlugin("${pluginId}")"]`);
   if (checkbox) {
     checkbox.disabled = true;
   }
-
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/plugins/toggle/${pluginId}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}` }
     });
     if (res.ok) {
       window.installedPluginsData = null;
       const data = await res.json();
-
       const entKey = `plugin-${pluginId}-status`;
-      if (typeof cachedEntities !== 'undefined' && cachedEntities) {
+      if (typeof cachedEntities !== "undefined" && cachedEntities) {
         cachedEntities[entKey] = cachedEntities[entKey] || {
-          node_id: 'plugins',
+          node_id: "plugins",
           entity_key: entKey,
           name: `Plugin: ${pluginId}`,
-          type: 'binary_sensor'
+          type: "binary_sensor"
         };
-        cachedEntities[entKey].value = data.enabled ? 'ON' : 'OFF';
+        cachedEntities[entKey].value = data.enabled ? "ON" : "OFF";
         cachedEntities[entKey].attributes = cachedEntities[entKey].attributes || {};
-        cachedEntities[entKey].attributes.status = data.enabled ? 'running' : 'stopped';
+        cachedEntities[entKey].attributes.status = data.enabled ? "running" : "stopped";
       }
-
-      showToast(`Plugin toggled successfully. Active: ${data.enabled}`, 'success');
+      showToast(`Plugin toggled successfully. Active: ${data.enabled}`, "success");
       loadInstalledPlugins();
-      if (typeof loadHosts === 'function') {
+      if (typeof loadHosts === "function") {
         loadHosts();
       }
     } else {
@@ -10139,7 +8660,7 @@ window.toggleInstalledPlugin = async function (pluginId) {
       loadInstalledPlugins();
     }
   } catch (err) {
-    showToast(`Toggle operation failed: ${err.message}`, 'error');
+    showToast(`Toggle operation failed: ${err.message}`, "error");
     loadInstalledPlugins();
   } finally {
     if (checkbox) {
@@ -10147,87 +8668,75 @@ window.toggleInstalledPlugin = async function (pluginId) {
     }
   }
 };
-
-window.savePluginConfig = async function (pluginId) {
+window.savePluginConfig = async function(pluginId) {
   const inputs = document.querySelectorAll(`.plugin-config-input[data-plugin-id="${pluginId}"]`);
   const config = {};
-  inputs.forEach(inp => {
-    const key = inp.getAttribute('data-key');
+  inputs.forEach((inp) => {
+    const key = inp.getAttribute("data-key");
     config[key] = inp.value;
   });
-
-  showToast(`Saving parameter changes for "${pluginId}"...`, 'info');
+  showToast(`Saving parameter changes for "${pluginId}"...`, "info");
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/plugins/config/${pluginId}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
       },
       body: JSON.stringify({ config })
     });
     if (res.ok) {
       window.installedPluginsData = null;
-      showToast("Configuration parameters updated.", 'success');
+      showToast("Configuration parameters updated.", "success");
       loadInstalledPlugins();
     } else {
       alert("Failed to compile configurations parameters update.");
     }
   } catch (err) {
-    showToast(`Config save failed: ${err.message}`, 'error');
+    showToast(`Config save failed: ${err.message}`, "error");
   }
 };
-
-window.uninstallPlugin = async function (pluginId) {
+window.uninstallPlugin = async function(pluginId) {
   if (!await showConfirm(`Are you sure you want to stop process and delete all files for "${pluginId}"?`, "Uninstall Plugin")) return;
-
-  showToast(`Pruning entries and directory files for "${pluginId}"...`, 'info');
+  showToast(`Pruning entries and directory files for "${pluginId}"...`, "info");
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/plugins/uninstall/${pluginId}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}` }
     });
     if (res.ok) {
       window.installedPluginsData = null;
       window.marketplacePluginsData = null;
-      showToast("Plugin uninstalled successfully.", 'success');
+      showToast("Plugin uninstalled successfully.", "success");
       loadInstalledPlugins();
     } else {
       alert("Failed to uninstall plugin.");
     }
   } catch (err) {
-    showToast(`Uninstall operations failed: ${err.message}`, 'error');
+    showToast(`Uninstall operations failed: ${err.message}`, "error");
   }
 };
-
 window.activeLogPluginId = null;
-window.activeLogPluginName = '';
+window.activeLogPluginName = "";
 window.logRefreshInterval = null;
-
-window.showPluginLogs = function (pluginId, pluginName) {
+window.showPluginLogs = function(pluginId, pluginName) {
   window.activeLogPluginId = pluginId;
   window.activeLogPluginName = pluginName;
-
-  const title = document.getElementById('plugin-log-title');
+  const title = document.getElementById("plugin-log-title");
   if (title) title.textContent = `Execution Logs: ${pluginName}`;
-
-  window.openModal('plugin-log-modal');
+  window.openModal("plugin-log-modal");
   refreshPluginLogs();
-
-  // Auto refresh every 3 seconds
   if (window.logRefreshInterval) clearInterval(window.logRefreshInterval);
-  window.logRefreshInterval = setInterval(refreshPluginLogs, 3000);
+  window.logRefreshInterval = setInterval(refreshPluginLogs, 3e3);
 };
-
-window.closePluginLogModal = function () {
-  window.closeModal('plugin-log-modal');
+window.closePluginLogModal = function() {
+  window.closeModal("plugin-log-modal");
 };
-
 const originalCloseModal = window.closeModal;
-window.closeModal = function (modalId) {
-  if (modalId === 'plugin-log-modal') {
+window.closeModal = function(modalId) {
+  if (modalId === "plugin-log-modal") {
     if (window.logRefreshInterval) {
       clearInterval(window.logRefreshInterval);
       window.logRefreshInterval = null;
@@ -10235,72 +8744,63 @@ window.closeModal = function (modalId) {
   }
   if (originalCloseModal) originalCloseModal(modalId);
 };
-
-window.refreshPluginLogs = async function () {
+window.refreshPluginLogs = async function() {
   if (!window.activeLogPluginId) return;
-  const body = document.getElementById('plugin-log-body');
+  const body = document.getElementById("plugin-log-body");
   if (!body) return;
-
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/plugins/logs/${window.activeLogPluginId}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { "Authorization": `Bearer ${token}` }
     });
     if (res.ok) {
       const data = await res.json();
       const logs = data.logs || [];
       if (logs.length === 0) {
-        body.textContent = 'No logs captured yet.';
+        body.textContent = "No logs captured yet.";
       } else {
-        body.textContent = logs.map(l => `[${l.timestamp}] [${l.level}] ${l.message}`).join('\n');
-        // Scroll to bottom
+        body.textContent = logs.map((l) => `[${l.timestamp}] [${l.level}] ${l.message}`).join("\n");
         body.scrollTop = body.scrollHeight;
       }
     } else {
-      body.textContent = 'Failed to fetch logs from server.';
+      body.textContent = "Failed to fetch logs from server.";
     }
   } catch (err) {
     body.textContent = `Error: ${err.message}`;
   }
 };
-
-window.killPlugin = async function (pluginId) {
+window.killPlugin = async function(pluginId) {
   if (!await showConfirm(`Are you sure you want to force terminate the plugin "${pluginId}" process immediately?`, "Force Kill Plugin")) return;
-
-  showToast(`Killing plugin process "${pluginId}"...`, 'info');
+  showToast(`Killing plugin process "${pluginId}"...`, "info");
   const { httpUrl } = getApiUrls();
   try {
     const res = await fetch(`${httpUrl}/api/plugins/kill/${pluginId}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}` }
     });
     if (res.ok) {
       window.installedPluginsData = null;
-      showToast("Plugin force killed.", 'success');
+      showToast("Plugin force killed.", "success");
       loadInstalledPlugins();
     } else {
       const data = await res.json();
-      alert(`Kill failure: ${data.detail || 'unknown error'}`);
+      alert(`Kill failure: ${data.detail || "unknown error"}`);
     }
   } catch (err) {
-    showToast(`Kill request failed: ${err.message}`, 'error');
+    showToast(`Kill request failed: ${err.message}`, "error");
   }
 };
-
-window.showPluginReadme = async function (pluginId, isMarketplace) {
-  const title = document.getElementById('plugin-readme-title');
-  const body = document.getElementById('plugin-readme-body');
-
+window.showPluginReadme = async function(pluginId, isMarketplace) {
+  const title = document.getElementById("plugin-readme-title");
+  const body = document.getElementById("plugin-readme-body");
   if (title) title.textContent = `Documentation: ${pluginId}`;
   if (body) body.innerHTML = '<p style="color:var(--text-secondary); font-style:italic;">Loading documentation...</p>';
-
-  window.openModal('plugin-readme-modal');
-
+  window.openModal("plugin-readme-modal");
   const { httpUrl } = getApiUrls();
   try {
-    let url = '';
+    let url = "";
     if (isMarketplace) {
-      const p = (window.marketplacePluginsData || []).find(m => m.id === pluginId);
+      const p = (window.marketplacePluginsData || []).find((m) => m.id === pluginId);
       if (p && p.readme_url) {
         url = p.readme_url;
       } else {
@@ -10309,20 +8809,17 @@ window.showPluginReadme = async function (pluginId, isMarketplace) {
     } else {
       url = `${httpUrl}/api/plugins/readme/${pluginId}`;
     }
-
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`Failed to load README file: ${res.statusText}`);
     }
-
-    let markdown = '';
+    let markdown = "";
     if (isMarketplace) {
       markdown = await res.text();
     } else {
       const data = await res.json();
       markdown = data.content;
     }
-
     if (body) {
       body.innerHTML = parseMarkdownToHTML(markdown);
     }
@@ -10332,145 +8829,117 @@ window.showPluginReadme = async function (pluginId, isMarketplace) {
     }
   }
 };
-
 function parseMarkdownToHTML(md) {
-  if (!md) return '';
-  let html = md
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
+  if (!md) return "";
+  let html = md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
     return `<pre style="background:rgba(0,0,0,0.3); padding:12px; border-radius:6px; border:1px solid var(--border-soft); overflow-x:auto; margin:12px 0;"><code style="font-family:monospace; font-size:0.8rem; color:#fca5a5;">${code.trim()}</code></pre>`;
   });
-
   html = html.replace(/`([^`]+)`/g, '<code style="font-family:monospace; background:rgba(255,255,255,0.08); padding:2px 4px; border-radius:3px; font-size:0.85em; color:#fca5a5;">$1</code>');
-
   html = html.replace(/^# (.*$)/gim, '<h2 style="margin:20px 0 10px 0; color:#fff; font-size:1.4rem; border-bottom:1px solid var(--border-soft); padding-bottom:6px;">$1</h2>');
   html = html.replace(/^## (.*$)/gim, '<h3 style="margin:16px 0 8px 0; color:#fff; font-size:1.15rem;">$1</h3>');
   html = html.replace(/^### (.*$)/gim, '<h4 style="margin:12px 0 6px 0; color:#fff; font-size:1rem;">$1</h4>');
-
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#fff;">$1</strong>');
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-  const lines = html.split('\n');
+  html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  const lines = html.split("\n");
   let inList = false;
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].trim();
-    if (line.startsWith('* ') || line.startsWith('- ')) {
+    if (line.startsWith("* ") || line.startsWith("- ")) {
       if (!inList) {
-        lines[i] = '<ul style="margin:8px 0; padding-left:20px; list-style-type:disc;">\n<li style="margin:4px 0; font-size:0.8rem; color:var(--text-secondary);">' + line.substring(2) + '</li>';
+        lines[i] = '<ul style="margin:8px 0; padding-left:20px; list-style-type:disc;">\n<li style="margin:4px 0; font-size:0.8rem; color:var(--text-secondary);">' + line.substring(2) + "</li>";
         inList = true;
       } else {
-        lines[i] = '<li style="margin:4px 0; font-size:0.8rem; color:var(--text-secondary);">' + line.substring(2) + '</li>';
+        lines[i] = '<li style="margin:4px 0; font-size:0.8rem; color:var(--text-secondary);">' + line.substring(2) + "</li>";
       }
     } else {
       if (inList) {
-        lines[i - 1] = lines[i - 1] + '\n</ul>';
+        lines[i - 1] = lines[i - 1] + "\n</ul>";
         inList = false;
       }
-      if (line !== '' && !line.startsWith('<h') && !line.startsWith('<pre') && !line.startsWith('<ul') && !line.startsWith('</ul') && !line.startsWith('<li')) {
+      if (line !== "" && !line.startsWith("<h") && !line.startsWith("<pre") && !line.startsWith("<ul") && !line.startsWith("</ul") && !line.startsWith("<li")) {
         lines[i] = `<p style="margin:8px 0; font-size:0.8rem; line-height:1.5; color:var(--text-secondary);">${line}</p>`;
       }
     }
   }
   if (inList) {
-    lines[lines.length - 1] = lines[lines.length - 1] + '\n</ul>';
+    lines[lines.length - 1] = lines[lines.length - 1] + "\n</ul>";
   }
-  html = lines.join('\n');
+  html = lines.join("\n");
   return html;
 }
-
-window.filterEmbedTable = function (tableId) {
+window.filterEmbedTable = function(tableId) {
   const input = document.getElementById(`search-input-${tableId}`);
   if (!input) return;
   const filter = input.value.toLowerCase().trim();
   const table = document.getElementById(tableId);
   if (!table) return;
-  const tbody = table.querySelector('tbody');
+  const tbody = table.querySelector("tbody");
   if (!tbody) return;
-  const rows = tbody.querySelectorAll('tr.table-row');
-
-  rows.forEach(row => {
+  const rows = tbody.querySelectorAll("tr.table-row");
+  rows.forEach((row) => {
     const text = row.textContent.toLowerCase();
-    row.style.display = text.includes(filter) ? '' : 'none';
+    row.style.display = text.includes(filter) ? "" : "none";
   });
 };
-
-window.toggleSecretVisibility = function (inputId) {
+window.toggleSecretVisibility = function(inputId) {
   const input = document.getElementById(inputId);
   const icon = document.getElementById(`eye-icon-${inputId}`);
   if (!input || !icon) return;
-
-  if (input.type === 'password') {
-    input.type = 'text';
-    icon.setAttribute('data-lucide', 'eye-off');
+  if (input.type === "password") {
+    input.type = "text";
+    icon.setAttribute("data-lucide", "eye-off");
   } else {
-    input.type = 'password';
-    icon.setAttribute('data-lucide', 'eye');
+    input.type = "password";
+    icon.setAttribute("data-lucide", "eye");
   }
-
   if (window.lucide) {
     window.lucide.createIcons();
   }
 };
 
-
-// ==========================================
-// ADVANCED FLOW ALERTS CODEBASE ENGINE
-// ==========================================
+// --- [Module: src/09-flow-canvas.ts] ---
 window.flowNodes = [];
 window.flowEdges = [];
 window.selectedNodeId = null;
-window.flowConnectingSourcePort = null; // { nodeId, x, y }
-window.flowDragNode = null; // { id, startX, startY, mouseStartX, mouseStartY }
+window.flowConnectingSourcePort = null;
+window.flowDragNode = null;
 window.activeFlowProfileId = null;
-
-// Available catalog targets cache
 window.flowCachedMonitors = [];
 window.flowCachedPlugins = [];
-
-window.loadFlowsList = async function () {
+window.loadFlowsList = async function() {
   const { httpUrl } = getApiUrls();
-  const selectEl = document.getElementById('flow-profile-select');
+  const selectEl = document.getElementById("flow-profile-select");
   if (!selectEl) return;
-
   try {
-    // 1. Fetch available target sources
     const resMon = await fetch(`${httpUrl}/api/monitors`);
     if (resMon.ok) window.flowCachedMonitors = await resMon.json();
-
     const resPlugins = await fetch(`${httpUrl}/api/plugins/installed`);
     if (resPlugins.ok) window.flowCachedPlugins = await resPlugins.json();
-
-    // 2. Fetch flows list
     const resFlows = await fetch(`${httpUrl}/api/alerts/flows`);
     if (!resFlows.ok) throw new Error("Failed to load Flows from DB");
     const flows = await resFlows.json();
-
     let options = '<option value="">-- Choose Flow --</option>';
-    flows.forEach(flow => {
-      options += `<option value="${flow.id}" ${window.activeFlowProfileId == flow.id ? 'selected' : ''}>${escapeHtml(flow.name)} (${flow.enabled ? 'Enabled' : 'Disabled'})</option>`;
+    flows.forEach((flow) => {
+      options += `<option value="${flow.id}" ${window.activeFlowProfileId == flow.id ? "selected" : ""}>${escapeHtml(flow.name)} (${flow.enabled ? "Enabled" : "Disabled"})</option>`;
     });
     selectEl.innerHTML = options;
-
     if (!window.activeFlowProfileId && flows.length > 0) {
       window.activeFlowProfileId = flows[0].id;
       selectEl.value = flows[0].id;
       window.onFlowProfileSelected(flows[0].id);
     } else if (window.activeFlowProfileId) {
-      const activeFlow = flows.find(f => f.id == window.activeFlowProfileId);
+      const activeFlow = flows.find((f) => f.id == window.activeFlowProfileId);
       if (activeFlow) {
-        document.getElementById('flow-profile-name').value = activeFlow.name;
-        document.getElementById('flow-profile-enabled').checked = activeFlow.enabled;
+        document.getElementById("flow-profile-name").value = activeFlow.name;
+        document.getElementById("flow-profile-enabled").checked = activeFlow.enabled;
       }
     }
   } catch (err) {
     showToast(`Flows list load failed: ${err.message}`, "error");
   }
 };
-
-window.onFlowProfileSelected = async function (fid) {
+window.onFlowProfileSelected = async function(fid) {
   if (!fid) {
     window.createNewFlow();
     return;
@@ -10480,114 +8949,88 @@ window.onFlowProfileSelected = async function (fid) {
     const resFlows = await fetch(`${httpUrl}/api/alerts/flows`);
     if (!resFlows.ok) throw new Error("API call error");
     const flows = await resFlows.json();
-    const flow = flows.find(f => f.id == fid);
+    const flow = flows.find((f) => f.id == fid);
     if (!flow) return;
-
     window.activeFlowProfileId = flow.id;
-    document.getElementById('flow-profile-name').value = flow.name;
-    document.getElementById('flow-profile-enabled').checked = flow.enabled;
-
-    window.flowNodes = JSON.parse(flow.nodes_json || '[]');
-    window.flowEdges = JSON.parse(flow.edges_json || '[]');
+    document.getElementById("flow-profile-name").value = flow.name;
+    document.getElementById("flow-profile-enabled").checked = flow.enabled;
+    window.flowNodes = JSON.parse(flow.nodes_json || "[]");
+    window.flowEdges = JSON.parse(flow.edges_json || "[]");
     window.selectedNodeId = null;
-
-    document.getElementById('btn-delete-flow').style.display = 'block';
-
-    // Bind interaction logic helper
+    document.getElementById("btn-delete-flow").style.display = "block";
     window.initFlowWorkspaceListeners();
     window.renderFlowWorkspace();
   } catch (err) {
     showToast(`Failed loading active flow: ${err.message}`, "error");
   }
 };
-
-window.createNewFlow = function () {
+window.createNewFlow = function() {
   window.activeFlowProfileId = null;
-  document.getElementById('flow-profile-name').value = 'New Advanced Automation Flow';
-  document.getElementById('flow-profile-enabled').checked = true;
-  document.getElementById('btn-delete-flow').style.display = 'none';
-
+  document.getElementById("flow-profile-name").value = "New Advanced Automation Flow";
+  document.getElementById("flow-profile-enabled").checked = true;
+  document.getElementById("btn-delete-flow").style.display = "none";
   window.flowNodes = [];
   window.flowEdges = [];
   window.selectedNodeId = null;
-
-  // Select dropdown reset
-  const selectEl = document.getElementById('flow-profile-select');
+  const selectEl = document.getElementById("flow-profile-select");
   if (selectEl) selectEl.value = "";
-
   window.initFlowWorkspaceListeners();
   window.renderFlowWorkspace();
-
-  // Create first triggers/actions by default
-  window.spawnWorkspaceNode('health_trigger', 50, 100);
-  window.spawnWorkspaceNode('compare_condition', 280, 100);
-  window.spawnWorkspaceNode('notify_action', 510, 100);
+  window.spawnWorkspaceNode("health_trigger", 50, 100);
+  window.spawnWorkspaceNode("compare_condition", 280, 100);
+  window.spawnWorkspaceNode("notify_action", 510, 100);
 };
-
-window.spawnWorkspaceNode = function (type, x = 120, y = 120) {
-  const nodeId = `node_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
+window.spawnWorkspaceNode = function(type, x = 120, y = 120) {
+  const nodeId = `node_${Date.now()}_${Math.floor(Math.random() * 1e3)}`;
   let name = "";
   let config = {};
-
-  if (type === 'health_trigger') {
+  if (type === "health_trigger") {
     name = "Health Trigger";
     config = { target_key: "", trigger_type: "offline", latency_ms: "100" };
-  } else if (type === 'sensor_trigger') {
+  } else if (type === "sensor_trigger") {
     name = "Sensor Trigger";
     config = { target_key: "", trigger_type: "offline" };
-  } else if (type === 'compare_condition') {
+  } else if (type === "compare_condition") {
     name = "Compare Cond.";
     config = { property: "status", operator: "==", value: "" };
-  } else if (type === 'notify_action') {
+  } else if (type === "notify_action") {
     name = "Dispatch Alarm";
     config = { channel_id: "" };
   }
-
-  // Smart Node Cascading: Offset coordinates if a node already exists in close proximity
   let spawnX = x;
   let spawnY = y;
-  while (window.flowNodes.some(n => Math.abs(n.x - spawnX) < 15 && Math.abs(n.y - spawnY) < 15)) {
+  while (window.flowNodes.some((n) => Math.abs(n.x - spawnX) < 15 && Math.abs(n.y - spawnY) < 15)) {
     spawnX += 25;
     spawnY += 25;
   }
-
   const newNode = { id: nodeId, type, x: spawnX, y: spawnY, name, config };
   window.flowNodes.push(newNode);
   window.renderFlowWorkspace();
   window.selectFlowWorkspaceNode(nodeId);
 };
-
-window.renderFlowWorkspace = function () {
-  const canvas = document.getElementById('flow-canvas-panel');
+window.renderFlowWorkspace = function() {
+  const canvas = document.getElementById("flow-canvas-panel");
   if (!canvas) return;
-
-  // Clear previous non-SVG elements
-  const prevNodes = canvas.querySelectorAll('.flow-node');
-  prevNodes.forEach(n => n.remove());
-
-  // Instantiate each Node
-  window.flowNodes.forEach(node => {
-    const el = document.createElement('div');
-    el.className = `flow-node ${window.selectedNodeId === node.id ? 'selected' : ''}`;
+  const prevNodes = canvas.querySelectorAll(".flow-node");
+  prevNodes.forEach((n) => n.remove());
+  window.flowNodes.forEach((node) => {
+    const el = document.createElement("div");
+    el.className = `flow-node ${window.selectedNodeId === node.id ? "selected" : ""}`;
     el.id = `flow-node-${node.id}`;
     el.style.left = `${node.x}px`;
     el.style.top = `${node.y}px`;
-
-    // Inner detail summary
     let desc = "";
-    if (node.type === 'health_trigger') {
-      const mon = window.flowCachedMonitors.find(m => `monitor-${m.id}` === node.config.target_key);
-      desc = mon ? `Monitor: ${mon.name}` : '(No Target)';
-    } else if (node.type === 'sensor_trigger') {
-      desc = node.config.target_key ? `Sensor: ${node.config.target_key}` : '(No Sensor)';
-    } else if (node.type === 'compare_condition') {
-      desc = `${node.config.property} ${node.config.operator} ${node.config.value || '?'}`;
-    } else if (node.type === 'notify_action') {
-      const chan = window.cachedChannels.find(c => c.id == node.config.channel_id);
-      desc = chan ? `Notify: ${chan.name}` : '(No Channel)';
+    if (node.type === "health_trigger") {
+      const mon = window.flowCachedMonitors.find((m) => `monitor-${m.id}` === node.config.target_key);
+      desc = mon ? `Monitor: ${mon.name}` : "(No Target)";
+    } else if (node.type === "sensor_trigger") {
+      desc = node.config.target_key ? `Sensor: ${node.config.target_key}` : "(No Sensor)";
+    } else if (node.type === "compare_condition") {
+      desc = `${node.config.property} ${node.config.operator} ${node.config.value || "?"}`;
+    } else if (node.type === "notify_action") {
+      const chan = window.cachedChannels.find((c) => c.id == node.config.channel_id);
+      desc = chan ? `Notify: ${chan.name}` : "(No Channel)";
     }
-
     el.innerHTML = `
       <div class="flow-node-title">
         <span>${escapeHtml(node.name)}</span>
@@ -10595,31 +9038,24 @@ window.renderFlowWorkspace = function () {
       </div>
       <div class="flow-node-desc">${escapeHtml(desc)}</div>
     `;
-
-    // Append Input Dot (Left side) if applicable
-    if (node.type === 'compare_condition' || node.type === 'notify_action') {
-      const inPort = document.createElement('div');
-      inPort.className = 'node-port input-port';
+    if (node.type === "compare_condition" || node.type === "notify_action") {
+      const inPort = document.createElement("div");
+      inPort.className = "node-port input-port";
       inPort.dataset.nodeId = node.id;
       el.appendChild(inPort);
     }
-
-    // Append Output Dot (Right side) if applicable
-    if (node.type === 'health_trigger' || node.type === 'sensor_trigger' || node.type === 'compare_condition') {
-      const outPort = document.createElement('div');
-      outPort.className = 'node-port output-port';
+    if (node.type === "health_trigger" || node.type === "sensor_trigger" || node.type === "compare_condition") {
+      const outPort = document.createElement("div");
+      outPort.className = "node-port output-port";
       outPort.dataset.nodeId = node.id;
       el.appendChild(outPort);
     }
-
-    // Event registrations
-    el.addEventListener('mousedown', (e) => {
-      if (e.target.classList.contains('node-port')) return; // handled separately
+    el.addEventListener("mousedown", (e) => {
+      if (e.target.classList.contains("node-port")) return;
       if (e.target.closest('[onclick*="deleteWorkspaceNode"]')) return;
       e.stopPropagation();
       e.preventDefault();
       window.selectFlowWorkspaceNode(node.id);
-
       const canvasRect = canvas.getBoundingClientRect();
       window.flowDragNode = {
         id: node.id,
@@ -10629,113 +9065,86 @@ window.renderFlowWorkspace = function () {
         mouseStartY: e.clientY
       };
     });
-
-    el.addEventListener('dragstart', (e) => {
+    el.addEventListener("dragstart", (e) => {
       e.preventDefault();
     });
-
     canvas.appendChild(el);
   });
-
   window.redrawFlowLinks();
 };
-
-window.selectFlowWorkspaceNode = function (nodeId) {
+window.selectFlowWorkspaceNode = function(nodeId) {
   window.selectedNodeId = nodeId;
-  // Update selection border highlights
-  const nodes = document.querySelectorAll('.flow-node');
-  nodes.forEach(n => {
+  const nodes = document.querySelectorAll(".flow-node");
+  nodes.forEach((n) => {
     if (n.id === `flow-node-${nodeId}`) {
-      n.classList.add('selected');
+      n.classList.add("selected");
     } else {
-      n.classList.remove('selected');
+      n.classList.remove("selected");
     }
   });
-
   window.showNodeProperties(nodeId);
 };
-
-window.deleteWorkspaceNode = function (nodeId, event) {
+window.deleteWorkspaceNode = function(nodeId, event) {
   if (event) event.stopPropagation();
-  window.flowNodes = window.flowNodes.filter(n => n.id !== nodeId);
-  window.flowEdges = window.flowEdges.filter(e => e.source !== nodeId && e.target !== nodeId);
-
+  window.flowNodes = window.flowNodes.filter((n) => n.id !== nodeId);
+  window.flowEdges = window.flowEdges.filter((e) => e.source !== nodeId && e.target !== nodeId);
   if (window.selectedNodeId === nodeId) {
     window.selectedNodeId = null;
-    document.getElementById('flow-inspector-content').innerHTML = 'Select a node in the graph workspace to configure parameters.';
+    document.getElementById("flow-inspector-content").innerHTML = "Select a node in the graph workspace to configure parameters.";
   }
-
   window.renderFlowWorkspace();
 };
-
-window.redrawFlowLinks = function () {
-  const canvas = document.getElementById('flow-canvas-panel');
-  const linksGroup = document.getElementById('flow-links-group');
+window.redrawFlowLinks = function() {
+  const canvas = document.getElementById("flow-canvas-panel");
+  const linksGroup = document.getElementById("flow-links-group");
   if (!canvas || !linksGroup) return;
-
   linksGroup.innerHTML = "";
   const canvasRect = canvas.getBoundingClientRect();
-
-  window.flowEdges.forEach(edge => {
-    // Port elements lookup
+  window.flowEdges.forEach((edge) => {
     const srcNodeEl = document.getElementById(`flow-node-${edge.source}`);
     const tgtNodeEl = document.getElementById(`flow-node-${edge.target}`);
     if (!srcNodeEl || !tgtNodeEl) return;
-
-    const outPort = srcNodeEl.querySelector('.output-port');
-    const inPort = tgtNodeEl.querySelector('.input-port');
+    const outPort = srcNodeEl.querySelector(".output-port");
+    const inPort = tgtNodeEl.querySelector(".input-port");
     if (!outPort || !inPort) return;
-
     const outRect = outPort.getBoundingClientRect();
     const inRect = inPort.getBoundingClientRect();
-
     const x1 = outRect.left - canvasRect.left + outRect.width / 2;
     const y1 = outRect.top - canvasRect.top + outRect.height / 2;
     const x2 = inRect.left - canvasRect.left + inRect.width / 2;
     const y2 = inRect.top - canvasRect.top + inRect.height / 2;
-
     const dx = Math.abs(x2 - x1) * 0.5;
     const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', '#e67e22');
-    path.setAttribute('stroke-width', '2.5');
-    path.setAttribute('style', 'cursor:pointer;');
-    path.setAttribute('title', 'Double-click curve to delete connection');
-
-    // Double click link to remove it!
-    path.addEventListener('dblclick', (e) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "#e67e22");
+    path.setAttribute("stroke-width", "2.5");
+    path.setAttribute("style", "cursor:pointer;");
+    path.setAttribute("title", "Double-click curve to delete connection");
+    path.addEventListener("dblclick", (e) => {
       e.stopPropagation();
-      window.flowEdges = window.flowEdges.filter(ed => ed.id !== edge.id);
+      window.flowEdges = window.flowEdges.filter((ed) => ed.id !== edge.id);
       window.redrawFlowLinks();
       showToast("Link connection removed.", "warning");
     });
-
     linksGroup.appendChild(path);
   });
 };
-
-window.showNodeProperties = function (nodeId) {
-  const container = document.getElementById('flow-inspector-content');
+window.showNodeProperties = function(nodeId) {
+  const container = document.getElementById("flow-inspector-content");
   if (!container) return;
-
-  const node = window.flowNodes.find(n => n.id === nodeId);
+  const node = window.flowNodes.find((n) => n.id === nodeId);
   if (!node) {
     container.innerHTML = "Node configuration missing.";
     return;
   }
-
   let html = `<div style="font-weight:700; color:var(--text-primary); margin-bottom:8px;">Configure ${escapeHtml(node.name)}</div>`;
-
-  if (node.type === 'health_trigger') {
-    // target_key monitors selection options dropdown
+  if (node.type === "health_trigger") {
     let targetOptions = `<option value="">-- Choose target monitor --</option>`;
-    window.flowCachedMonitors.forEach(m => {
-      targetOptions += `<option value="monitor-${m.id}" ${node.config.target_key === `monitor-${m.id}` ? 'selected' : ''}>[${m.type.toUpperCase()}] ${m.name}</option>`;
+    window.flowCachedMonitors.forEach((m) => {
+      targetOptions += `<option value="monitor-${m.id}" ${node.config.target_key === `monitor-${m.id}` ? "selected" : ""}>[${m.type.toUpperCase()}] ${m.name}</option>`;
     });
-
     html += `
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label>Health Target</label>
@@ -10746,38 +9155,35 @@ window.showNodeProperties = function (nodeId) {
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label>Trigger Type</label>
         <select id="prop-trig-type" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
-          <option value="offline" ${node.config.trigger_type === 'offline' ? 'selected' : ''}>Offline / Unknown</option>
-          <option value="latency" ${node.config.trigger_type === 'latency' ? 'selected' : ''}>Latency Threshold</option>
-          <option value="custom" ${node.config.trigger_type === 'custom' ? 'selected' : ''}>Custom Value Match</option>
+          <option value="offline" ${node.config.trigger_type === "offline" ? "selected" : ""}>Offline / Unknown</option>
+          <option value="latency" ${node.config.trigger_type === "latency" ? "selected" : ""}>Latency Threshold</option>
+          <option value="custom" ${node.config.trigger_type === "custom" ? "selected" : ""}>Custom Value Match</option>
         </select>
       </div>
       
-      <div id="prop-latency-group" style="display:${node.config.trigger_type === 'latency' ? 'flex' : 'none'}; flex-direction:column; gap:4px;">
+      <div id="prop-latency-group" style="display:${node.config.trigger_type === "latency" ? "flex" : "none"}; flex-direction:column; gap:4px;">
         <label>Latency Threshold (ms)</label>
-        <input type="number" id="prop-latency-ms" value="${node.config.latency_ms || '100'}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
+        <input type="number" id="prop-latency-ms" value="${node.config.latency_ms || "100"}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
       </div>
 
-      <div id="prop-custom-group" style="display:${node.config.trigger_type === 'custom' ? 'flex' : 'none'}; flex-direction:column; gap:4px;">
+      <div id="prop-custom-group" style="display:${node.config.trigger_type === "custom" ? "flex" : "none"}; flex-direction:column; gap:4px;">
         <label>Value Operator</label>
         <select id="prop-custom-op" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
-          <option value="==" ${node.config.op === '==' ? 'selected' : ''}>== (equal)</option>
-          <option value="!=" ${node.config.op === '!=' ? 'selected' : ''}>!= (not equal)</option>
-          <option value=">" ${node.config.op === '>' ? 'selected' : ''}>&gt; (greater)</option>
-          <option value="<" ${node.config.op === '<' ? 'selected' : ''}>&lt; (smaller)</option>
-          <option value="contains" ${node.config.op === 'contains' ? 'selected' : ''}>contains</option>
+          <option value="==" ${node.config.op === "==" ? "selected" : ""}>== (equal)</option>
+          <option value="!=" ${node.config.op === "!=" ? "selected" : ""}>!= (not equal)</option>
+          <option value=">" ${node.config.op === ">" ? "selected" : ""}>&gt; (greater)</option>
+          <option value="<" ${node.config.op === "<" ? "selected" : ""}>&lt; (smaller)</option>
+          <option value="contains" ${node.config.op === "contains" ? "selected" : ""}>contains</option>
         </select>
         <label style="margin-top:4px;">Compare Value</label>
-        <input type="text" id="prop-custom-val" value="${node.config.val || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
+        <input type="text" id="prop-custom-val" value="${node.config.val || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
       </div>
     `;
-  } else if (node.type === 'sensor_trigger') {
-    // Custom plugins catalog selection dropdown
+  } else if (node.type === "sensor_trigger") {
     let targetOptions = `<option value="">-- Choose custom entity --</option>`;
-
-    // Gather all entities from installed plugins (daemon status, manifest entities, and live runtime entities)
     const entities = [];
-    const seenFlowEntityKeys = new Set();
-    (window.flowCachedPlugins || []).forEach(plugin => {
+    const seenFlowEntityKeys = /* @__PURE__ */ new Set();
+    (window.flowCachedPlugins || []).forEach((plugin) => {
       const statusKey = `plugin-${plugin.id}-status`;
       if (!seenFlowEntityKeys.has(statusKey)) {
         seenFlowEntityKeys.add(statusKey);
@@ -10787,8 +9193,8 @@ window.showNodeProperties = function (nodeId) {
           plugin: plugin.name
         });
       }
-      const manifestEntities = (plugin.entities && typeof plugin.entities === 'object') ? plugin.entities : (plugin.manifest && plugin.manifest.entities ? plugin.manifest.entities : {});
-      Object.keys(manifestEntities).forEach(ek => {
+      const manifestEntities = plugin.entities && typeof plugin.entities === "object" ? plugin.entities : plugin.manifest && plugin.manifest.entities ? plugin.manifest.entities : {};
+      Object.keys(manifestEntities).forEach((ek) => {
         if (!seenFlowEntityKeys.has(ek)) {
           seenFlowEntityKeys.add(ek);
           entities.push({
@@ -10798,7 +9204,7 @@ window.showNodeProperties = function (nodeId) {
           });
         }
       });
-      Object.values(cachedEntities || {}).forEach(liveEnt => {
+      Object.values(cachedEntities || {}).forEach((liveEnt) => {
         if (!liveEnt || !liveEnt.entity_key || seenFlowEntityKeys.has(liveEnt.entity_key)) return;
         if (liveEnt.plugin_id === plugin.id || liveEnt.node_id === plugin.id || liveEnt.node_id === `plugin-${plugin.id}`) {
           seenFlowEntityKeys.add(liveEnt.entity_key);
@@ -10810,11 +9216,9 @@ window.showNodeProperties = function (nodeId) {
         }
       });
     });
-
-    entities.forEach(ent => {
-      targetOptions += `<option value="${ent.key}" ${node.config.target_key === ent.key ? 'selected' : ''}>${ent.name} (${ent.plugin})</option>`;
+    entities.forEach((ent) => {
+      targetOptions += `<option value="${ent.key}" ${node.config.target_key === ent.key ? "selected" : ""}>${ent.name} (${ent.plugin})</option>`;
     });
-
     html += `
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label>Sensor Target</label>
@@ -10825,53 +9229,52 @@ window.showNodeProperties = function (nodeId) {
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label>Trigger Type</label>
         <select id="prop-trig-type" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
-          <option value="offline" ${node.config.trigger_type === 'offline' ? 'selected' : ''}>Offline / Faulted</option>
-          <option value="custom" ${node.config.trigger_type === 'custom' ? 'selected' : ''}>Custom Value Match</option>
+          <option value="offline" ${node.config.trigger_type === "offline" ? "selected" : ""}>Offline / Faulted</option>
+          <option value="custom" ${node.config.trigger_type === "custom" ? "selected" : ""}>Custom Value Match</option>
         </select>
       </div>
 
-      <div id="prop-custom-group" style="display:${node.config.trigger_type === 'custom' ? 'flex' : 'none'}; flex-direction:column; gap:4px;">
+      <div id="prop-custom-group" style="display:${node.config.trigger_type === "custom" ? "flex" : "none"}; flex-direction:column; gap:4px;">
         <label>Value Operator</label>
         <select id="prop-custom-op" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
-          <option value="==" ${node.config.op === '==' ? 'selected' : ''}>==</option>
-          <option value="!=" ${node.config.op === '!=' ? 'selected' : ''}>!=</option>
-          <option value="contains" ${node.config.op === 'contains' ? 'selected' : ''}>contains</option>
+          <option value="==" ${node.config.op === "==" ? "selected" : ""}>==</option>
+          <option value="!=" ${node.config.op === "!=" ? "selected" : ""}>!=</option>
+          <option value="contains" ${node.config.op === "contains" ? "selected" : ""}>contains</option>
         </select>
         <label style="margin-top:4px;">Compare Value</label>
-        <input type="text" id="prop-custom-val" value="${node.config.val || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
+        <input type="text" id="prop-custom-val" value="${node.config.val || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
       </div>
     `;
-  } else if (node.type === 'compare_condition') {
+  } else if (node.type === "compare_condition") {
     html += `
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label>Target Property</label>
         <select id="prop-compare-property" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
-          <option value="status" ${node.config.property === 'status' ? 'selected' : ''}>Status State</option>
-          <option value="latency" ${node.config.property === 'latency' ? 'selected' : ''}>Latency (ms)</option>
-          <option value="value" ${node.config.property === 'value' ? 'selected' : ''}>Custom Value</option>
+          <option value="status" ${node.config.property === "status" ? "selected" : ""}>Status State</option>
+          <option value="latency" ${node.config.property === "latency" ? "selected" : ""}>Latency (ms)</option>
+          <option value="value" ${node.config.property === "value" ? "selected" : ""}>Custom Value</option>
         </select>
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label>Validation Operator</label>
         <select id="prop-compare-op" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
-          <option value="==" ${node.config.operator === '==' ? 'selected' : ''}>== (equals)</option>
-          <option value="!=" ${node.config.operator === '!=' ? 'selected' : ''}>!= (not equals)</option>
-          <option value=">" ${node.config.operator === '>' ? 'selected' : ''}>&gt;</option>
-          <option value="<" ${node.config.operator === '<' ? 'selected' : ''}>&lt;</option>
-          <option value="contains" ${node.config.operator === 'contains' ? 'selected' : ''}>contains</option>
+          <option value="==" ${node.config.operator === "==" ? "selected" : ""}>== (equals)</option>
+          <option value="!=" ${node.config.operator === "!=" ? "selected" : ""}>!= (not equals)</option>
+          <option value=">" ${node.config.operator === ">" ? "selected" : ""}>&gt;</option>
+          <option value="<" ${node.config.operator === "<" ? "selected" : ""}>&lt;</option>
+          <option value="contains" ${node.config.operator === "contains" ? "selected" : ""}>contains</option>
         </select>
       </div>
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label>Value Constraint</label>
-        <input type="text" id="prop-compare-val" value="${node.config.value || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
+        <input type="text" id="prop-compare-val" value="${node.config.value || ""}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
       </div>
     `;
-  } else if (node.type === 'notify_action') {
+  } else if (node.type === "notify_action") {
     let chanOptions = `<option value="">-- Choose Notification Channel --</option>`;
-    window.cachedChannels.forEach(c => {
-      chanOptions += `<option value="${c.id}" ${node.config.channel_id == c.id ? 'selected' : ''}>${c.name} (${c.type.toUpperCase()})</option>`;
+    window.cachedChannels.forEach((c) => {
+      chanOptions += `<option value="${c.id}" ${node.config.channel_id == c.id ? "selected" : ""}>${c.name} (${c.type.toUpperCase()})</option>`;
     });
-
     html += `
       <div style="display:flex; flex-direction:column; gap:4px;">
         <label>Notify Channel</label>
@@ -10881,105 +9284,89 @@ window.showNodeProperties = function (nodeId) {
       </div>
     `;
   }
-
   container.innerHTML = html;
-
-  // Reactivity updates mapping listeners
-  const inputs = container.querySelectorAll('input, select, textarea');
-  inputs.forEach(input => {
-    input.addEventListener('change', () => {
+  const inputs = container.querySelectorAll("input, select, textarea");
+  inputs.forEach((input) => {
+    input.addEventListener("change", () => {
       window.updateWorkspaceNodeConfig(nodeId);
     });
-    input.addEventListener('input', () => {
+    input.addEventListener("input", () => {
       window.updateWorkspaceNodeConfig(nodeId);
     });
   });
-
-  // Watch for specific select elements toggle groups
-  const trigSelect = document.getElementById('prop-trig-type');
+  const trigSelect = document.getElementById("prop-trig-type");
   if (trigSelect) {
-    trigSelect.addEventListener('change', () => {
+    trigSelect.addEventListener("change", () => {
       const val = trigSelect.value;
-      const latGrp = document.getElementById('prop-latency-group');
-      const custGrp = document.getElementById('prop-custom-group');
-      if (latGrp) latGrp.style.display = (val === 'latency') ? 'flex' : 'none';
-      if (custGrp) custGrp.style.display = (val === 'custom') ? 'flex' : 'none';
+      const latGrp = document.getElementById("prop-latency-group");
+      const custGrp = document.getElementById("prop-custom-group");
+      if (latGrp) latGrp.style.display = val === "latency" ? "flex" : "none";
+      if (custGrp) custGrp.style.display = val === "custom" ? "flex" : "none";
       window.updateWorkspaceNodeConfig(nodeId);
     });
   }
 };
-
-window.updateWorkspaceNodeConfig = function (nodeId) {
-  const node = window.flowNodes.find(n => n.id === nodeId);
+window.updateWorkspaceNodeConfig = function(nodeId) {
+  const node = window.flowNodes.find((n) => n.id === nodeId);
   if (!node) return;
-
-  if (node.type === 'health_trigger') {
-    node.config.target_key = document.getElementById('prop-target-key').value;
-    node.config.trigger_type = document.getElementById('prop-trig-type').value;
-    const latIn = document.getElementById('prop-latency-ms');
+  if (node.type === "health_trigger") {
+    node.config.target_key = document.getElementById("prop-target-key").value;
+    node.config.trigger_type = document.getElementById("prop-trig-type").value;
+    const latIn = document.getElementById("prop-latency-ms");
     if (latIn) node.config.latency_ms = latIn.value.trim();
-    const opIn = document.getElementById('prop-custom-op');
+    const opIn = document.getElementById("prop-custom-op");
     if (opIn) node.config.op = opIn.value;
-    const valIn = document.getElementById('prop-custom-val');
+    const valIn = document.getElementById("prop-custom-val");
     if (valIn) node.config.val = valIn.value.trim();
-  } else if (node.type === 'sensor_trigger') {
-    node.config.target_key = document.getElementById('prop-target-key').value;
-    node.config.trigger_type = document.getElementById('prop-trig-type').value;
-    const opIn = document.getElementById('prop-custom-op');
+  } else if (node.type === "sensor_trigger") {
+    node.config.target_key = document.getElementById("prop-target-key").value;
+    node.config.trigger_type = document.getElementById("prop-trig-type").value;
+    const opIn = document.getElementById("prop-custom-op");
     if (opIn) node.config.op = opIn.value;
-    const valIn = document.getElementById('prop-custom-val');
+    const valIn = document.getElementById("prop-custom-val");
     if (valIn) node.config.val = valIn.value.trim();
-  } else if (node.type === 'compare_condition') {
-    node.config.property = document.getElementById('prop-compare-property').value;
-    node.config.operator = document.getElementById('prop-compare-op').value;
-    node.config.value = document.getElementById('prop-compare-val').value.trim();
-  } else if (node.type === 'notify_action') {
-    node.config.channel_id = document.getElementById('prop-channel-id').value;
+  } else if (node.type === "compare_condition") {
+    node.config.property = document.getElementById("prop-compare-property").value;
+    node.config.operator = document.getElementById("prop-compare-op").value;
+    node.config.value = document.getElementById("prop-compare-val").value.trim();
+  } else if (node.type === "notify_action") {
+    node.config.channel_id = document.getElementById("prop-channel-id").value;
   }
-
-  // Refresh descriptive texts immediately
   const nodeEl = document.getElementById(`flow-node-${nodeId}`);
   if (nodeEl) {
-    const descEl = nodeEl.querySelector('.flow-node-desc');
+    const descEl = nodeEl.querySelector(".flow-node-desc");
     if (descEl) {
       let desc = "";
-      if (node.type === 'health_trigger') {
-        const mon = window.flowCachedMonitors.find(m => `monitor-${m.id}` === node.config.target_key);
-        desc = mon ? `Monitor: ${mon.name}` : '(No Target)';
-      } else if (node.type === 'sensor_trigger') {
-        desc = node.config.target_key ? `Sensor: ${node.config.target_key}` : '(No Sensor)';
-      } else if (node.type === 'compare_condition') {
-        desc = `${node.config.property} ${node.config.operator} ${node.config.value || '?'}`;
-      } else if (node.type === 'notify_action') {
-        const chan = window.cachedChannels.find(c => c.id == node.config.channel_id);
-        desc = chan ? `Notify: ${chan.name}` : '(No Channel)';
+      if (node.type === "health_trigger") {
+        const mon = window.flowCachedMonitors.find((m) => `monitor-${m.id}` === node.config.target_key);
+        desc = mon ? `Monitor: ${mon.name}` : "(No Target)";
+      } else if (node.type === "sensor_trigger") {
+        desc = node.config.target_key ? `Sensor: ${node.config.target_key}` : "(No Sensor)";
+      } else if (node.type === "compare_condition") {
+        desc = `${node.config.property} ${node.config.operator} ${node.config.value || "?"}`;
+      } else if (node.type === "notify_action") {
+        const chan = window.cachedChannels.find((c) => c.id == node.config.channel_id);
+        desc = chan ? `Notify: ${chan.name}` : "(No Channel)";
       }
       descEl.textContent = desc;
     }
   }
 };
-
-window.initFlowWorkspaceListeners = function () {
-  const canvas = document.getElementById('flow-canvas-panel');
-  if (!canvas || canvas.dataset.listenersBound === 'true') return;
-
-  canvas.dataset.listenersBound = 'true';
-
-  // Move drag listener bound on document-level so dragging remains active even outside the canvas boundaries
-  document.addEventListener('mousemove', (e) => {
-    const canvas = document.getElementById('flow-canvas-panel');
-    if (!canvas) return;
-    const canvasRect = canvas.getBoundingClientRect();
-
+window.initFlowWorkspaceListeners = function() {
+  const canvas = document.getElementById("flow-canvas-panel");
+  if (!canvas || canvas.dataset.listenersBound === "true") return;
+  canvas.dataset.listenersBound = "true";
+  document.addEventListener("mousemove", (e) => {
+    const canvas2 = document.getElementById("flow-canvas-panel");
+    if (!canvas2) return;
+    const canvasRect = canvas2.getBoundingClientRect();
     if (window.flowDragNode) {
       const dx = e.clientX - flowDragNode.mouseStartX;
       const dy = e.clientY - flowDragNode.mouseStartY;
-
-      const node = window.flowNodes.find(n => n.id === flowDragNode.id);
+      const node = window.flowNodes.find((n) => n.id === flowDragNode.id);
       if (node) {
         node.x = Math.max(0, Math.min(canvasRect.width - 150, flowDragNode.startX + dx));
         node.y = Math.max(0, Math.min(canvasRect.height - 60, flowDragNode.startY + dy));
-
         const el = document.getElementById(`flow-node-${node.id}`);
         if (el) {
           el.style.left = `${node.x}px`;
@@ -10988,52 +9375,42 @@ window.initFlowWorkspaceListeners = function () {
         window.redrawFlowLinks();
       }
     }
-
     if (window.flowConnectingSourcePort) {
-      const tempPath = document.getElementById('temp-link-path');
+      const tempPath = document.getElementById("temp-link-path");
       if (tempPath) {
         const x1 = flowConnectingSourcePort.x;
         const y1 = flowConnectingSourcePort.y;
         const x2 = e.clientX - canvasRect.left;
         const y2 = e.clientY - canvasRect.top;
-
         const dx = Math.abs(x2 - x1) * 0.5;
         const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-
-        tempPath.setAttribute('d', d);
-        tempPath.style.display = 'block';
+        tempPath.setAttribute("d", d);
+        tempPath.style.display = "block";
       }
     }
   });
-
-  // Release mousedowns
-  document.addEventListener('mouseup', (e) => {
-    const canvas = document.getElementById('flow-canvas-panel');
-    if (!canvas) return;
-
+  document.addEventListener("mouseup", (e) => {
+    const canvas2 = document.getElementById("flow-canvas-panel");
+    if (!canvas2) return;
     if (window.flowConnectingSourcePort) {
-      // Find output port target
       const targets = document.elementsFromPoint(e.clientX, e.clientY);
-      let portEl = targets.find(el => el.classList.contains('node-port') && el.classList.contains('input-port'));
+      let portEl = targets.find((el) => el.classList.contains("node-port") && el.classList.contains("input-port"));
       let targetNodeId = portEl ? portEl.dataset.nodeId : null;
-
-      // Lenient drop mode: allow dropping anywhere on target node containing input port
       if (!targetNodeId) {
-        const nodeEl = targets.find(el => el.classList.contains('flow-node') || el.closest('.flow-node'));
+        const nodeEl = targets.find((el) => el.classList.contains("flow-node") || el.closest(".flow-node"));
         if (nodeEl) {
-          const actualNodeEl = nodeEl.classList.contains('flow-node') ? nodeEl : nodeEl.closest('.flow-node');
+          const actualNodeEl = nodeEl.classList.contains("flow-node") ? nodeEl : nodeEl.closest(".flow-node");
           if (actualNodeEl && actualNodeEl.id) {
-            targetNodeId = actualNodeEl.id.replace('flow-node-', '');
+            targetNodeId = actualNodeEl.id.replace("flow-node-", "");
           }
         }
       }
-
       if (targetNodeId) {
-        const tgtNode = window.flowNodes.find(n => n.id === targetNodeId);
-        if (tgtNode && (tgtNode.type === 'compare_condition' || tgtNode.type === 'notify_action')) {
+        const tgtNode = window.flowNodes.find((n) => n.id === targetNodeId);
+        if (tgtNode && (tgtNode.type === "compare_condition" || tgtNode.type === "notify_action")) {
           const sourceNodeId = flowConnectingSourcePort.nodeId;
           if (sourceNodeId && targetNodeId !== sourceNodeId) {
-            const alreadyLinked = window.flowEdges.some(edge => edge.source === sourceNodeId && edge.target === targetNodeId);
+            const alreadyLinked = window.flowEdges.some((edge) => edge.source === sourceNodeId && edge.target === targetNodeId);
             if (!alreadyLinked) {
               window.flowEdges.push({
                 id: `edge_${Date.now()}`,
@@ -11044,25 +9421,19 @@ window.initFlowWorkspaceListeners = function () {
           }
         }
       }
-
       window.flowConnectingSourcePort = null;
-      const tempPath = document.getElementById('temp-link-path');
-      if (tempPath) tempPath.style.display = 'none';
-
+      const tempPath = document.getElementById("temp-link-path");
+      if (tempPath) tempPath.style.display = "none";
       window.renderFlowWorkspace();
     }
-
     window.flowDragNode = null;
   });
-
-  // Clicking canvas port dot triggers link composition
-  canvas.addEventListener('mousedown', (e) => {
-    if (e.target.classList.contains('node-port') && e.target.classList.contains('output-port')) {
+  canvas.addEventListener("mousedown", (e) => {
+    if (e.target.classList.contains("node-port") && e.target.classList.contains("output-port")) {
       e.stopPropagation();
       e.preventDefault();
       const canvasRect = canvas.getBoundingClientRect();
       const portRect = e.target.getBoundingClientRect();
-
       window.flowConnectingSourcePort = {
         nodeId: e.target.dataset.nodeId,
         x: portRect.left - canvasRect.left + portRect.width / 2,
@@ -11070,72 +9441,59 @@ window.initFlowWorkspaceListeners = function () {
       };
     }
   });
-
-  canvas.addEventListener('dragstart', (e) => {
+  canvas.addEventListener("dragstart", (e) => {
     e.preventDefault();
   });
 };
-
-window.toggleFlowFullscreen = function () {
-  const wrapper = document.querySelector('.flow-workspace-wrapper');
-  const icon = document.getElementById('flow-fullscreen-icon');
-  const text = document.getElementById('flow-fullscreen-text');
+window.toggleFlowFullscreen = function() {
+  const wrapper = document.querySelector(".flow-workspace-wrapper");
+  const icon = document.getElementById("flow-fullscreen-icon");
+  const text = document.getElementById("flow-fullscreen-text");
   if (!wrapper) return;
-
-  const isFullscreen = wrapper.classList.toggle('fullscreen-mode');
+  const isFullscreen = wrapper.classList.toggle("fullscreen-mode");
   if (isFullscreen) {
-    if (icon) icon.setAttribute('data-lucide', 'minimize');
-    if (text) text.textContent = 'Exit';
+    if (icon) icon.setAttribute("data-lucide", "minimize");
+    if (text) text.textContent = "Exit";
   } else {
-    if (icon) icon.setAttribute('data-lucide', 'maximize');
-    if (text) text.textContent = 'Full Screen';
+    if (icon) icon.setAttribute("data-lucide", "maximize");
+    if (text) text.textContent = "Full Screen";
   }
-
   if (window.lucide) {
     window.lucide.createIcons();
   }
-
-  // Resizing and redrawing connection lines dynamically on changes
   setTimeout(() => {
     window.redrawFlowLinks();
   }, 100);
 };
-
-// Bind Escape key to exit fullscreen mode organically
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    const wrapper = document.querySelector('.flow-workspace-wrapper');
-    if (wrapper && wrapper.classList.contains('fullscreen-mode')) {
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const wrapper = document.querySelector(".flow-workspace-wrapper");
+    if (wrapper && wrapper.classList.contains("fullscreen-mode")) {
       window.toggleFlowFullscreen();
     }
   }
 });
-
-window.saveCurrentFlow = async function () {
-  const name = document.getElementById('flow-profile-name').value.trim();
-  const enabled = document.getElementById('flow-profile-enabled').checked;
-
+window.saveCurrentFlow = async function() {
+  const name = document.getElementById("flow-profile-name").value.trim();
+  const enabled = document.getElementById("flow-profile-enabled").checked;
   if (!name) {
     alert("Flow profile needs a name!");
     return;
   }
-
   const payload = {
     name,
     enabled,
     nodes_json: JSON.stringify(window.flowNodes),
     edges_json: JSON.stringify(window.flowEdges)
   };
-
   const { httpUrl } = getApiUrls();
   const fid = window.activeFlowProfileId;
-  const method = fid ? 'PUT' : 'POST';
+  const method = fid ? "PUT" : "POST";
   const url = fid ? `${httpUrl}/api/alerts/flows/${fid}` : `${httpUrl}/api/alerts/flows`;
-
   try {
     const res = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
     if (!res.ok) {
@@ -11143,8 +9501,6 @@ window.saveCurrentFlow = async function () {
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
     showToast("Advanced Flow alerts setup committed.", "success");
-
-    // Reload lists to populate select IDs
     const commitIdObj = !fid ? await res.json() : null;
     if (commitIdObj && commitIdObj.id) {
       window.activeFlowProfileId = commitIdObj.id;
@@ -11154,16 +9510,13 @@ window.saveCurrentFlow = async function () {
     alert(`Save failed: ${err.message}`);
   }
 };
-
-window.deleteCurrentFlow = async function () {
+window.deleteCurrentFlow = async function() {
   const fid = window.activeFlowProfileId;
   if (!fid) return;
-
   if (!await showConfirm("Confirm permanent deletion of this advanced flow routing configuration? All nodes and edges will be removed.", "Delete Flow")) return;
-
   const { httpUrl } = getApiUrls();
   try {
-    const res = await fetch(`${httpUrl}/api/alerts/flows/${fid}`, { method: 'DELETE' });
+    const res = await fetch(`${httpUrl}/api/alerts/flows/${fid}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     showToast("Deleted advanced flow.", "success");
     window.activeFlowProfileId = null;
@@ -11173,6 +9526,3 @@ window.deleteCurrentFlow = async function () {
     showToast(`Deletion failed: ${err.message}`, "error");
   }
 };
-
-
-

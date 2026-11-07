@@ -1,0 +1,15 @@
+{
+  "name": "homepulse-frontend",
+  "version": "0.0.2",
+  "private": true,
+  "description": "HomePulse Modular TypeScript Frontend",
+  "scripts": {
+    "build": "node scripts/build-ts.mjs",
+    "typecheck": "tsc --noEmit",
+    "watch": "node scripts/build-ts.mjs --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.3"
+  }
+}

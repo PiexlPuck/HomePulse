@@ -19,3 +19,6 @@ plugins/
 
 # Environment secrets
 .env
+
+# Node / TypeScript build dependencies
+node_modules/

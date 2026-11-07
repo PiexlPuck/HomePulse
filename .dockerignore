@@ -19,3 +19,6 @@ plugins/
 db_backups/
 *.deb
 .DS_Store
+
+# Node / TypeScript build dependencies
+node_modules/
