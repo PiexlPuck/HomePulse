@@ -396,7 +396,7 @@ async def setup_database_schema(conn):
     await conn.execute("""
         INSERT INTO system_settings (key, value) VALUES 
         ('telemetry_interval', '3'),
-        ('log_retention', '7'),
+        ('log_retention', '30'),
         ('auto_prune_enabled', 'false'),
         ('timezone', 'UTC'),
         ('preshared_key', 'device_pin_12345'),
@@ -1403,20 +1403,113 @@ async def forward_telemetry_webhook(entity_key: str, state: dict):
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, do_post)
 
+_last_logged_telemetry: Dict[str, Any] = {}
+_last_consolidation_ts: float = 0.0
+
 async def save_telemetry_log(node_id: str, entity_key: str, value: Any):
     # If gateway mode and database logging is disabled, bypass writing telemetry logs to DB
     if app_settings.get("gateway_db_enabled", "true") == "false":
         return
-        
+
+    val_str = str(value)
+    now_ts = time.time()
+    prev = _last_logged_telemetry.get(entity_key)
+    if prev is not None:
+        prev_val, prev_ts = prev
+        try:
+            curr_f = float(val_str)
+            prev_f = float(prev_val)
+            # Numeric metric: if virtually unchanged, log at most every 30s
+            if abs(curr_f - prev_f) < 0.05 and (now_ts - prev_ts) < 30.0:
+                return
+        except ValueError:
+            # Categorical/status metric: if unchanged, log heartbeat every 5 minutes (300s)
+            if val_str == prev_val and (now_ts - prev_ts) < 300.0:
+                return
+
     if db_pool:
         try:
             async with db_pool.acquire() as conn:
                 await conn.execute(
                     "INSERT INTO telemetry_logs (node_id, entity_key, value) VALUES ($1, $2, $3);",
-                    node_id, entity_key, str(value)
+                    node_id, entity_key, val_str
                 )
+                _last_logged_telemetry[entity_key] = (val_str, now_ts)
         except Exception as e:
             logger.error(f"Error logging telemetry write: {e}")
+
+
+async def consolidate_telemetry_history(conn, full_detail_days: int = 30):
+    """
+    Zero-deletion historical rollup:
+    - Keeps full raw resolution for the most recent `full_detail_days` (default 30 days).
+    - Consolidates records older than `full_detail_days` into 1-hour summary points
+      (hourly average for numeric sensors, distinct hourly status transitions for binary/status sensors)
+      so multi-year history is preserved indefinitely in minimal disk space.
+    """
+    # 1. Consolidate numeric telemetry older than full_detail_days into 1-hour average buckets
+    await conn.execute(
+        """
+        WITH hourly_numeric AS (
+            SELECT
+                node_id,
+                entity_key,
+                date_trunc('hour', timestamp) AS hr,
+                MIN(id) AS keep_id,
+                ROUND(AVG(value::numeric), 2)::text AS avg_val,
+                COUNT(*) AS cnt
+            FROM telemetry_logs
+            WHERE timestamp < NOW() - ($1::integer * INTERVAL '1 day')
+              AND value ~ '^-?[0-9]+(\\.[0-9]+)?$'
+            GROUP BY node_id, entity_key, date_trunc('hour', timestamp)
+            HAVING COUNT(*) > 1
+        ),
+        updated_keepers AS (
+            UPDATE telemetry_logs t
+            SET value = h.avg_val,
+                timestamp = h.hr
+            FROM hourly_numeric h
+            WHERE t.id = h.keep_id
+            RETURNING h.keep_id
+        )
+        DELETE FROM telemetry_logs t
+        USING hourly_numeric h
+        WHERE t.node_id = h.node_id
+          AND t.entity_key = h.entity_key
+          AND date_trunc('hour', t.timestamp) = h.hr
+          AND t.id <> h.keep_id
+          AND t.value ~ '^-?[0-9]+(\\.[0-9]+)?$';
+        """,
+        full_detail_days
+    )
+
+    # 2. Consolidate non-numeric (status) telemetry older than full_detail_days into 1 row per (sensor, hour, status)
+    await conn.execute(
+        """
+        WITH hourly_status AS (
+            SELECT
+                node_id,
+                entity_key,
+                value,
+                date_trunc('hour', timestamp) AS hr,
+                MIN(id) AS keep_id,
+                COUNT(*) AS cnt
+            FROM telemetry_logs
+            WHERE timestamp < NOW() - ($1::integer * INTERVAL '1 day')
+              AND value !~ '^-?[0-9]+(\\.[0-9]+)?$'
+            GROUP BY node_id, entity_key, value, date_trunc('hour', timestamp)
+            HAVING COUNT(*) > 1
+        )
+        DELETE FROM telemetry_logs t
+        USING hourly_status h
+        WHERE t.node_id = h.node_id
+          AND t.entity_key = h.entity_key
+          AND t.value = h.value
+          AND date_trunc('hour', t.timestamp) = h.hr
+          AND t.id <> h.keep_id;
+        """,
+        full_detail_days
+    )
 
 @app.on_event("startup")
 async def startup_event():
@@ -1538,22 +1631,21 @@ async def collect_system_statistics_task():
                 except Exception as insert_err:
                     logger.error(f"Failed to log system telemetry to DB: {insert_err}")
 
-                # G. Perform log retention pruning
-                try:
-                    auto_prune = app_settings.get("auto_prune_enabled", "false") == "true"
-                    if auto_prune:
-                        retention = app_settings.get("log_retention", 7)
+                # G. Consolidate history older than retention window into 1-hour rollups (runs every 15m)
+                global _last_consolidation_ts
+                if now_time - _last_consolidation_ts >= 900.0:
+                    _last_consolidation_ts = now_time
+                    try:
+                        full_detail_days = int(app_settings.get("log_retention", 30) or 30)
                         async with db_pool.acquire() as conn:
-                            await conn.execute(
-                                "DELETE FROM telemetry_logs WHERE timestamp < NOW() - ($1::integer * INTERVAL '1 day');",
-                                retention
-                            )
-                            await conn.execute(
-                                "DELETE FROM system_audits WHERE timestamp < NOW() - ($1::integer * INTERVAL '1 day');",
-                                retention
-                            )
-                except Exception as prune_err:
-                    logger.error(f"Failed to prune retention logs: {prune_err}")
+                            await consolidate_telemetry_history(conn, full_detail_days)
+                            if app_settings.get("auto_prune_enabled", "false") == "true":
+                                await conn.execute(
+                                    "DELETE FROM system_audits WHERE timestamp < NOW() - ($1::integer * INTERVAL '1 day');",
+                                    full_detail_days
+                                )
+                    except Exception as prune_err:
+                        logger.error(f"Failed to consolidate historical telemetry logs: {prune_err}")
 
             # F. Broadcast WebSocket notifications
             for key in ["cpu-utilization", "memory-saturation", "network-throughput", "database-latency", "database-status", "database-storage-pct"]:
