@@ -364,20 +364,109 @@ header {
   color: var(--color-optimal);
 }
 
-/* Modern Dashboard Editor Toolbar */
+/* Sticky Dashboard Editor Toolbar */
 .editor-toolbar {
+  position: sticky;
+  top: 8px;
+  z-index: 40;
   margin: 12px 32px 0 32px;
-  background: rgba(24, 24, 27, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  border-radius: 8px;
-  padding: 8px 16px;
+  background: rgba(18, 18, 22, 0.92);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  border-radius: 10px;
+  padding: 9px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
-  gap: 16px;
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.55);
+  gap: 14px;
+  flex-wrap: wrap;
   animation: fadeInDown 0.2s ease;
+}
+
+.edit-unsaved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.unsaved-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+}
+
+.btn-toolbar-discard {
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.28);
+  color: #fda4af;
+}
+
+.btn-toolbar-discard:hover {
+  background: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.5);
+  color: #fff;
+}
+
+.btn-toolbar-done.has-unsaved {
+  background: var(--color-optimal);
+  border-color: var(--color-optimal);
+  color: #000 !important;
+}
+
+/* Inline Tab Edit Controls */
+.tab-btn-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.tab-btn-wrap.active {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.tab-btn-wrap .tab-btn {
+  padding: 4px 8px;
+  border: none;
+}
+
+.tab-mini-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  width: 20px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab-mini-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.tab-mini-btn i {
+  width: 11px;
+  height: 11px;
 }
 
 @keyframes fadeInDown {
@@ -615,64 +704,66 @@ header {
   }
 }
 
-/* Edit Mode Overlay Controls */
-.edit-handle,
-.edit-settings,
-.edit-code {
+/* Always-Visible Card Edit Action Bar inside Edit Mode */
+.card-edit-bar {
   position: absolute;
-  top: 14px;
-  background: var(--bg-primary);
+  top: 8px;
+  right: 10px;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 15, 18, 0.92);
   border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 3px 4px;
+  z-index: 5;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+main.edit-mode .card-edit-bar {
+  display: inline-flex;
+}
+
+.card-edit-btn {
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--text-secondary);
   border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
-  z-index: 2;
+  font-size: 0.65rem;
+  font-weight: 700;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.edit-handle {
-  right: 70px;
+.card-edit-btn i {
+  width: 12px;
+  height: 12px;
+}
+
+.card-edit-btn.edit-handle-btn {
   cursor: grab;
 }
 
-.edit-handle * {
-  pointer-events: none;
+.card-edit-btn.width-btn {
+  font-family: monospace;
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.1);
 }
 
-.edit-settings {
-  right: 42px;
-}
-
-.edit-code {
-  right: 14px;
-}
-
-main.edit-mode .edit-handle,
-main.edit-mode .edit-settings,
-main.edit-mode .edit-code {
-  opacity: 0;
-  pointer-events: none;
-}
-
-main.edit-mode .card:hover .edit-handle,
-main.edit-mode .card:hover .edit-settings,
-main.edit-mode .card:hover .edit-code {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.edit-handle:hover,
-.edit-settings:hover,
-.edit-code:hover {
-  background: var(--bg-secondary);
+.card-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
+}
+
+.card-edit-btn.danger:hover {
+  background: rgba(244, 63, 94, 0.2);
+  color: #f43f5e;
 }
 
 /* Edit Mode Visual Outlines & Grid Overlay */
@@ -685,9 +776,10 @@ main.edit-mode .dashboard-grid {
   margin-top: 10px;
 }
 
-main.edit-mode .card {
+main.edit-mode .card:not(.card-placeholder) {
   border: 1px dashed rgba(245, 158, 11, 0.35) !important;
   box-shadow: 0 0 12px rgba(0, 0, 0, 0.3) !important;
+  padding-top: 38px !important;
 }
 
 main.edit-mode .card:hover {
@@ -2583,4 +2675,243 @@ aside.collapsed .nav-group-toggle .group-arrow {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* ──────────────────────────────────────────
+   CARD STUDIO & YAML STUDIO MODALS
+   ────────────────────────────────────────── */
+.card-studio-split {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 18px;
+  align-items: stretch;
+}
+
+@media (max-width: 780px) {
+  .card-studio-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card-studio-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card-studio-preview {
+  display: flex;
+  flex-direction: column;
+}
+
+.entity-picker-list {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: #101013;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+}
+
+.entity-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: normal !important;
+  margin: 0 !important;
+  transition: background 0.12s;
+}
+
+.entity-picker-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.entity-picker-item.selected {
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.entity-picker-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.entity-picker-name {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entity-picker-id {
+  font-size: 0.66rem;
+  font-family: monospace;
+  color: var(--accent-blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entity-picker-val {
+  font-size: 0.7rem;
+  font-family: monospace;
+  color: var(--color-optimal);
+  flex-shrink: 0;
+}
+
+.yaml-entity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 70px;
+  overflow-y: auto;
+}
+
+.yaml-entity-chip {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+  font-family: monospace;
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.yaml-entity-chip:hover {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #fff;
+}
+
+.yaml-studio-body {
+  display: flex;
+  flex-direction: row;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.yaml-studio-editor-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.yaml-entity-sidebar {
+  width: 270px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px;
+  overflow: hidden;
+}
+
+@media (max-width: 820px) {
+  .yaml-entity-sidebar {
+    display: none !important;
+  }
+}
+
+.yaml-entity-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.yaml-entity-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yaml-entity-item {
+  background: #0e0e11;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 7px 9px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.yaml-entity-item:hover {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.yaml-entity-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.yaml-entity-name {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yaml-entity-val {
+  font-size: 0.68rem;
+  font-family: monospace;
+  color: var(--color-optimal);
+  flex-shrink: 0;
+}
+
+.yaml-entity-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.yaml-entity-bottom code {
+  font-size: 0.66rem;
+  color: var(--accent-blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yaml-copy-mini {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  font-size: 0.62rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.yaml-copy-mini:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
 }

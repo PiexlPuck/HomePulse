@@ -2251,11 +2251,206 @@ async def delete_api_key(kid: int):
         raise HTTPException(status_code=500, detail="Database deletion failed")
 
 
+_ENTITY_ALIAS_MAP = {
+    "core-mon.memory-usage": ("core-mon", "memory-saturation"),
+    "core_mon.memory_usage": ("core-mon", "memory-saturation"),
+    "sensor.memory_usage": ("core-mon", "memory-saturation"),
+    "sensor.cpu_utilization": ("core-mon", "cpu-utilization"),
+    "sensor.memory_saturation": ("core-mon", "memory-saturation"),
+    "sensor.network_throughput": ("core-mon", "network-throughput"),
+    "sensor.cpu_temperature": ("core-mon", "server-room-temp"),
+    "sensor.database_status": ("core-mon", "database-status"),
+    "sensor.database_latency": ("core-mon", "database-latency"),
+    "sensor.database_storage_pct": ("core-mon", "database-storage-pct"),
+}
+
+
+def _normalize_entity_ref(ent: Any) -> Optional[Dict[str, str]]:
+    """Normalize string or dict entity references into canonical {nodeId, entityKey}."""
+    if not ent:
+        return None
+    if isinstance(ent, dict):
+        node_id = ent.get("nodeId") or ent.get("node_id")
+        entity_key = ent.get("entityKey") or ent.get("entity_key")
+        if node_id and entity_key:
+            return {"nodeId": str(node_id).strip(), "entityKey": str(entity_key).strip()}
+        if ent.get("entity"):
+            return _normalize_entity_ref(ent["entity"])
+        if ent.get("id"):
+            return _normalize_entity_ref(ent["id"])
+        return None
+    if isinstance(ent, str):
+        raw = ent.strip()
+        if not raw:
+            return None
+        lowered = raw.lower()
+        if lowered in _ENTITY_ALIAS_MAP:
+            n_id, e_key = _ENTITY_ALIAS_MAP[lowered]
+            return {"nodeId": n_id, "entityKey": e_key}
+        hyphenated = lowered.replace("_", "-")
+        if hyphenated in _ENTITY_ALIAS_MAP:
+            n_id, e_key = _ENTITY_ALIAS_MAP[hyphenated]
+            return {"nodeId": n_id, "entityKey": e_key}
+        if "." in raw:
+            node_id, entity_key = raw.split(".", 1)
+            return {"nodeId": node_id.strip(), "entityKey": entity_key.strip()}
+        return {"nodeId": "core-mon", "entityKey": raw}
+    return None
+
+
+def _normalize_card_dict(raw_card: dict, default_tab: str, idx: int) -> dict:
+    """Normalize a YAML card definition into HomePulse's persisted widget schema."""
+    w_id = str(raw_card.get("id") or f"widget-{int(time.time() * 1000)}-{idx}")
+    w_type = str(raw_card.get("type") or "sensor")
+    w_tab = str(raw_card.get("tab") or raw_card.get("view") or default_tab or "main")
+    w_title = raw_card.get("title")
+    if w_title is None:
+        w_title = raw_card.get("name") or raw_card.get("header") or ""
+
+    entities: List[Dict[str, str]] = []
+    if isinstance(raw_card.get("entities"), list):
+        for item in raw_card["entities"]:
+            ref = _normalize_entity_ref(item)
+            if ref:
+                entities.append(ref)
+    elif raw_card.get("entity"):
+        ref = _normalize_entity_ref(raw_card["entity"])
+        if ref:
+            entities.append(ref)
+
+    options = dict(raw_card.get("options") or {}) if isinstance(raw_card.get("options"), dict) else {}
+    for k in ("unit", "color", "min", "max", "icon", "graphic", "severity"):
+        if k in raw_card and k not in options:
+            options[k] = raw_card[k]
+    if "unit_of_measurement" in raw_card and "unit" not in options:
+        options["unit"] = raw_card["unit_of_measurement"]
+    if "gridWidth" in raw_card and "gridWidth" not in options:
+        options["gridWidth"] = raw_card["gridWidth"]
+    if "gridHeight" in raw_card and "gridHeight" not in options:
+        options["gridHeight"] = raw_card["gridHeight"]
+
+    return {
+        "id": w_id,
+        "type": w_type,
+        "title": str(w_title),
+        "tab": w_tab,
+        "entities": entities,
+        "options": options,
+    }
+
+
+def _normalize_dashboard_yaml(parsed: Any) -> Dict[str, Any]:
+    """Normalize nested Lovelace views[]/cards[], flat tabs+widgets, or bare card lists."""
+    tabs: List[Dict[str, str]] = []
+    widgets: List[dict] = []
+
+    if isinstance(parsed, list):
+        tabs = [{"id": "main", "name": "Main", "icon": "layout-dashboard"}]
+        for idx, item in enumerate(parsed):
+            if isinstance(item, dict):
+                widgets.append(_normalize_card_dict(item, "main", idx))
+    elif isinstance(parsed, dict):
+        seen_tab_ids = set()
+        raw_tabs = parsed.get("views") or parsed.get("dashboards") or parsed.get("tabs") or []
+        if isinstance(raw_tabs, list):
+            for idx, t in enumerate(raw_tabs):
+                if not isinstance(t, dict):
+                    continue
+                tid = str(t.get("id") or t.get("path") or f"view_{idx + 1}")
+                tname = str(t.get("name") or t.get("title") or tid or f"View {idx + 1}")
+                ticon = str(t.get("icon") or "layout-dashboard")
+                if tid not in seen_tab_ids:
+                    tabs.append({"id": tid, "name": tname, "icon": ticon})
+                    seen_tab_ids.add(tid)
+                if isinstance(t.get("cards"), list):
+                    for c in t["cards"]:
+                        if isinstance(c, dict):
+                            widgets.append(_normalize_card_dict(c, tid, len(widgets)))
+
+        if not tabs:
+            tabs = [{"id": "main", "name": "Main", "icon": "layout-dashboard"}]
+            seen_tab_ids.add("main")
+
+        raw_cards = parsed.get("cards") or parsed.get("widgets") or []
+        if isinstance(raw_cards, list):
+            default_tab = tabs[0]["id"]
+            for c in raw_cards:
+                if isinstance(c, dict):
+                    widgets.append(_normalize_card_dict(c, default_tab, len(widgets)))
+
+        # Ensure orphaned card.tab references remap cleanly to first valid view
+        for w in widgets:
+            if w["tab"] not in seen_tab_ids:
+                w["tab"] = tabs[0]["id"]
+
+    if not tabs:
+        tabs = [{"id": "main", "name": "Main", "icon": "layout-dashboard"}]
+
+    order = [f"card-{w['id']}" for w in widgets]
+    return {"tabs": tabs, "widgets": widgets, "order": order}
+
+
+def _export_nested_lovelace_yaml(tabs: list, widgets: list, order: list) -> dict:
+    """Serialize tabs & widgets into clean canonical nested Lovelace YAML dict."""
+    safe_tabs = tabs if tabs else [{"id": "main", "name": "Main", "icon": "layout-dashboard"}]
+    sorted_widgets = list(widgets or [])
+    if order:
+        def _order_key(w):
+            cid = f"card-{w.get('id', '')}"
+            if cid in order:
+                return order.index(cid)
+            if w.get("id") in order:
+                return order.index(w["id"])
+            return 9999
+        sorted_widgets.sort(key=_order_key)
+
+    views = []
+    views_map = {}
+    for t in safe_tabs:
+        if not isinstance(t, dict):
+            continue
+        tid = str(t.get("id") or "main")
+        v = {
+            "id": tid,
+            "title": str(t.get("name") or t.get("title") or tid),
+            "icon": str(t.get("icon") or "layout-dashboard"),
+            "cards": [],
+        }
+        views.append(v)
+        views_map[tid] = v
+
+    for w in sorted_widgets:
+        if not isinstance(w, dict):
+            continue
+        w_type = w.get("type", "sensor")
+        card = {
+            "type": w_type,
+            "title": w.get("title", ""),
+        }
+        raw_ents = w.get("entities") or ([w["entity"]] if w.get("entity") else [])
+        canon_ents = []
+        for e in raw_ents:
+            ref = _normalize_entity_ref(e)
+            if ref:
+                canon_ents.append(f"{ref['nodeId']}.{ref['entityKey']}")
+        if len(canon_ents) == 1 and w_type not in ("entities", "glance"):
+            card["entity"] = canon_ents[0]
+        elif canon_ents:
+            card["entities"] = canon_ents
+        if isinstance(w.get("options"), dict) and w["options"]:
+            card["options"] = w["options"]
+
+        target_view = views_map.get(str(w.get("tab") or ""), views[0])
+        target_view["cards"].append(card)
+
+    return {"title": "HomePulse Dashboard", "views": views}
+
+
 @app.get("/api/dashboard/config")
 async def get_dashboard_config(format: Optional[str] = None):
     if not db_pool:
         if format == "yaml":
-            return Response(content="views:\n  - id: main\n    title: Main\ncards: []\n", media_type="text/yaml")
+            return Response(content="title: HomePulse Dashboard\nviews:\n  - id: main\n    title: Main\n    icon: layout-dashboard\n    cards: []\n", media_type="text/yaml")
         return JSONResponse(content={"widgets": [], "order": [], "tabs": []})
     try:
         async with db_pool.acquire() as conn:
@@ -2269,14 +2464,10 @@ async def get_dashboard_config(format: Optional[str] = None):
             
             widgets = config.get("widgets", [])
             order = config.get("order", [])
-            tabs = config.get("tabs", [{"id": "main", "name": "Main"}])
+            tabs = config.get("tabs", [{"id": "main", "name": "Main", "icon": "layout-dashboard"}])
 
             if format == "yaml":
-                yaml_data = {
-                    "title": "HomePulse Dashboard",
-                    "views": tabs,
-                    "cards": widgets
-                }
+                yaml_data = _export_nested_lovelace_yaml(tabs, widgets, order)
                 yaml_str = yaml.dump(yaml_data, sort_keys=False, indent=2)
                 return Response(content=yaml_str, media_type="text/yaml")
 
@@ -2322,7 +2513,7 @@ async def post_dashboard_config(payload: DashboardConfigPayload):
 
 @app.post("/api/dashboard/config/yaml")
 async def post_dashboard_config_yaml(request: Request):
-    """Save raw YAML dashboard configuration directly to database"""
+    """Save raw YAML dashboard configuration directly to database with full schema normalization."""
     if not db_pool:
         return JSONResponse(status_code=500, content={"status": "error", "message": "No database connection"})
     try:
@@ -2332,44 +2523,10 @@ async def post_dashboard_config_yaml(request: Request):
         if not parsed or not isinstance(parsed, (dict, list)):
             return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid YAML structure"})
 
-        tabs = []
-        widgets = []
-
-        if isinstance(parsed, list):
-            tabs = [{"id": "main", "name": "Main"}]
-            widgets = parsed
-        elif isinstance(parsed, dict):
-            raw_tabs = parsed.get("views") or parsed.get("dashboards") or parsed.get("tabs") or [{"id": "main", "name": "Main"}]
-            for idx, t in enumerate(raw_tabs):
-                if isinstance(t, dict):
-                    tid = str(t.get("id") or t.get("path") or f"view_{idx+1}")
-                    tname = str(t.get("name") or t.get("title") or f"View {idx+1}")
-                    tabs.append({"id": tid, "name": tname})
-                    if isinstance(t.get("cards"), list):
-                        for c in t["cards"]:
-                            if isinstance(c, dict):
-                                c_copy = dict(c)
-                                if "tab" not in c_copy:
-                                    c_copy["tab"] = tid
-                                widgets.append(c_copy)
-            
-            raw_cards = parsed.get("cards") or parsed.get("widgets") or []
-            if isinstance(raw_cards, list):
-                widgets.extend(raw_cards)
-
-        if not tabs:
-            tabs = [{"id": "main", "name": "Main"}]
-
-        for idx, w in enumerate(widgets):
-            if isinstance(w, dict):
-                if not w.get("id"):
-                    w["id"] = f"widget-{int(time.time()*1000)}-{idx}"
-                if not w.get("tab") and tabs:
-                    w["tab"] = tabs[0]["id"]
-                if not w.get("type"):
-                    w["type"] = "sensor"
-
-        order = [w.get("id") for w in widgets if isinstance(w, dict) and w.get("id")]
+        normalized = _normalize_dashboard_yaml(parsed)
+        tabs = normalized["tabs"]
+        widgets = normalized["widgets"]
+        order = normalized["order"]
 
         async with db_pool.acquire() as conn:
             await conn.execute(

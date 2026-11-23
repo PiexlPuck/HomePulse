@@ -97,34 +97,89 @@ function renderDashboards() {
     ]));
   }
 
-  let dashboards = [];
+  let dashboards: any[] = [];
   try {
     dashboards = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
   } catch (err) {
     dashboards = [{ id: "main", name: "Main", icon: "layout-dashboard" }];
   }
+  if (!Array.isArray(dashboards) || dashboards.length === 0) {
+    dashboards = [{ id: "main", name: "Main", icon: "layout-dashboard" }];
+  }
+
+  // Ensure activeTab always points to an existing view
+  if (!dashboards.some(t => t.id === activeTab)) {
+    activeTab = dashboards[0].id;
+  }
 
   const isEditMode = document.getElementById('main-content')?.classList.contains('edit-mode');
 
-  dashboards.forEach(tab => {
-    const btn = document.createElement('button');
-    btn.className = 'tab-btn';
-    btn.setAttribute('data-tab', tab.id);
-    btn.onclick = () => switchTab(tab.id);
-    btn.ondblclick = () => openManageDashboardsModal(tab.id);
-
+  dashboards.forEach((tab, idx) => {
     const iconName = tab.icon || 'layout-dashboard';
-    btn.innerHTML = `<i data-lucide="${iconName}"></i><span>${tab.name}</span>`;
-    btn.title = isEditMode ? "Click to view • Double-click to manage" : `View ${tab.name}`;
 
-    if (tab.id === activeTab) {
-      btn.classList.add('active');
+    if (isEditMode) {
+      const wrap = document.createElement('div');
+      wrap.className = `tab-btn-wrap ${tab.id === activeTab ? 'active' : ''}`;
+
+      if (idx > 0) {
+        const leftBtn = document.createElement('button');
+        leftBtn.type = 'button';
+        leftBtn.className = 'tab-mini-btn';
+        leftBtn.title = 'Move view left';
+        leftBtn.innerHTML = '<i data-lucide="chevron-left"></i>';
+        leftBtn.onclick = (e) => { e.stopPropagation(); window.moveDashboardTab(tab.id, -1); };
+        wrap.appendChild(leftBtn);
+      }
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tab-btn';
+      btn.setAttribute('data-tab', tab.id);
+      btn.onclick = () => switchTab(tab.id);
+      btn.ondblclick = () => openManageDashboardsModal(tab.id);
+      btn.innerHTML = `<i data-lucide="${iconName}"></i><span>${tab.name || tab.id}</span>`;
+      btn.title = 'Click to view • Double-click to edit';
+      if (tab.id === activeTab) btn.classList.add('active');
+      wrap.appendChild(btn);
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'tab-mini-btn';
+      editBtn.title = 'Edit or delete view';
+      editBtn.innerHTML = '<i data-lucide="pencil"></i>';
+      editBtn.onclick = (e) => { e.stopPropagation(); openManageDashboardsModal(tab.id); };
+      wrap.appendChild(editBtn);
+
+      if (idx < dashboards.length - 1) {
+        const rightBtn = document.createElement('button');
+        rightBtn.type = 'button';
+        rightBtn.className = 'tab-mini-btn';
+        rightBtn.title = 'Move view right';
+        rightBtn.innerHTML = '<i data-lucide="chevron-right"></i>';
+        rightBtn.onclick = (e) => { e.stopPropagation(); window.moveDashboardTab(tab.id, 1); };
+        wrap.appendChild(rightBtn);
+      }
+
+      container.appendChild(wrap);
+    } else {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tab-btn';
+      btn.setAttribute('data-tab', tab.id);
+      btn.onclick = () => switchTab(tab.id);
+      btn.ondblclick = () => openManageDashboardsModal(tab.id);
+      btn.innerHTML = `<i data-lucide="${iconName}"></i><span>${tab.name || tab.id}</span>`;
+      btn.title = `View ${tab.name || tab.id}`;
+      if (tab.id === activeTab) {
+        btn.classList.add('active');
+      }
+      container.appendChild(btn);
     }
-    container.appendChild(btn);
   });
 
   // Appends Add / Manage Views button
   const plusBtn = document.createElement('button');
+  plusBtn.type = 'button';
   plusBtn.className = 'add-tab-btn';
   plusBtn.onclick = () => openNewDashboardModal();
   plusBtn.title = "Add or Manage Dashboard Views";
@@ -134,10 +189,26 @@ function renderDashboards() {
   if (window.lucide) window.lucide.createIcons();
 }
 
+window.moveDashboardTab = function (tabId: string, delta: number) {
+  let list: any[] = [];
+  try {
+    list = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
+  } catch (e) { return; }
+
+  const idx = list.findIndex(t => t.id === tabId);
+  const newIdx = idx + delta;
+  if (idx === -1 || newIdx < 0 || newIdx >= list.length) return;
+
+  const [item] = list.splice(idx, 1);
+  list.splice(newIdx, 0, item);
+  localStorage.setItem('hp_dashboards', JSON.stringify(list));
+  renderDashboards();
+};
+
 function switchTab(tabId) {
   activeTab = tabId;
-  buildDashboardCards(cachedEntities);
   renderDashboards();
+  buildDashboardCards(cachedEntities);
   if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
     enableDragAndDrop();
   }
@@ -509,6 +580,156 @@ window.closeModal = function (modalId) {
   }
 };
 
+let currentEditingEntities: Array<{ nodeId: string; entityKey: string }> = [];
+
+function isMultiEntityCardType(type: string) {
+  return type === 'entities' || type === 'glance';
+}
+
+function isEntitylessCardType(type: string) {
+  return type === 'title' || type === 'health' || type === 'audit';
+}
+
+function getEditSelectedCardType() {
+  const sel = document.getElementById('edit-widget-type');
+  return sel ? String(sel.value || 'sensor') : 'sensor';
+}
+
+function renderEditEntityList(filterText = '') {
+  const listEl = document.getElementById('edit-entity-list');
+  const section = document.getElementById('edit-entity-picker-section');
+  const hint = document.getElementById('edit-entity-picker-hint');
+  if (!listEl || !section) return;
+
+  const type = getEditSelectedCardType();
+  if (isEntitylessCardType(type)) {
+    section.style.display = 'none';
+    updateEditorVisualPreview();
+    return;
+  }
+
+  section.style.display = 'flex';
+  const multi = isMultiEntityCardType(type);
+  if (hint) {
+    hint.textContent = multi
+      ? `${currentEditingEntities.length} selected (multi)`
+      : (currentEditingEntities.length > 0 ? '1 selected' : 'Select 1 entity');
+  }
+
+  const q = String(filterText || '').trim().toLowerCase();
+  const entities = Object.values(cachedEntities || {}).sort((a, b) =>
+    String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
+  );
+
+  const filtered = entities.filter(item => {
+    if (!q) return true;
+    const canon = `${item.node_id}.${item.entity_key}`.toLowerCase();
+    const name = String(item.name || '').toLowerCase();
+    return canon.includes(q) || name.includes(q);
+  });
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div style="padding:10px; text-align:center; font-size:0.75rem; color:var(--text-secondary);">No matching live entities</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(item => {
+    const canon = `${item.node_id}.${item.entity_key}`;
+    const isChecked = currentEditingEntities.some(e => e.nodeId === item.node_id && e.entityKey === item.entity_key);
+    const valStr = item.value !== undefined && item.value !== null ? `${item.value}${item.unit ? ' ' + item.unit : ''}` : '--';
+    return `
+      <label class="entity-picker-item ${isChecked ? 'selected' : ''}" onclick="toggleEditEntitySelection('${item.node_id}', '${item.entity_key}')">
+        <div class="entity-picker-left">
+          <input type="${multi ? 'checkbox' : 'radio'}" name="edit-entity-pick" ${isChecked ? 'checked' : ''} style="pointer-events:none; margin:0;">
+          <div style="display:flex; flex-direction:column; min-width:0;">
+            <span class="entity-picker-name">${item.name || item.entity_key}</span>
+            <span class="entity-picker-id">${canon}</span>
+          </div>
+        </div>
+        <span class="entity-picker-val">${valStr}</span>
+      </label>
+    `;
+  }).join('');
+}
+
+window.filterEditEntityList = function (filterText: string) {
+  renderEditEntityList(filterText);
+};
+
+window.toggleEditEntitySelection = function (nodeId: string, entityKey: string) {
+  const type = getEditSelectedCardType();
+  const multi = isMultiEntityCardType(type);
+  const existingIdx = currentEditingEntities.findIndex(e => e.nodeId === nodeId && e.entityKey === entityKey);
+
+  if (multi) {
+    if (existingIdx !== -1) {
+      currentEditingEntities.splice(existingIdx, 1);
+    } else {
+      currentEditingEntities.push({ nodeId, entityKey });
+    }
+  } else {
+    currentEditingEntities = [{ nodeId, entityKey }];
+  }
+
+  const searchVal = document.getElementById('edit-entity-search')?.value || '';
+  renderEditEntityList(searchVal);
+  updateEditorVisualPreview();
+};
+
+window.onEditTypeChange = function (newType: string, preserveEntities = false) {
+  const scaleGroup = document.querySelector('.edit-scale-group');
+  if (scaleGroup) {
+    scaleGroup.style.display = (newType === 'gauge' || newType === 'sensor') ? 'flex' : 'none';
+  }
+  const unitGroup = document.querySelector('.edit-unit-group');
+  if (unitGroup) {
+    unitGroup.style.display = isEntitylessCardType(newType) ? 'none' : 'flex';
+  }
+
+  if (!preserveEntities && !isMultiEntityCardType(newType) && currentEditingEntities.length > 1) {
+    currentEditingEntities = [currentEditingEntities[0]];
+  }
+
+  const searchVal = document.getElementById('edit-entity-search')?.value || '';
+  renderEditEntityList(searchVal);
+  updateEditorVisualPreview();
+};
+
+function renderCardYamlEntityChips(filterText = '') {
+  const container = document.getElementById('card-yaml-entity-chips');
+  if (!container) return;
+
+  const q = String(filterText || '').trim().toLowerCase();
+  const entities = Object.values(cachedEntities || {}).sort((a, b) =>
+    String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
+  );
+
+  const filtered = entities.filter(item => {
+    if (!q) return true;
+    const canon = `${item.node_id}.${item.entity_key}`.toLowerCase();
+    const name = String(item.name || '').toLowerCase();
+    return canon.includes(q) || name.includes(q);
+  }).slice(0, 24);
+
+  container.innerHTML = filtered.map(item => {
+    const canon = `${item.node_id}.${item.entity_key}`;
+    return `<button type="button" class="yaml-entity-chip" title="${item.name || canon} — click to insert" onclick="insertCardEntityIntoYaml('${canon}')">${canon}</button>`;
+  }).join('') || '<span style="font-size:0.7rem; color:var(--text-secondary);">No matching entities</span>';
+}
+window.renderCardYamlEntityChips = renderCardYamlEntityChips;
+
+window.insertCardEntityIntoYaml = function (canonId: string) {
+  const textarea = document.getElementById('edit-widget-yaml-textarea');
+  if (!textarea) return;
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  textarea.value = textarea.value.substring(0, start) + canonId + textarea.value.substring(end);
+  textarea.selectionStart = textarea.selectionEnd = start + canonId.length;
+  textarea.focus();
+  updateYamlPreview(textarea.value);
+  if (typeof showToast === 'function') showToast(`Inserted ${canonId}`, 'info');
+};
+
 function openCardEditor(widgetId, initialMode = 'ui') {
   let widgets = [];
   try {
@@ -519,13 +740,32 @@ function openCardEditor(widgetId, initialMode = 'ui') {
   if (!widget) return;
 
   document.getElementById('edit-widget-id').value = widgetId;
+  const typeSelect = document.getElementById('edit-widget-type');
+  if (typeSelect) typeSelect.value = widget.type || 'sensor';
+
   document.getElementById('edit-widget-title').value = widget.title || '';
-  document.getElementById('edit-widget-unit').value = widget.options.unit || '';
-  document.getElementById('edit-widget-color').value = widget.options.color || 'var(--color-optimal)';
-  document.getElementById('edit-widget-width').value = widget.options.gridWidth || 1;
-  document.getElementById('edit-widget-height').value = widget.options.gridHeight || 1;
-  document.getElementById('edit-scale-min').value = widget.options.min !== undefined ? widget.options.min : 0;
-  document.getElementById('edit-scale-max').value = widget.options.max !== undefined ? widget.options.max : 100;
+  document.getElementById('edit-widget-unit').value = (widget.options && widget.options.unit) || '';
+  document.getElementById('edit-widget-color').value = (widget.options && widget.options.color) || 'var(--color-optimal)';
+  document.getElementById('edit-widget-width').value = (widget.options && widget.options.gridWidth) || 1;
+  document.getElementById('edit-widget-height').value = (widget.options && widget.options.gridHeight) || 1;
+  document.getElementById('edit-scale-min').value = (widget.options && widget.options.min !== undefined) ? widget.options.min : 0;
+  document.getElementById('edit-scale-max').value = (widget.options && widget.options.max !== undefined) ? widget.options.max : 100;
+
+  // Resolve bound entities into canonical objects
+  let resolvedEnts: Array<{ nodeId: string; entityKey: string }> = [];
+  if (widget.entity) {
+    const r = window.resolveSensorIdToEntityRef(widget.entity);
+    if (r) resolvedEnts.push(r);
+  }
+  if (Array.isArray(widget.entities)) {
+    widget.entities.forEach((e: any) => {
+      const r = window.resolveSensorIdToEntityRef(e);
+      if (r && !resolvedEnts.some(x => x.nodeId === r.nodeId && x.entityKey === r.entityKey)) {
+        resolvedEnts.push(r);
+      }
+    });
+  }
+  currentEditingEntities = resolvedEnts;
 
   // Render tab selects
   const tabSelect = document.getElementById('edit-widget-tab');
@@ -538,20 +778,18 @@ function openCardEditor(widgetId, initialMode = 'ui') {
       opt.textContent = t.name;
       tabSelect.appendChild(opt);
     });
-    tabSelect.value = widget.tab;
+    tabSelect.value = widget.tab || activeTab;
   }
 
-  // Toggle scales visibility based on types
-  const scaleGroup = document.querySelector('.edit-scale-group');
-  if (scaleGroup) {
-    scaleGroup.style.display = (widget.type === 'gauge' || widget.type === 'sensor') ? 'flex' : 'none';
-  }
+  const searchInput = document.getElementById('edit-entity-search');
+  if (searchInput) searchInput.value = '';
+  const yamlSearchInput = document.getElementById('card-yaml-entity-search');
+  if (yamlSearchInput) yamlSearchInput.value = '';
 
-  const modal = document.getElementById('widget-editor-modal');
-  if (modal) {
-    modal.style.display = 'flex';
-    setTimeout(() => modal.classList.add('active'), 10);
-  }
+  window.onEditTypeChange(widget.type || 'sensor', true);
+  renderCardYamlEntityChips('');
+
+  window.openModal('widget-editor-modal');
 
   // Bind initial tab state to UI
   toggleWidgetEditorMode(initialMode);
@@ -562,12 +800,9 @@ function openCardEditor(widgetId, initialMode = 'ui') {
   if (yamlTextarea) {
     setupYamlTextareaTabKey(yamlTextarea);
     updateYamlPreview(yamlTextarea.value);
-
-    const onYamlInput = () => {
+    yamlTextarea.oninput = () => {
       updateYamlPreview(yamlTextarea.value);
     };
-    yamlTextarea.removeEventListener('input', onYamlInput);
-    yamlTextarea.addEventListener('input', onYamlInput);
   }
 }
 
@@ -584,7 +819,7 @@ function saveWidgetSettings() {
   const widgetIdx = widgets.findIndex(w => w.id === id);
   if (widgetIdx === -1) return;
 
-  // Sync UI form editor fields to YAML representation if saving from form editor
+  // Sync UI form editor fields to YAML representation if saving from visual editor
   if (widgetEditorMode === 'ui') {
     syncFormFieldsToYAML();
   }
@@ -592,66 +827,78 @@ function saveWidgetSettings() {
   const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
   if (!yamlTextarea) return;
 
-  let parsedWidget = null;
+  let parsedWidget: any = null;
   try {
     parsedWidget = jsyaml.load(yamlTextarea.value);
-    if (!parsedWidget || typeof parsedWidget !== 'object') {
-      throw new Error("YAML must represent a valid Lovelace card object structure.");
+    if (!parsedWidget || typeof parsedWidget !== 'object' || Array.isArray(parsedWidget)) {
+      throw new Error("Card YAML must be a single card mapping object (type, title, entity/entities, options).");
     }
-    // Auto-preserve or assign id and tab so user is not penalized if omitted
-    if (!parsedWidget.id) {
-      parsedWidget.id = id;
-    }
-    if (!parsedWidget.tab) {
-      parsedWidget.tab = widgets[widgetIdx].tab || activeTab;
-    }
-    if (!parsedWidget.type) {
-      parsedWidget.type = widgets[widgetIdx].type || 'sensor';
-    }
-    // Normalize name/title
-    if (!parsedWidget.title && parsedWidget.name) {
-      parsedWidget.title = parsedWidget.name;
-    }
-    // Normalize entities
-    if (parsedWidget.entity && (!parsedWidget.entities || parsedWidget.entities.length === 0)) {
-      const norm = normalizeEntityRef(parsedWidget.entity);
-      if (norm) parsedWidget.entities = [norm];
-    } else if (Array.isArray(parsedWidget.entities)) {
-      parsedWidget.entities = parsedWidget.entities.map(normalizeEntityRef).filter(Boolean);
-    }
-    if (!parsedWidget.options) parsedWidget.options = {};
-  } catch (e) {
-    console.warn("Card YAML editor parse warning, saving as error widget: ", e);
-    // Parse tab from string via regex, defaulting to activeTab
-    const tabMatch = yamlTextarea.value.match(/tab:\s*['"]?([a-zA-Z0-9_\-]+)['"]?/);
-    const tab = tabMatch ? tabMatch[1] : (widgets[widgetIdx].tab || activeTab);
 
-    // Construct error config object fallback
+    const finalType = String(parsedWidget.type || widgets[widgetIdx].type || 'sensor').trim();
+    if (!finalType || finalType === 'error') {
+      throw new Error("Please specify a valid card 'type' (sensor, gauge, control, value, entities, glance, title).");
+    }
+
+    const finalTab = String(parsedWidget.tab || widgets[widgetIdx].tab || activeTab || 'main').trim();
+    const finalTitle = parsedWidget.title !== undefined ? parsedWidget.title : (parsedWidget.name !== undefined ? parsedWidget.name : '');
+
+    let normalizedEntities: Array<{ nodeId: string; entityKey: string }> = [];
+    if (Array.isArray(parsedWidget.entities)) {
+      normalizedEntities = parsedWidget.entities
+        .map((e: any) => window.resolveSensorIdToEntityRef(e))
+        .filter((e: any) => e && e.nodeId && e.entityKey);
+    } else if (parsedWidget.entity) {
+      const ref = window.resolveSensorIdToEntityRef(parsedWidget.entity);
+      if (ref) normalizedEntities.push(ref);
+    }
+
+    const opts = { ...(parsedWidget.options || {}) };
+    if (parsedWidget.unit !== undefined) opts.unit = parsedWidget.unit;
+    if (parsedWidget.color !== undefined) opts.color = parsedWidget.color;
+    if (parsedWidget.min !== undefined) opts.min = parseFloat(parsedWidget.min);
+    if (parsedWidget.max !== undefined) opts.max = parseFloat(parsedWidget.max);
+    if (parsedWidget.gridWidth !== undefined) opts.gridWidth = parseInt(parsedWidget.gridWidth, 10);
+    if (parsedWidget.gridHeight !== undefined) opts.gridHeight = parseInt(parsedWidget.gridHeight, 10);
+
     parsedWidget = {
       id: id,
-      type: "error",
-      tab: tab,
-      title: "Misconfigured Card",
-      options: {
-        gridWidth: 1,
-        gridHeight: 1,
-        yaml_error_config: yamlTextarea.value,
-        error_message: e.message
-      }
+      type: finalType,
+      tab: finalTab,
+      title: finalTitle,
+      entities: normalizedEntities,
+      options: opts
     };
+  } catch (e: any) {
+    // Keep modal open with inline error — never overwrite card with a broken error box!
+    if (errorBanner) {
+      errorBanner.textContent = "Cannot save invalid Card YAML: " + e.message;
+      errorBanner.style.display = 'block';
+    }
+    if (typeof showToast === 'function') {
+      showToast("Fix YAML errors before saving.", "error");
+    }
+    return;
   }
 
   widgets[widgetIdx] = parsedWidget;
   localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
 
-  // Sync updated layout to backend database
-  syncLocalConfigToServer().catch(err => console.error("Failed to sync card to server:", err));
+  // If user switched the card to a different view, keep them informed or switch cleanly
+  if (parsedWidget.tab && parsedWidget.tab !== activeTab) {
+    activeTab = parsedWidget.tab;
+    renderDashboards();
+  }
 
-  closeModal('widget-editor-modal');
+  if (!window.isInEditModeDraft) {
+    syncLocalConfigToServer().catch(err => console.error("Failed to sync card to server:", err));
+  }
+
+  window.closeModal('widget-editor-modal');
   buildDashboardCards(cachedEntities);
-  if (document.getElementById('main-content').classList.contains('edit-mode')) {
+  if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
     enableDragAndDrop();
   }
+  if (typeof showToast === 'function') showToast('Card updated.', 'success');
 }
 
 // --- Card-Level Lovelace Code Editor Helper Tabs API ---
@@ -704,18 +951,18 @@ function toggleWidgetEditorMode(mode) {
   }
 
   if (mode === 'ui') {
-    if (uiFields) uiFields.style.display = 'flex';
+    if (uiFields) uiFields.style.display = 'grid';
     if (yamlContainer) yamlContainer.style.display = 'none';
 
-    // Sync structural form fields values from YAML draft code parameters
     syncYAMLToFormFields();
     updateEditorVisualPreview();
   } else {
     if (uiFields) uiFields.style.display = 'none';
     if (yamlContainer) yamlContainer.style.display = 'flex';
 
-    // Dump active form field settings into YAML textarea value
     syncFormFieldsToYAML();
+    const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+    if (yamlTextarea) updateYamlPreview(yamlTextarea.value);
   }
 }
 
@@ -731,31 +978,48 @@ function syncFormFieldsToYAML() {
     return;
   }
 
-  const draftWidget = {
-    id: widget.id,
-    type: widget.type,
-    title: document.getElementById('edit-widget-title').value,
-    tab: document.getElementById('edit-widget-tab').value,
-    entities: widget.entities || [],
-    options: {
-      ...(widget.options || {}),
-      unit: document.getElementById('edit-widget-unit').value,
-      color: document.getElementById('edit-widget-color').value,
-      gridWidth: parseInt(document.getElementById('edit-widget-width').value),
-      gridHeight: parseInt(document.getElementById('edit-widget-height').value)
-    }
+  const chosenType = getEditSelectedCardType();
+  const optionsObj: Record<string, any> = {
+    ...(widget.options || {}),
+    color: document.getElementById('edit-widget-color').value,
+    gridWidth: parseInt(document.getElementById('edit-widget-width').value, 10) || 1,
+    gridHeight: parseInt(document.getElementById('edit-widget-height').value, 10) || 1
   };
+
+  const unitVal = document.getElementById('edit-widget-unit').value;
+  if (unitVal !== '') {
+    optionsObj.unit = unitVal;
+  } else {
+    delete optionsObj.unit;
+  }
 
   const minInput = document.getElementById('edit-scale-min');
   const maxInput = document.getElementById('edit-scale-max');
-  if (minInput && maxInput && (widget.type === 'gauge' || widget.type === 'sensor')) {
-    draftWidget.options.min = parseFloat(minInput.value);
-    draftWidget.options.max = parseFloat(maxInput.value);
+  if (minInput && maxInput && (chosenType === 'gauge' || chosenType === 'sensor')) {
+    optionsObj.min = parseFloat(minInput.value);
+    optionsObj.max = parseFloat(maxInput.value);
   }
 
+  const draftWidget: Record<string, any> = {
+    type: chosenType,
+    title: document.getElementById('edit-widget-title').value,
+    tab: document.getElementById('edit-widget-tab').value || activeTab || 'main',
+  };
+
+  if (!isEntitylessCardType(chosenType)) {
+    if (currentEditingEntities.length === 1 && !isMultiEntityCardType(chosenType)) {
+      draftWidget.entity = `${currentEditingEntities[0].nodeId}.${currentEditingEntities[0].entityKey}`;
+    } else if (currentEditingEntities.length > 0) {
+      draftWidget.entities = currentEditingEntities.map(e => `${e.nodeId}.${e.entityKey}`);
+    } else {
+      draftWidget.entities = [];
+    }
+  }
+
+  draftWidget.options = optionsObj;
+
   try {
-    const yamlVal = jsyaml.dump(draftWidget, { indent: 2, noRefs: true });
-    const yamlTextarea = document.getElementById('edit-widget-yaml-textarea');
+    const yamlVal = jsyaml.dump(draftWidget, { indent: 2, noRefs: true, lineWidth: -1 });
     if (yamlTextarea) yamlTextarea.value = yamlVal;
   } catch (err) {
     console.error("Widget YAML dump failed: ", err);
@@ -768,21 +1032,43 @@ function syncYAMLToFormFields() {
 
   try {
     const parsed = jsyaml.load(yamlTextarea.value);
-    if (parsed && typeof parsed === 'object') {
-      if (parsed.title !== undefined) document.getElementById('edit-widget-title').value = parsed.title;
-      if (parsed.tab !== undefined) document.getElementById('edit-widget-tab').value = parsed.tab;
-      if (parsed.options) {
-        if (parsed.options.unit !== undefined) document.getElementById('edit-widget-unit').value = parsed.options.unit;
-        if (parsed.options.color !== undefined) document.getElementById('edit-widget-color').value = parsed.options.color;
-        if (parsed.options.gridWidth !== undefined) document.getElementById('edit-widget-width').value = parsed.options.gridWidth;
-        if (parsed.options.gridHeight !== undefined) document.getElementById('edit-widget-height').value = parsed.options.gridHeight;
-        if (parsed.options.min !== undefined && document.getElementById('edit-scale-min')) {
-          document.getElementById('edit-scale-min').value = parsed.options.min;
-        }
-        if (parsed.options.max !== undefined && document.getElementById('edit-scale-max')) {
-          document.getElementById('edit-scale-max').value = parsed.options.max;
-        }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      if (parsed.type && document.getElementById('edit-widget-type')) {
+        document.getElementById('edit-widget-type').value = parsed.type;
       }
+      if (parsed.title !== undefined || parsed.name !== undefined) {
+        document.getElementById('edit-widget-title').value = parsed.title !== undefined ? parsed.title : parsed.name;
+      }
+      if (parsed.tab !== undefined) document.getElementById('edit-widget-tab').value = parsed.tab;
+
+      const resolved: Array<{ nodeId: string; entityKey: string }> = [];
+      if (Array.isArray(parsed.entities)) {
+        parsed.entities.forEach((e: any) => {
+          const r = window.resolveSensorIdToEntityRef(e);
+          if (r) resolved.push(r);
+        });
+      } else if (parsed.entity) {
+        const r = window.resolveSensorIdToEntityRef(parsed.entity);
+        if (r) resolved.push(r);
+      }
+      currentEditingEntities = resolved;
+
+      const opts = parsed.options || {};
+      const unitVal = opts.unit !== undefined ? opts.unit : (parsed.unit !== undefined ? parsed.unit : '');
+      document.getElementById('edit-widget-unit').value = unitVal;
+      if (opts.color !== undefined || parsed.color !== undefined) {
+        document.getElementById('edit-widget-color').value = opts.color || parsed.color;
+      }
+      if (opts.gridWidth !== undefined) document.getElementById('edit-widget-width').value = opts.gridWidth;
+      if (opts.gridHeight !== undefined) document.getElementById('edit-widget-height').value = opts.gridHeight;
+      if ((opts.min !== undefined || parsed.min !== undefined) && document.getElementById('edit-scale-min')) {
+        document.getElementById('edit-scale-min').value = opts.min !== undefined ? opts.min : parsed.min;
+      }
+      if ((opts.max !== undefined || parsed.max !== undefined) && document.getElementById('edit-scale-max')) {
+        document.getElementById('edit-scale-max').value = opts.max !== undefined ? opts.max : parsed.max;
+      }
+
+      window.onEditTypeChange(document.getElementById('edit-widget-type')?.value || 'sensor', true);
     }
   } catch (err) {
     // Ignore draft parse errors during typing switches
@@ -796,8 +1082,8 @@ function updateYamlPreview(yamlStr) {
 
   try {
     const parsed = jsyaml.load(yamlStr);
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error("YAML must represent a valid Lovelace card object structure.");
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error("YAML must represent a valid Lovelace card mapping object.");
     }
     if (!parsed.type) {
       throw new Error("Card configuration is missing a 'type' field.");
@@ -810,7 +1096,7 @@ function updateYamlPreview(yamlStr) {
       <span>YAML Format Valid</span>
     `;
     if (window.lucide) window.lucide.createIcons();
-  } catch (e) {
+  } catch (e: any) {
     linterStatus.style.color = '#ef4444';
     linterStatus.innerHTML = `
       <i data-lucide="alert-triangle" style="width: 14px; height: 14px; color: #ef4444;"></i>
@@ -825,101 +1111,129 @@ function updateYamlPreview(yamlStr) {
   }
 }
 
-function renderMockCardHTML(widget) {
+function findLiveEntity(ref: { nodeId: string; entityKey: string }) {
+  if (!cachedEntities || !ref) return null;
+  return Object.values(cachedEntities).find(e => e.node_id === ref.nodeId && e.entity_key === ref.entityKey) || null;
+}
+
+function renderRealPreviewCard(widget: any) {
   const title = widget.title || "Untitled Card";
   const type = widget.type || "sensor";
-  const unit = (widget.options && widget.options.unit) || "";
-  const color = (widget.options && widget.options.color) || "var(--color-optimal)";
+  const opts = widget.options || {};
+  const color = opts.color || "var(--color-optimal)";
+  const ents: Array<{ nodeId: string; entityKey: string }> = widget.entities || [];
 
   if (type === 'title') {
     return `
-      <div class="card card-title-type" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:10px 14px; display:flex; align-items:center; min-height:48px;">
-        <span style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">${title}</span>
+      <div class="card card-title-type" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:12px 16px; display:flex; align-items:center; min-height:48px;">
+        <span style="font-size:1rem; font-weight:700; color:${color};">${title}</span>
       </div>
     `;
   }
 
-  let body = '';
-  if (type === 'gauge') {
-    body = `
-      <div class="card-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1;">
-        <div style="width:70px; height:35px; background:rgba(255,255,255,0.05); border-radius:35px 35px 0 0; position:relative; overflow:hidden; border:1px solid var(--border-soft);">
-          <div style="position:absolute; bottom:0; left:0; width:100%; height:100%; background:${color}; transform:rotate(45deg); transform-origin:bottom center;"></div>
+  const primaryRef = ents[0];
+  const primaryItem = primaryRef ? findLiveEntity(primaryRef) : null;
+  const resolvedUnit = opts.unit !== undefined && opts.unit !== '' ? opts.unit : (primaryItem?.unit || '');
+
+  if (type === 'entities') {
+    const rows = ents.map(r => {
+      const item = findLiveEntity(r);
+      const val = item ? `${item.value ?? '--'}${item.unit ? ' ' + item.unit : ''}` : 'Offline';
+      return `
+        <div class="entity-row" style="padding:6px 10px;">
+          <span class="entity-row-name" style="font-size:0.75rem;">${item ? (item.name || item.entity_key) : `${r.nodeId}.${r.entityKey}`}</span>
+          <span class="entity-row-state" style="font-size:0.75rem; color:${item ? color : '#ef4444'};">${val}</span>
         </div>
-        <div style="font-size:0.8rem; font-weight:bold; margin-top:6px;">50<span style="font-size:0.55rem;"> ${unit}</span></div>
-      </div>
-    `;
-  } else if (type === 'control') {
-    body = `
-      <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
-        <div style="font-size:0.8rem; font-weight:bold; margin-bottom:4px;">ON</div>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:0.6rem; color:var(--text-secondary);">Active State</span>
-          <label class="switch" style="scale:0.7; pointer-events:none;"><input type="checkbox" checked><span class="slider"></span></label>
+      `;
+    }).join('');
+    return `
+      <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:130px; margin:0; width:100%;">
+        <div class="card-header" style="margin-bottom:8px;">
+          <div class="card-title-area">
+            <span class="card-title" style="font-size:0.9rem;">${title}</span>
+            <span class="card-subtitle">Multiple Devices Overview</span>
+          </div>
         </div>
-      </div>
-    `;
-  } else if (type === 'value') {
-    body = `
-      <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
-        <div style="font-size:0.9rem; font-weight:bold;">84.2<span style="font-size:0.6rem;"> ${unit}</span></div>
-        <div style="height:3px; background:${color}; margin-top:8px; border-radius:1px;"></div>
-      </div>
-    `;
-  } else if (type === 'entities') {
-    body = `
-      <div class="card-body" style="display:flex; flex-direction:column; gap:6px; flex:1; justify-content:center;">
-        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem;">
-          <span style="color:var(--text-primary);">Node Status</span>
-          <span style="font-weight:600; color:${color};">Optimal</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem;">
-          <span style="color:var(--text-primary);">Load Rate</span>
-          <span style="font-weight:600;">142${unit ? ' ' + unit : ' req/s'}</span>
-        </div>
-      </div>
-    `;
-  } else if (type === 'glance') {
-    body = `
-      <div class="card-body" style="display:flex; justify-content:space-around; align-items:center; flex:1;">
-        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-          <i data-lucide="cpu" style="width:16px; height:16px; color:${color};"></i>
-          <span style="font-size:0.6rem; color:var(--text-secondary);">CPU</span>
-          <span style="font-size:0.72rem; font-weight:600;">18%</span>
-        </div>
-        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-          <i data-lucide="database" style="width:16px; height:16px; color:${color};"></i>
-          <span style="font-size:0.6rem; color:var(--text-secondary);">RAM</span>
-          <span style="font-size:0.72rem; font-weight:600;">52%</span>
-        </div>
-      </div>
-    `;
-  } else {
-    // sensor
-    body = `
-      <div class="card-body" style="padding-bottom: 0; flex:1; display:flex; flex-direction:column; justify-content:flex-end;">
-        <div style="font-size:0.9rem; font-weight:bold; margin-bottom:6px;">32<span style="font-size:0.6rem;"> ${unit}</span></div>
-        <div style="height:20px; width:100%; display:flex; align-items:flex-end; gap:2px;">
-          <div style="flex:1; height:8px; background:${color}; opacity:0.8; border-radius:1px;"></div>
-          <div style="flex:1; height:12px; background:${color}; opacity:0.8; border-radius:1px;"></div>
-          <div style="flex:1; height:18px; background:${color}; opacity:0.8; border-radius:1px;"></div>
-          <div style="flex:1; height:14px; background:${color}; opacity:0.8; border-radius:1px;"></div>
-          <div style="flex:1; height:20px; background:${color}; opacity:0.8; border-radius:1px;"></div>
+        <div class="entities-list" style="gap:6px; padding-top:4px;">
+          ${rows || '<div style="font-size:0.75rem; color:var(--text-secondary); text-align:center; padding:8px;">Pick entities on the left</div>'}
         </div>
       </div>
     `;
   }
+
+  if (type === 'glance') {
+    const items = ents.map(r => {
+      const item = findLiveEntity(r);
+      const val = item ? `${item.value ?? '--'}${item.unit ? ' ' + item.unit : ''}` : '--';
+      return `
+        <div class="glance-item" style="padding:8px 4px;">
+          <span class="glance-item-name">${item ? (item.name || item.entity_key) : r.entityKey}</span>
+          <i data-lucide="${item?.icon || 'activity'}" style="width:15px; height:15px; color:${color}; margin-bottom:4px;"></i>
+          <span class="glance-item-state">${val}</span>
+        </div>
+      `;
+    }).join('');
+    return `
+      <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:120px; margin:0; width:100%;">
+        <div class="card-header" style="margin-bottom:6px;">
+          <div class="card-title-area">
+            <span class="card-title" style="font-size:0.9rem;">${title}</span>
+            <span class="card-subtitle">At a glance metrics</span>
+          </div>
+        </div>
+        <div class="glance-grid" style="padding-top:6px;">
+          ${items || '<div style="grid-column:1/-1; font-size:0.75rem; color:var(--text-secondary); text-align:center;">Pick entities on the left</div>'}
+        </div>
+      </div>
+    `;
+  }
+
+  if (type === 'gauge') {
+    const min = parseFloat(opts.min !== undefined ? opts.min : 0);
+    const max = parseFloat(opts.max !== undefined ? opts.max : 100);
+    const span = (max - min) || 100;
+    const valNum = primaryItem ? (parseFloat(primaryItem.value) || 0) : 50;
+    const pct = Math.max(0, Math.min(1, (valNum - min) / span));
+    const offset = 110 - pct * 110;
+    const dispVal = primaryItem ? primaryItem.value : '--';
+    return `
+      <div class="card card-gauge grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:150px; margin:0; width:100%;">
+        <div class="card-header">
+          <div class="card-title-area">
+            <span class="card-title" style="font-size:0.9rem;">${widget.title || primaryItem?.name || 'Gauge Card'}</span>
+            <span class="card-subtitle">${primaryRef ? `${primaryRef.nodeId}.local` : 'Unbound'} • Gauge</span>
+          </div>
+          <span class="status-pill ${primaryItem?.status_type || 'default'}">${primaryItem?.status || (primaryRef ? 'Offline' : 'Unbound')}</span>
+        </div>
+        <div class="gauge-container" style="padding:4px 0;">
+          <svg viewBox="0 0 100 60" class="gauge-svg">
+            <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="var(--bg-primary)" stroke-width="8" stroke-linecap="round"/>
+            <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="${offset}"/>
+            <text x="50" y="44" text-anchor="middle" fill="var(--text-primary)" font-size="12" font-weight="700">${dispVal}</text>
+            <text x="50" y="54" text-anchor="middle" fill="var(--text-secondary)" font-size="7">${resolvedUnit}</text>
+          </svg>
+        </div>
+      </div>
+    `;
+  }
+
+  const dispVal = primaryItem ? primaryItem.value : '--';
+  const bodyHtml = type === 'control'
+    ? `<div style="font-size:1.2rem; font-weight:700;">${primaryItem ? (primaryItem.value ? 'ON' : 'OFF') : 'OFF'}</div>`
+    : `<div class="card-value" style="font-size:1.35rem;">${dispVal}<span class="card-unit"> ${resolvedUnit}</span></div>`;
 
   return `
-    <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); pointer-events:none; display:flex; flex-direction:column; min-height:95px; box-sizing:border-box; margin:0; width: 100%;">
-      <div class="card-header" style="padding:6px 10px; border-bottom:1px solid var(--border-soft); display:flex; justify-content:space-between; align-items:center;">
-        <div class="card-title-area" style="display:flex; flex-direction:column;">
-          <span class="card-title" style="font-size:0.75rem; font-weight:bold; color:var(--text-primary);">${title}</span>
+    <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:130px; margin:0; width:100%; pointer-events:none;">
+      <div class="card-header">
+        <div class="card-title-area">
+          <span class="card-title" style="font-size:0.9rem;">${widget.title || primaryItem?.name || 'Metric Card'}</span>
+          <span class="card-subtitle">${primaryRef ? `${primaryRef.nodeId}.local` : 'Select entity'}</span>
         </div>
-        <span class="status-pill success" style="font-size:0.5rem; padding:1px 4px;">Live</span>
+        <span class="status-pill ${primaryItem?.status_type || 'default'}">${primaryItem?.status || (primaryRef ? 'Offline' : 'Unbound')}</span>
       </div>
-      <div style="padding:6px 10px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
-        ${body}
+      <div class="card-body" style="padding-top:8px;">
+        ${bodyHtml}
+        <div style="height:3px; background:${color}; margin-top:10px; border-radius:2px; opacity:0.85;"></div>
       </div>
     </div>
   `;
@@ -927,6 +1241,7 @@ function renderMockCardHTML(widget) {
 
 function updateEditorVisualPreview() {
   const container = document.getElementById('editor-visual-preview-container');
+  const summaryEl = document.getElementById('editor-bound-entities-summary');
   if (!container) return;
   const widgetId = document.getElementById('edit-widget-id')?.value;
   let widgets = [];
@@ -934,16 +1249,28 @@ function updateEditorVisualPreview() {
     widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
   } catch (e) { }
   const widget = widgets.find(w => w.id === widgetId);
-  const type = widget ? widget.type : 'sensor';
+  const type = getEditSelectedCardType() || (widget ? widget.type : 'sensor');
   const title = document.getElementById('edit-widget-title')?.value || (widget ? widget.title : 'Widget');
   const unit = document.getElementById('edit-widget-unit')?.value || '';
   const color = document.getElementById('edit-widget-color')?.value || 'var(--color-optimal)';
+  const min = parseFloat(document.getElementById('edit-scale-min')?.value || '0');
+  const max = parseFloat(document.getElementById('edit-scale-max')?.value || '100');
 
-  container.innerHTML = renderMockCardHTML({
+  container.innerHTML = renderRealPreviewCard({
     type,
     title,
-    options: { unit, color }
+    entities: currentEditingEntities,
+    options: { unit, color, min, max }
   });
+  if (summaryEl) {
+    if (isEntitylessCardType(type)) {
+      summaryEl.textContent = `Card type '${type}' requires no bound entities.`;
+    } else if (currentEditingEntities.length === 0) {
+      summaryEl.textContent = 'Bound Entities: None selected';
+    } else {
+      summaryEl.textContent = 'Bound Entity IDs: ' + currentEditingEntities.map(e => `${e.nodeId}.${e.entityKey}`).join(', ');
+    }
+  }
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -955,13 +1282,102 @@ function updateCreatorVisualPreview() {
   const unit = document.getElementById('catalog-widget-unit')?.value || '';
   const color = document.getElementById('catalog-widget-color')?.value || 'var(--color-optimal)';
 
-  container.innerHTML = renderMockCardHTML({
+  container.innerHTML = renderRealPreviewCard({
     type,
     title,
+    entities: [],
     options: { unit, color }
   });
   if (window.lucide) window.lucide.createIcons();
 }
+
+window.cycleWidgetWidth = function (widgetId: string) {
+  let widgets: any[] = [];
+  try {
+    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
+  } catch (e) { return; }
+
+  const widget = widgets.find(w => w.id === widgetId);
+  if (!widget) return;
+  if (!widget.options) widget.options = {};
+  const curW = parseInt(widget.options.gridWidth, 10) || 1;
+  const nextW = curW >= 3 ? 1 : curW + 1;
+  widget.options.gridWidth = nextW;
+
+  localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
+  buildDashboardCards(cachedEntities);
+  if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
+    enableDragAndDrop();
+  }
+  if (typeof showToast === 'function') showToast(`Card width: ${nextW}x`, 'info');
+};
+
+window.duplicateWidget = function (widgetId: string) {
+  let widgets: any[] = [];
+  try {
+    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
+  } catch (e) { return; }
+
+  const idx = widgets.findIndex(w => w.id === widgetId);
+  if (idx === -1) return;
+
+  const clone = JSON.parse(JSON.stringify(widgets[idx]));
+  clone.id = 'widget_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+  clone.title = clone.title ? `${clone.title} (Copy)` : 'Copy';
+
+  widgets.splice(idx + 1, 0, clone);
+  localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
+
+  try {
+    const order = JSON.parse(localStorage.getItem('hp_widget_order') || '[]');
+    const orderIdx = order.indexOf(`card-${widgetId}`);
+    if (orderIdx !== -1) {
+      order.splice(orderIdx + 1, 0, `card-${clone.id}`);
+      localStorage.setItem('hp_widget_order', JSON.stringify(order));
+    }
+  } catch (e) { }
+
+  buildDashboardCards(cachedEntities);
+  if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
+    enableDragAndDrop();
+  }
+  if (typeof showToast === 'function') showToast('Card duplicated.', 'info');
+};
+
+window.duplicateEditingWidget = function () {
+  const id = document.getElementById('edit-widget-id')?.value;
+  if (!id) return;
+  window.closeModal('widget-editor-modal');
+  window.duplicateWidget(id);
+};
+
+window.quickDeleteWidget = async function (widgetId: string) {
+  if (!window.isInEditModeDraft && typeof showConfirm === 'function') {
+    const ok = await showConfirm('Remove this card from the dashboard?', 'Remove Card');
+    if (!ok) return;
+  }
+
+  let widgets: any[] = [];
+  try {
+    widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || '[]');
+  } catch (e) { }
+
+  widgets = widgets.filter(w => w.id !== widgetId);
+  localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
+
+  try {
+    const order = JSON.parse(localStorage.getItem('hp_widget_order') || '[]').filter((cId: string) => cId !== `card-${widgetId}`);
+    localStorage.setItem('hp_widget_order', JSON.stringify(order));
+  } catch (e) { }
+
+  buildDashboardCards(cachedEntities);
+  if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
+    enableDragAndDrop();
+  }
+  if (typeof showToast === 'function') {
+    showToast(window.isInEditModeDraft ? 'Card removed (Discard to undo).' : 'Card removed.', 'info');
+  }
+};
 
 async function deleteWidgetSettings() {
   const id = document.getElementById('edit-widget-id').value;
@@ -975,9 +1391,9 @@ async function deleteWidgetSettings() {
   widgets = widgets.filter(w => w.id !== id);
   localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
 
-  closeModal('widget-editor-modal');
+  window.closeModal('widget-editor-modal');
   buildDashboardCards(cachedEntities);
-  if (document.getElementById('main-content').classList.contains('edit-mode')) {
+  if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
     enableDragAndDrop();
   }
 
@@ -1166,24 +1582,18 @@ function addWidgetToGrid() {
 
 function normalizeEntityRef(ent) {
   if (!ent) return null;
+  if (window.resolveSensorIdToEntityRef) {
+    return window.resolveSensorIdToEntityRef(ent);
+  }
   if (typeof ent === 'object') {
     if (ent.nodeId && ent.entityKey) return { nodeId: String(ent.nodeId), entityKey: String(ent.entityKey) };
-    if (ent.entity) {
-      const parts = String(ent.entity).split('.');
-      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join('.') } : { nodeId: 'system', entityKey: parts[0] };
-    }
-    if (ent.id) {
-      const parts = String(ent.id).split('.');
-      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join('.') } : { nodeId: 'system', entityKey: parts[0] };
-    }
   } else if (typeof ent === 'string') {
     const s = ent.trim();
     if (!s) return null;
-    const parts = s.split('.');
-    if (parts.length > 1) {
-      return { nodeId: parts[0], entityKey: parts.slice(1).join('.') };
-    }
-    return { nodeId: 'system', entityKey: s };
+    const dotIdx = s.indexOf('.');
+    return dotIdx !== -1
+      ? { nodeId: s.slice(0, dotIdx), entityKey: s.slice(dotIdx + 1) }
+      : { nodeId: 'core-mon', entityKey: s };
   }
   return null;
 }
@@ -1193,11 +1603,11 @@ function normalizeCardObject(rawCard, defaultTab = 'main', index = 0) {
 
   const id = rawCard.id || ('widget-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 5) + '-' + index);
   const type = rawCard.type || 'sensor';
-  const tab = rawCard.tab || rawCard.view || defaultTab || 'main';
+  const tab = String(rawCard.tab || rawCard.view || defaultTab || 'main');
   const title = rawCard.title !== undefined ? rawCard.title : (rawCard.name !== undefined ? rawCard.name : (rawCard.header || ''));
 
   // Extract entities
-  let entities = [];
+  let entities: Array<{ nodeId: string; entityKey: string }> = [];
   if (Array.isArray(rawCard.entities)) {
     entities = rawCard.entities.map(normalizeEntityRef).filter(Boolean);
   } else if (rawCard.entity) {
@@ -1213,7 +1623,7 @@ function normalizeCardObject(rawCard, defaultTab = 'main', index = 0) {
   }
 
   // Extract options
-  const options = { ...(rawCard.options || {}) };
+  const options: Record<string, any> = { ...(rawCard.options || {}) };
   if (rawCard.unit !== undefined) options.unit = rawCard.unit;
   if (rawCard.unit_of_measurement !== undefined) options.unit = rawCard.unit_of_measurement;
   if (rawCard.color !== undefined) options.color = rawCard.color;
@@ -1239,71 +1649,170 @@ function normalizeCardObject(rawCard, defaultTab = 'main', index = 0) {
 function normalizeDashboardConfig(input) {
   if (!input) throw new Error("Empty YAML configuration.");
 
-  let dashboards = [];
-  let widgets = [];
+  let dashboards: Array<{ id: string; name: string; icon: string }> = [];
+  let widgets: any[] = [];
 
   // Case A: Input is an Array of cards/widgets directly
   if (Array.isArray(input)) {
     const currentTabs = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-    dashboards = currentTabs.length > 0 ? currentTabs : [{ id: 'main', name: 'Main' }];
+    dashboards = currentTabs.length > 0 ? currentTabs : [{ id: 'main', name: 'Main', icon: 'layout-dashboard' }];
     const defaultTab = activeTab || dashboards[0].id;
     widgets = input.map((item, idx) => normalizeCardObject(item, defaultTab, idx)).filter(Boolean);
-    return { dashboards, widgets };
+    return { dashboards, widgets, order: widgets.map(w => `card-${w.id}`), remappedCount: 0 };
   }
 
   if (typeof input !== 'object') {
     throw new Error("YAML layout content must be a structured configuration object or list of cards.");
   }
 
-  // Case B: Lovelace HA style with `views:`
+  // Case B: Lovelace style with `views:` (supports nested `cards:` inside each view)
   if (Array.isArray(input.views)) {
     input.views.forEach((v, vIdx) => {
-      const viewId = String(v.path || v.id || ('view_' + (vIdx + 1))).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-      const viewName = v.title || v.name || ('View ' + (vIdx + 1));
-      dashboards.push({ id: viewId, name: viewName });
+      if (!v || typeof v !== 'object') return;
+      const viewId = String(v.id || v.path || ('view_' + (vIdx + 1))).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+      const viewName = String(v.title || v.name || ('View ' + (vIdx + 1)));
+      const viewIcon = String(v.icon || 'layout-dashboard');
+      if (!dashboards.some(existing => existing.id === viewId)) {
+        dashboards.push({ id: viewId, name: viewName, icon: viewIcon });
+      }
 
       if (Array.isArray(v.cards)) {
         v.cards.forEach((card, cIdx) => {
-          const w = normalizeCardObject(card, viewId, cIdx);
+          const w = normalizeCardObject(card, viewId, widgets.length + cIdx);
           if (w) widgets.push(w);
         });
       }
     });
   }
 
-  // Case C: Standard HomePulse style with `dashboards:` or `tabs:`
+  // Case C: Flat HomePulse style with `dashboards:` or `tabs:`
   const rawDashboards = input.dashboards || input.tabs;
   if (Array.isArray(rawDashboards)) {
     rawDashboards.forEach((d, dIdx) => {
+      if (!d || typeof d !== 'object') return;
       const dId = String(d.id || d.path || ('view_' + (dIdx + 1))).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-      const dName = d.name || d.title || ('View ' + (dIdx + 1));
+      const dName = String(d.name || d.title || ('View ' + (dIdx + 1)));
+      const dIcon = String(d.icon || 'layout-dashboard');
       if (!dashboards.some(existing => existing.id === dId)) {
-        dashboards.push({ id: dId, name: dName });
+        dashboards.push({ id: dId, name: dName, icon: dIcon });
+      }
+      if (Array.isArray(d.cards)) {
+        d.cards.forEach((card, cIdx) => {
+          const w = normalizeCardObject(card, dId, widgets.length + cIdx);
+          if (w) widgets.push(w);
+        });
       }
     });
   }
 
-  // If no dashboards found yet, default to existing or main
   if (dashboards.length === 0) {
     const existing = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
-    dashboards = existing.length > 0 ? existing : [{ id: 'main', name: 'Main' }];
+    dashboards = existing.length > 0 ? existing : [{ id: 'main', name: 'Main', icon: 'layout-dashboard' }];
   }
 
-  // Now extract root widgets/cards if any
+  // Root-level `widgets:` or `cards:` (flat format compatibility)
   const rawWidgets = input.widgets || input.cards;
   if (Array.isArray(rawWidgets)) {
     const defaultTab = dashboards[0].id;
     rawWidgets.forEach((w, idx) => {
-      const cardObj = normalizeCardObject(w, defaultTab, idx);
+      const cardObj = normalizeCardObject(w, defaultTab, widgets.length + idx);
       if (cardObj) widgets.push(cardObj);
     });
   }
 
-  if (widgets.length === 0 && (!input.widgets && !input.cards && !input.views)) {
-    throw new Error("YAML does not contain any cards or widgets ('cards:', 'widgets:', or 'views:').");
+  if (widgets.length === 0 && (!input.widgets && !input.cards && !input.views && !input.dashboards && !input.tabs)) {
+    throw new Error("YAML does not contain any views or cards ('views:', 'cards:', or 'widgets:').");
   }
 
-  return { dashboards, widgets };
+  // Remap orphaned card.tab references to first valid view so cards are never lost
+  const validTabIds = new Set(dashboards.map(d => d.id));
+  let remappedCount = 0;
+  widgets.forEach(w => {
+    if (!validTabIds.has(w.tab)) {
+      w.tab = dashboards[0].id;
+      remappedCount++;
+    }
+  });
+
+  const order = widgets.map(w => `card-${w.id}`);
+  return { dashboards, widgets, order, remappedCount };
+}
+
+function formatCardForYamlExport(w: any, includeTab = false) {
+  const card: Record<string, any> = {
+    type: w.type || 'sensor',
+    title: w.title !== undefined ? w.title : ''
+  };
+  if (includeTab) {
+    card.tab = w.tab || 'main';
+  }
+
+  // Normalize entities into canonical nodeId.entityKey strings
+  let rawList: any[] = [];
+  if (Array.isArray(w.entities) && w.entities.length > 0) {
+    rawList = w.entities;
+  } else if (w.entity) {
+    rawList = [w.entity];
+  }
+
+  const canonStrings = rawList
+    .map(e => normalizeEntityRef(e))
+    .filter(Boolean)
+    .map((ref: any) => `${ref.nodeId}.${ref.entityKey}`);
+
+  if (canonStrings.length === 1 && !isMultiEntityCardType(card.type)) {
+    card.entity = canonStrings[0];
+  } else if (canonStrings.length > 0) {
+    card.entities = canonStrings;
+  }
+
+  if (w.options && Object.keys(w.options).length > 0) {
+    card.options = w.options;
+  }
+  return card;
+}
+
+function buildCanonicalLovelaceObject(dashboards: any[], widgets: any[], order: string[] = []) {
+  const safeDashboards = (dashboards && dashboards.length > 0)
+    ? dashboards
+    : [{ id: 'main', name: 'Main', icon: 'layout-dashboard' }];
+
+  const sortedWidgets = [...(widgets || [])];
+  if (Array.isArray(order) && order.length > 0) {
+    sortedWidgets.sort((a, b) => {
+      let idxA = order.indexOf(`card-${a.id}`);
+      let idxB = order.indexOf(`card-${b.id}`);
+      if (idxA === -1) idxA = order.indexOf(a.id);
+      if (idxB === -1) idxB = order.indexOf(b.id);
+      if (idxA === -1) idxA = 9999;
+      if (idxB === -1) idxB = 9999;
+      return idxA - idxB;
+    });
+  }
+
+  const viewsMap: Record<string, any> = {};
+  const views = safeDashboards.map(d => {
+    const viewObj = {
+      id: d.id,
+      title: d.name || d.title || d.id,
+      icon: d.icon || 'layout-dashboard',
+      cards: [] as any[]
+    };
+    viewsMap[d.id] = viewObj;
+    return viewObj;
+  });
+
+  sortedWidgets.forEach(w => {
+    const targetView = viewsMap[w.tab] || views[0];
+    if (targetView) {
+      targetView.cards.push(formatCardForYamlExport(w, false));
+    }
+  });
+
+  return {
+    title: "HomePulse Dashboard",
+    views
+  };
 }
 
 function setupYamlTextareaTabKey(textarea) {
@@ -1317,14 +1826,12 @@ function setupYamlTextareaTabKey(textarea) {
       const val = this.value;
 
       if (e.shiftKey) {
-        // Outdent 2 spaces
         const lineStart = val.lastIndexOf('\n', start - 1) + 1;
         if (val.substr(lineStart, 2) === '  ') {
           this.value = val.substring(0, lineStart) + val.substring(lineStart + 2);
           this.selectionStart = this.selectionEnd = Math.max(lineStart, start - 2);
         }
       } else {
-        // Indent 2 spaces
         this.value = val.substring(0, start) + '  ' + val.substring(end);
         this.selectionStart = this.selectionEnd = start + 2;
       }
@@ -1335,7 +1842,6 @@ function setupYamlTextareaTabKey(textarea) {
 
 function updateDashboardYamlValidation(yamlStr) {
   const statusEl = document.getElementById('yaml-config-status');
-  const statusText = document.getElementById('yaml-config-status-text');
   const errorBanner = document.getElementById('yaml-error-banner');
   const footerStats = document.getElementById('yaml-footer-stats');
 
@@ -1357,18 +1863,19 @@ function updateDashboardYamlValidation(yamlStr) {
 
     const viewsCount = normalized.dashboards.length;
     const cardsCount = normalized.widgets.length;
+    const remapNote = normalized.remappedCount > 0 ? ` (${normalized.remappedCount} auto-assigned)` : '';
 
     statusEl.style.background = 'rgba(16, 185, 129, 0.15)';
     statusEl.style.color = '#10b981';
     statusEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-    statusEl.innerHTML = `<i data-lucide="check-circle" style="width:13px;height:13px;"></i><span>Valid YAML (${viewsCount} view${viewsCount === 1 ? '' : 's'}, ${cardsCount} card${cardsCount === 1 ? '' : 's'})</span>`;
+    statusEl.innerHTML = `<i data-lucide="check-circle" style="width:13px;height:13px;"></i><span>Valid YAML (${viewsCount} view${viewsCount === 1 ? '' : 's'}, ${cardsCount} card${cardsCount === 1 ? '' : 's'})${remapNote}</span>`;
 
     if (errorBanner) errorBanner.style.display = 'none';
     if (footerStats) {
       footerStats.textContent = `Parsed: ${viewsCount} views, ${cardsCount} cards. Press Tab to indent (2 spaces).`;
     }
     if (window.lucide) window.lucide.createIcons();
-  } catch (err) {
+  } catch (err: any) {
     statusEl.style.background = 'rgba(244, 63, 94, 0.15)';
     statusEl.style.color = '#f43f5e';
     statusEl.style.borderColor = 'rgba(244, 63, 94, 0.3)';
@@ -1377,7 +1884,7 @@ function updateDashboardYamlValidation(yamlStr) {
     if (err.mark && err.mark.line !== undefined) {
       msg = `Line ${err.mark.line + 1}: ${err.reason || err.message}`;
     }
-    statusEl.innerHTML = `<i data-lucide="alert-circle" style="width:13px;height:13px;"></i><span>${escapeHtml(msg.slice(0, 35))}</span>`;
+    statusEl.innerHTML = `<i data-lucide="alert-circle" style="width:13px;height:13px;"></i><span>${escapeHtml(msg.slice(0, 40))}</span>`;
 
     if (errorBanner) {
       errorBanner.textContent = "YAML Error: " + err.message;
@@ -1387,44 +1894,77 @@ function updateDashboardYamlValidation(yamlStr) {
   }
 }
 
+window.toggleYamlEntitySidebar = function () {
+  const sidebar = document.getElementById('yaml-entity-sidebar');
+  const btn = document.getElementById('btn-toggle-yaml-entities');
+  if (!sidebar) return;
+  const isHidden = sidebar.style.display === 'none';
+  sidebar.style.display = isHidden ? 'flex' : 'none';
+  if (btn) btn.classList.toggle('active', isHidden);
+};
+
+window.renderYamlEntitySidebar = function (filterText = '') {
+  const listEl = document.getElementById('yaml-entity-list');
+  if (!listEl) return;
+
+  const q = String(filterText || '').trim().toLowerCase();
+  const entities = Object.values(cachedEntities || {}).sort((a, b) =>
+    String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
+  );
+
+  const filtered = entities.filter(item => {
+    if (!q) return true;
+    const canon = `${item.node_id}.${item.entity_key}`.toLowerCase();
+    const name = String(item.name || '').toLowerCase();
+    return canon.includes(q) || name.includes(q);
+  });
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<div style="padding:12px; text-align:center; font-size:0.74rem; color:var(--text-secondary);">No matching live entities</div>';
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(item => {
+    const canon = `${item.node_id}.${item.entity_key}`;
+    const val = item.value !== undefined && item.value !== null ? `${item.value}${item.unit ? ' ' + item.unit : ''}` : '--';
+    return `
+      <div class="yaml-entity-item" onclick="insertEntityIntoYaml('${canon}')" title="Click to insert '${canon}' at cursor">
+        <div class="yaml-entity-top">
+          <span class="yaml-entity-name">${item.name || item.entity_key}</span>
+          <span class="yaml-entity-val">${val}</span>
+        </div>
+        <div class="yaml-entity-bottom">
+          <code>${canon}</code>
+          <button type="button" class="yaml-copy-mini" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${canon}'); if(typeof showToast==='function') showToast('Copied ${canon}', 'info')" title="Copy ID">Copy</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+};
+
+window.insertEntityIntoYaml = function (canonId: string) {
+  const textarea = document.getElementById('yaml-editor-textarea');
+  if (!textarea) return;
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  textarea.value = textarea.value.substring(0, start) + canonId + textarea.value.substring(end);
+  textarea.selectionStart = textarea.selectionEnd = start + canonId.length;
+  textarea.focus();
+  updateDashboardYamlValidation(textarea.value);
+  if (typeof showToast === 'function') showToast(`Inserted ${canonId}`, 'info');
+};
+
 function openYAMLConfigEditor() {
   const errorBanner = document.getElementById('yaml-error-banner');
   if (errorBanner) errorBanner.style.display = 'none';
 
-  // Retrieve current state from localStorage
   const dashboards = JSON.parse(localStorage.getItem('hp_dashboards') || 'null') || [
-    { id: 'main', name: 'Main' }
+    { id: 'main', name: 'Main', icon: 'layout-dashboard' }
   ];
   const widgets = JSON.parse(localStorage.getItem('hp_dashboard_widgets') || 'null') || [];
+  const order = JSON.parse(localStorage.getItem('hp_widget_order') || 'null') || [];
 
-  // Generate clean Lovelace-compatible YAML export
-  const views = dashboards.map(d => ({
-    id: d.id,
-    title: d.name || d.title || d.id
-  }));
-
-  const cards = widgets.map(w => {
-    const card: Record<string, any> = {
-      type: w.type || 'sensor',
-      title: w.title !== undefined ? w.title : '',
-      tab: w.tab || 'main'
-    };
-    if (w.entities && w.entities.length === 1) {
-      card.entity = `${w.entities[0].nodeId}.${w.entities[0].entityKey}`;
-    } else if (w.entities && w.entities.length > 1) {
-      card.entities = w.entities.map(e => `${e.nodeId}.${e.entityKey}`);
-    }
-    if (w.options && Object.keys(w.options).length > 0) {
-      card.options = w.options;
-    }
-    return card;
-  });
-
-  const exportObj = {
-    title: "HomePulse Dashboard",
-    views: views,
-    cards: cards
-  };
+  const exportObj = buildCanonicalLovelaceObject(dashboards, widgets, order);
 
   try {
     const yamlContent = jsyaml.dump(exportObj, { indent: 2, noRefs: true, lineWidth: -1 });
@@ -1438,10 +1978,15 @@ function openYAMLConfigEditor() {
         updateDashboardYamlValidation(textarea.value);
       };
     }
-    openModal('yaml-config-modal');
-  } catch (e) {
+
+    const searchInput = document.getElementById('yaml-entity-search');
+    if (searchInput) searchInput.value = '';
+    window.renderYamlEntitySidebar('');
+
+    window.openModal('yaml-config-modal');
+  } catch (e: any) {
     console.error("YAML serialization failed: ", e);
-    alert("Error serializing to YAML: " + e.message);
+    if (typeof showToast === 'function') showToast("Error serializing to YAML: " + e.message, "error");
   }
 }
 
@@ -1462,9 +2007,12 @@ async function saveYAMLConfigSettings() {
     const parsed = jsyaml.load(yamlText);
     const normalized = normalizeDashboardConfig(parsed);
 
-    // Save arrays into localStorage
+    // Suppress storage proxy spam, write once, then sync once cleanly
+    window.isSyncingFromServer = true;
     localStorage.setItem('hp_dashboards', JSON.stringify(normalized.dashboards));
     localStorage.setItem('hp_dashboard_widgets', JSON.stringify(normalized.widgets));
+    localStorage.setItem('hp_widget_order', JSON.stringify(normalized.order));
+    window.isSyncingFromServer = false;
 
     // Reset activeTab if deleted
     const tabExists = normalized.dashboards.some(db => db.id === activeTab);
@@ -1472,27 +2020,32 @@ async function saveYAMLConfigSettings() {
       activeTab = normalized.dashboards[0].id;
     }
 
-    // Persist to Postgres database via server API
+    // Update editModeSnapshot if user saved explicitly from YAML Studio while in Edit Mode
+    if (window.isInEditModeDraft) {
+      window.markEditModeDirty?.(false);
+    }
+
+    // Persist directly to Postgres database once
     await syncLocalConfigToServer();
 
-    // Refresh UI
-    closeModal('yaml-config-modal');
+    window.closeModal('yaml-config-modal');
     renderDashboards();
     buildDashboardCards(cachedEntities);
+    if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
+      enableDragAndDrop();
+    }
 
-    showToast?.("Dashboard YAML configuration applied and saved.");
-    addAuditEntry('success', "Dashboard configuration updated and validated via YAML settings editor.");
+    if (typeof showToast === 'function') showToast("Dashboard YAML configuration applied and saved.", "success");
+    addAuditEntry('success', "Dashboard configuration updated and validated via YAML Studio.");
 
-  } catch (e) {
+  } catch (e: any) {
+    window.isSyncingFromServer = false;
     console.error("YAML parsing error: ", e);
     if (errorBanner) {
       errorBanner.textContent = "Validation Failure: " + e.message;
       errorBanner.style.display = 'block';
-      const modalBody = document.querySelector('#yaml-config-modal .modal-body');
-      if (modalBody) modalBody.scrollTop = 0;
-    } else {
-      alert("Validation Error: " + e.message);
     }
+    if (typeof showToast === 'function') showToast("YAML validation failed: " + e.message, "error");
   }
 }
 
@@ -1502,40 +2055,13 @@ window.formatDashboardYAML = function () {
   try {
     const parsed = jsyaml.load(textarea.value);
     const normalized = normalizeDashboardConfig(parsed);
-
-    const views = normalized.dashboards.map(d => ({
-      id: d.id,
-      title: d.name || d.title || d.id
-    }));
-
-    const cards = normalized.widgets.map(w => {
-      const card: Record<string, any> = {
-        type: w.type || 'sensor',
-        title: w.title !== undefined ? w.title : '',
-        tab: w.tab || 'main'
-      };
-      if (w.entities && w.entities.length === 1) {
-        card.entity = `${w.entities[0].nodeId}.${w.entities[0].entityKey}`;
-      } else if (w.entities && w.entities.length > 1) {
-        card.entities = w.entities.map(e => `${e.nodeId}.${e.entityKey}`);
-      }
-      if (w.options && Object.keys(w.options).length > 0) {
-        card.options = w.options;
-      }
-      return card;
-    });
-
-    const exportObj = {
-      title: "HomePulse Dashboard",
-      views: views,
-      cards: cards
-    };
+    const exportObj = buildCanonicalLovelaceObject(normalized.dashboards, normalized.widgets, normalized.order);
 
     textarea.value = jsyaml.dump(exportObj, { indent: 2, noRefs: true, lineWidth: -1 });
     updateDashboardYamlValidation(textarea.value);
-    showToast?.("YAML formatted cleanly.");
-  } catch (err) {
-    alert("Cannot format invalid YAML: " + err.message);
+    if (typeof showToast === 'function') showToast("YAML formatted cleanly.", "success");
+  } catch (err: any) {
+    if (typeof showToast === 'function') showToast("Cannot format invalid YAML: " + err.message, "error");
   }
 };
 
@@ -1548,11 +2074,11 @@ window.copyDashboardYAML = function () {
       copyText.textContent = "Copied!";
       setTimeout(() => { if (copyText) copyText.textContent = "Copy"; }, 2000);
     }
-    showToast?.("Dashboard YAML copied to clipboard.");
+    if (typeof showToast === 'function') showToast("Dashboard YAML copied to clipboard.", "info");
   }).catch(() => {
     textarea.select();
     document.execCommand('copy');
-    showToast?.("Copied to clipboard.");
+    if (typeof showToast === 'function') showToast("Copied to clipboard.", "info");
   });
 };
 
@@ -1568,7 +2094,7 @@ window.downloadDashboardYAML = function () {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast?.("Dashboard YAML exported.");
+  if (typeof showToast === 'function') showToast("Dashboard YAML exported.", "info");
 };
 
 window.importDashboardYAMLFile = function (event) {
@@ -1581,7 +2107,7 @@ window.importDashboardYAMLFile = function (event) {
     if (textarea) {
       textarea.value = content;
       updateDashboardYamlValidation(content);
-      showToast?.(`Loaded '${file.name}'. Click 'Save & Apply' to activate.`);
+      if (typeof showToast === 'function') showToast(`Loaded '${file.name}'. Click 'Save & Apply' to activate.`, "info");
     }
   };
   reader.readAsText(file);
@@ -1593,35 +2119,39 @@ window.insertYamlSnippet = function (type) {
   const textarea = document.getElementById('yaml-editor-textarea');
   if (!textarea) return;
 
-  const currentTab = activeTab || 'main';
   let snippet = '';
-
   switch (type) {
     case 'sensor':
-      snippet = `\n  - type: sensor\n    title: "New Sensor"\n    tab: "${currentTab}"\n    entity: "system.cpu_usage"\n    options:\n      unit: "%"\n      color: "var(--color-optimal)"\n      gridWidth: 1\n      gridHeight: 1\n`;
+      snippet = `\n      - type: sensor\n        title: New Sensor\n        entity: core-mon.cpu-utilization\n        options:\n          unit: '%'\n          color: var(--color-optimal)\n          gridWidth: 1\n          gridHeight: 1\n`;
       break;
     case 'gauge':
-      snippet = `\n  - type: gauge\n    title: "Resource Gauge"\n    tab: "${currentTab}"\n    entity: "system.memory_usage"\n    options:\n      min: 0\n      max: 100\n      unit: "%"\n      color: "var(--accent-orange)"\n      gridWidth: 1\n      gridHeight: 1\n`;
+      snippet = `\n      - type: gauge\n        title: Resource Gauge\n        entity: core-mon.memory-saturation\n        options:\n          min: 0\n          max: 100\n          unit: '%'\n          color: var(--accent-orange)\n          gridWidth: 1\n          gridHeight: 1\n`;
       break;
     case 'control':
-      snippet = `\n  - type: control\n    title: "Toggle Control"\n    tab: "${currentTab}"\n    entity: "plugins.service_switch"\n    options:\n      color: "var(--accent-blue)"\n      gridWidth: 1\n      gridHeight: 1\n`;
+      snippet = `\n      - type: control\n        title: Toggle Control\n        entity: plugins.service-switch\n        options:\n          color: var(--accent-blue)\n          gridWidth: 1\n          gridHeight: 1\n`;
       break;
     case 'entities':
-      snippet = `\n  - type: entities\n    title: "System Overview"\n    tab: "${currentTab}"\n    entities:\n      - system.cpu_usage\n      - system.memory_usage\n      - system.disk_usage\n    options:\n      gridWidth: 2\n      gridHeight: 2\n`;
+      snippet = `\n      - type: entities\n        title: System Overview\n        entities:\n          - core-mon.cpu-utilization\n          - core-mon.memory-saturation\n          - core-mon.server-room-temp\n        options:\n          gridWidth: 2\n          gridHeight: 1\n`;
       break;
     case 'glance':
-      snippet = `\n  - type: glance\n    title: "Quick Glance"\n    tab: "${currentTab}"\n    entities:\n      - system.cpu_usage\n      - system.temperature\n    options:\n      gridWidth: 2\n      gridHeight: 1\n`;
+      snippet = `\n      - type: glance\n        title: Quick Glance\n        entities:\n          - core-mon.cpu-utilization\n          - core-mon.server-room-temp\n        options:\n          gridWidth: 2\n          gridHeight: 1\n`;
+      break;
+    case 'title':
+      snippet = `\n      - type: title\n        title: Section Header\n        options:\n          color: var(--accent-orange)\n          gridWidth: 3\n          gridHeight: 1\n`;
+      break;
+    case 'view':
+      snippet = `\n  - id: view_${Date.now().toString(36)}\n    title: New View\n    icon: server\n    cards:\n      - type: sensor\n        title: View Metric\n        entity: core-mon.cpu-utilization\n        options:\n          gridWidth: 1\n          gridHeight: 1\n`;
       break;
   }
 
   if (snippet) {
     const val = textarea.value;
-    const pos = textarea.selectionStart;
+    const pos = textarea.selectionStart ?? val.length;
     textarea.value = val.substring(0, pos) + snippet + val.substring(pos);
     textarea.selectionStart = textarea.selectionEnd = pos + snippet.length;
     textarea.focus();
     updateDashboardYamlValidation(textarea.value);
-    showToast?.(`Inserted ${type} card template.`);
+    if (typeof showToast === 'function') showToast(`Inserted ${type} template.`, "info");
   }
 };
 

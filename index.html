@@ -7,7 +7,7 @@
   <title>HomePulse Dashboard</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=4.0">
 </head>
 
 <body>
@@ -134,23 +134,28 @@
     <div id="edit-mode-banner" class="editor-toolbar" style="display: none;">
       <div class="editor-toolbar-left">
         <span class="editor-status-chip">
-          <i data-lucide="layout"></i> Layout Editor
+          <i data-lucide="layout"></i> Edit Mode
         </span>
-        <span class="editor-tip">Drag cards to reorder &bull; Double-click cards to edit properties</span>
+        <span id="edit-unsaved-badge" class="edit-unsaved-badge" style="display: none;">
+          <span class="unsaved-dot"></span> Unsaved changes
+        </span>
+        <span class="editor-tip">Drag cards to reorder &bull; Use card controls to edit, resize, duplicate, or delete</span>
       </div>
       <div class="editor-toolbar-actions">
         <button class="btn-toolbar btn-toolbar-primary" onclick="addNewCardPlaceholder()">
           <i data-lucide="plus-circle"></i> Add Card
         </button>
         <button class="btn-toolbar" onclick="openNewDashboardModal()">
-          <i data-lucide="folder-plus"></i> Add View
+          <i data-lucide="folder-plus"></i> Manage Views
         </button>
         <button class="btn-toolbar" onclick="openYAMLConfigEditor()">
-          <i data-lucide="code"></i> Raw YAML
-          <i data-lucide="code"></i> YAML Config
+          <i data-lucide="file-code"></i> YAML Studio
         </button>
-        <button class="btn-toolbar btn-toolbar-done" onclick="toggleEditMode()">
-          <i data-lucide="check"></i> Exit Edit Mode
+        <button class="btn-toolbar btn-toolbar-discard" id="btn-edit-discard" onclick="discardEditModeChanges()">
+          <i data-lucide="rotate-ccw"></i> Discard
+        </button>
+        <button class="btn-toolbar btn-toolbar-done" id="btn-edit-save" onclick="saveEditModeChanges()">
+          <i data-lucide="check"></i> Save Layout
         </button>
       </div>
     </div>
@@ -1703,12 +1708,12 @@
     <div style="height: 40px;"></div>
   </main>
 
-  <!-- Widget Editor Modal Overlay -->
+  <!-- Widget Editor Modal Overlay (Side-by-Side Card Studio) -->
   <div class="modal-overlay" id="widget-editor-modal" style="display: none;">
-    <div class="modal-content wide" style="max-height: 90vh; display: flex; flex-direction: column;">
+    <div class="modal-content card-studio-modal" style="max-width: 920px; width: 92%; max-height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 14px;">
-          <h3 style="margin: 0;">Card Editor</h3>
+          <h3 style="margin: 0;">Card Studio</h3>
           <div class="editor-mode-switcher">
             <button type="button" class="editor-mode-btn active" id="editor-tab-ui" onclick="toggleWidgetEditorMode('ui')">
               <i data-lucide="sliders" style="width: 14px; height: 14px;"></i> Visual
@@ -1721,108 +1726,155 @@
         <button class="modal-close-btn" onclick="closeModal('widget-editor-modal')">&times;</button>
       </div>
       <div class="modal-body"
-        style="overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px;">
+        style="overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px; margin-bottom: 0;">
         <input type="hidden" id="edit-widget-id">
 
-        <!-- UI Fields Container -->
-        <div id="editor-ui-fields" style="display: flex; flex-direction: column; gap: 14px;">
-          <div class="form-grid-2col">
-            <div class="modal-group">
-              <label for="edit-widget-title">Widget Label</label>
-              <input type="text" class="modal-input" id="edit-widget-title" placeholder="e.g. Gateway Status" oninput="updateEditorVisualPreview()">
+        <!-- UI Fields Container (Side-by-Side Form + Live Preview) -->
+        <div id="editor-ui-fields" class="card-studio-split">
+          <div class="card-studio-form">
+            <div class="form-grid-2col">
+              <div class="modal-group">
+                <label for="edit-widget-type">Card Type</label>
+                <select id="edit-widget-type" class="modal-input" onchange="onEditTypeChange(this.value)">
+                  <option value="sensor">Sensor</option>
+                  <option value="gauge">Gauge</option>
+                  <option value="control">Control</option>
+                  <option value="value">Value</option>
+                  <option value="entities">Entities List</option>
+                  <option value="glance">Glance Grid</option>
+                  <option value="title">Section Title</option>
+                </select>
+              </div>
+              <div class="modal-group">
+                <label for="edit-widget-tab">Dashboard View</label>
+                <select id="edit-widget-tab" class="modal-input" onchange="updateEditorVisualPreview()">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
             </div>
-            <div class="modal-group">
-              <label for="edit-widget-color">Theme Accent</label>
-              <select id="edit-widget-color" class="modal-input" onchange="updateEditorVisualPreview()">
-                <option value="var(--color-optimal)">Emerald green (Optimal)</option>
-                <option value="var(--accent-blue)">Ice blue (Info)</option>
-                <option value="var(--color-caution)">Amber (Caution)</option>
-                <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
-                <option value="#c084fc">Amethyst purple</option>
-                <option value="#f472b6">Pink glow</option>
-              </select>
-            </div>
-          </div>
 
-          <div class="form-grid-2col">
-            <div class="modal-group">
-              <label for="edit-widget-tab">Dashboard Tab</label>
-              <select id="edit-widget-tab" class="modal-input">
+            <!-- Searchable Entity Picker -->
+            <div class="modal-group" id="edit-entity-picker-section">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label for="edit-entity-search" id="edit-entity-picker-label">Target Entity</label>
+                <span id="edit-entity-picker-hint" style="font-size:0.68rem; color:var(--text-secondary);">Select 1 entity</span>
+              </div>
+              <input type="text" id="edit-entity-search" class="modal-input" placeholder="Search entities by name or ID..." oninput="filterEditEntityList(this.value)">
+              <div id="edit-entity-list" class="entity-picker-list">
                 <!-- Dynamically populated -->
-              </select>
-            </div>
-            <div style="display: flex; gap: 10px;">
-              <div class="modal-group" style="flex: 1;">
-                <label for="edit-widget-width">Card Width</label>
-                <select id="edit-widget-width" class="modal-input">
-                  <option value="1">1x (Normal)</option>
-                  <option value="2">2x (Wide)</option>
-                  <option value="3">3x (Full)</option>
-                </select>
-              </div>
-              <div class="modal-group" style="flex: 1;">
-                <label for="edit-widget-height">Height</label>
-                <select id="edit-widget-height" class="modal-input">
-                  <option value="1">1x</option>
-                  <option value="2">2x</option>
-                </select>
               </div>
             </div>
-          </div>
 
-          <!-- Section: Metric Details (Conditional for Gauges and Sensors) -->
-          <div class="edit-scale-group form-grid-2col" style="display: flex;">
-            <div class="modal-group">
-              <label for="edit-widget-unit">Display Unit</label>
-              <input type="text" class="modal-input" id="edit-widget-unit" placeholder="e.g. %, °C, GB, ms" oninput="updateEditorVisualPreview()">
+            <div class="form-grid-2col">
+              <div class="modal-group">
+                <label for="edit-widget-title">Card Label</label>
+                <input type="text" class="modal-input" id="edit-widget-title" placeholder="e.g. Gateway Status" oninput="updateEditorVisualPreview()">
+              </div>
+              <div class="modal-group">
+                <label for="edit-widget-color">Theme Accent</label>
+                <select id="edit-widget-color" class="modal-input" onchange="updateEditorVisualPreview()">
+                  <option value="var(--color-optimal)">Emerald green (Optimal)</option>
+                  <option value="var(--accent-blue)">Ice blue (Info)</option>
+                  <option value="var(--accent-orange)">Amber orange (Warm)</option>
+                  <option value="var(--color-caution)">Gold (Caution)</option>
+                  <option value="rgba(244, 63, 94, 0.9)">Rose red (Alarm)</option>
+                  <option value="#c084fc">Amethyst purple</option>
+                  <option value="#f472b6">Pink glow</option>
+                </select>
+              </div>
             </div>
-            <div style="display: flex; gap: 10px;">
-              <div class="modal-group" style="flex: 1;">
+
+            <div class="form-grid-2col">
+              <div style="display: flex; gap: 10px;">
+                <div class="modal-group" style="flex: 1;">
+                  <label for="edit-widget-width">Width</label>
+                  <select id="edit-widget-width" class="modal-input" onchange="updateEditorVisualPreview()">
+                    <option value="1">1x (Normal)</option>
+                    <option value="2">2x (Wide)</option>
+                    <option value="3">3x (Full)</option>
+                  </select>
+                </div>
+                <div class="modal-group" style="flex: 1;">
+                  <label for="edit-widget-height">Height</label>
+                  <select id="edit-widget-height" class="modal-input" onchange="updateEditorVisualPreview()">
+                    <option value="1">1x</option>
+                    <option value="2">2x</option>
+                  </select>
+                </div>
+              </div>
+              <div class="modal-group edit-unit-group">
+                <label for="edit-widget-unit">Display Unit</label>
+                <input type="text" class="modal-input" id="edit-widget-unit" placeholder="e.g. %, °C, GB, ms" oninput="updateEditorVisualPreview()">
+              </div>
+            </div>
+
+            <!-- Section: Metric Details (Conditional for Gauges and Sensors) -->
+            <div class="edit-scale-group form-grid-2col" style="display: flex;">
+              <div class="modal-group">
                 <label for="edit-scale-min">Scale Min</label>
-                <input type="number" class="modal-input" id="edit-scale-min" value="0">
+                <input type="number" class="modal-input" id="edit-scale-min" value="0" oninput="updateEditorVisualPreview()">
               </div>
-              <div class="modal-group" style="flex: 1;">
+              <div class="modal-group">
                 <label for="edit-scale-max">Scale Max</label>
-                <input type="number" class="modal-input" id="edit-scale-max" value="100">
+                <input type="number" class="modal-input" id="edit-scale-max" value="100" oninput="updateEditorVisualPreview()">
               </div>
             </div>
           </div>
 
-          <!-- Live Card Preview -->
-          <div class="modal-preview-box">
-            <div class="modal-preview-header">
-              <span class="modal-preview-label">Live Card Preview</span>
-              <span style="font-size: 0.65rem; color: var(--text-secondary);">Real-time preview</span>
-            </div>
-            <div id="editor-visual-preview-container">
-              <!-- Rendered dynamically by JS -->
+          <!-- Right Column: Live Real-Data Preview -->
+          <div class="card-studio-preview">
+            <div class="modal-preview-box" style="height: 100%; display: flex; flex-direction: column; justify-content: space-between; gap: 12px;">
+              <div>
+                <div class="modal-preview-header">
+                  <span class="modal-preview-label">Live Real-Data Preview</span>
+                  <span style="font-size: 0.65rem; color: var(--color-optimal);">Live telemetry bound</span>
+                </div>
+                <div id="editor-visual-preview-container" style="margin-top: 8px;">
+                  <!-- Rendered dynamically by JS -->
+                </div>
+              </div>
+              <div id="editor-bound-entities-summary" style="font-size: 0.7rem; font-family: monospace; color: var(--text-secondary); background: rgba(0,0,0,0.25); border: 1px solid var(--border-soft); border-radius: 6px; padding: 8px 10px; word-break: break-all;">
+                No entity bound
+              </div>
             </div>
           </div>
         </div>
 
         <!-- YAML Container -->
         <div id="editor-yaml-container" style="display: none; flex-direction: column; gap: 8px; width: 100%;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <span style="font-size:0.75rem; color:var(--text-secondary); font-weight: 500;">Directly edit card parameters in YAML:</span>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+            <span style="font-size:0.75rem; color:var(--text-secondary); font-weight: 500;">Directly edit card parameters in Lovelace YAML:</span>
             <div id="yaml-linter-status"
               style="display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: #10b981; font-weight: 600;">
               <i data-lucide="check-circle" style="width: 14px; height: 14px; color: #10b981;"></i>
               <span>YAML Format Valid</span>
             </div>
           </div>
+          <div style="display:flex; flex-direction:column; gap:6px; background:rgba(255,255,255,0.02); border:1px solid var(--border-soft); border-radius:6px; padding:8px 10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <span style="font-size:0.7rem; color:var(--text-secondary); font-weight:600;">Click an entity ID to insert/copy:</span>
+              <input type="text" id="card-yaml-entity-search" class="modal-input" placeholder="Filter live entities..." style="padding:3px 8px; font-size:0.72rem; width:210px;" oninput="renderCardYamlEntityChips(this.value)">
+            </div>
+            <div id="card-yaml-entity-chips" class="yaml-entity-chips"></div>
+          </div>
           <div id="edit-widget-yaml-error"
-            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 8px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap; margin-bottom: 8px;">
+            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 8px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
           </div>
           <div style="width: 100%;">
-            <textarea id="edit-widget-yaml-textarea"
-              style="background:#121214; border: 1px solid var(--border-soft); border-radius: 6px; color:#e4e4e7; font-family:monospace; font-size:0.8rem; padding:12px; height:320px; resize:none; outline:none; line-height:1.4; box-sizing: border-box; width: 100%;"></textarea>
+            <textarea id="edit-widget-yaml-textarea" spellcheck="false"
+              style="background:#0c0c0e; border: 1px solid var(--border-soft); border-radius: 6px; color:#f4f4f5; font-family:'Fira Code', 'Cascadia Code', Consolas, Monaco, monospace; font-size:0.8rem; padding:12px; height:320px; resize:vertical; outline:none; line-height:1.45; box-sizing: border-box; width: 100%; tab-size:2;"></textarea>
           </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-danger" onclick="deleteWidgetSettings()">Remove Card</button>
-        <button class="btn btn-secondary" onclick="closeModal('widget-editor-modal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveWidgetSettings()">Save Changes</button>
+      <div class="modal-footer" style="justify-content: space-between; margin-top: 12px;">
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-danger" onclick="deleteWidgetSettings()">Remove Card</button>
+          <button class="btn btn-secondary" onclick="duplicateEditingWidget()">Duplicate</button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary" onclick="closeModal('widget-editor-modal')">Cancel</button>
+          <button class="btn btn-primary" id="btn-save-widget-settings" onclick="saveWidgetSettings()">Apply Changes</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2004,31 +2056,20 @@
     </div>
   </div>
 
-  <!-- YAML Configuration Editor Modal Overlay -->
+  <!-- YAML Configuration Studio Modal Overlay -->
   <div class="modal-overlay" id="yaml-config-modal" style="display: none;">
-      <div class="modal-content"
-        style="width: 85%; max-width: 900px; height: 80vh; display: flex; flex-direction: column;">
-        <div class="modal-header">
-          <h3>Raw YAML Configuration Editor</h3>
-          <button class="modal-close-btn" onclick="closeModal('yaml-config-modal')">&times;</button>
-    <div class="modal-content"
-      style="width: 90%; max-width: 950px; height: 85vh; display: flex; flex-direction: column; background: #121216; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,0.85);">
-      <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, rgba(239, 108, 0, 0.06), transparent);">
+    <div class="modal-content yaml-studio-modal"
+      style="width: 92%; max-width: 1120px; height: 86vh; padding: 0; display: flex; flex-direction: column; background: #121216; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,0.85);">
+      <div class="modal-header" style="padding: 14px 20px; margin-bottom: 0; border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, rgba(239, 108, 0, 0.06), transparent);">
         <div style="display: flex; align-items: center; gap: 10px;">
           <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(239, 108, 0, 0.15); display: flex; align-items: center; justify-content: center; color: var(--accent-orange);">
             <i data-lucide="file-code" style="width: 18px; height: 18px;"></i>
           </div>
           <div>
-            <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #fff;">Dashboard YAML Configuration</h3>
-            <span style="font-size: 0.72rem; color: var(--text-secondary);">Directly edit views, cards, and Lovelace layouts with live schema validation</span>
+            <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #fff;">Dashboard YAML Studio</h3>
+            <span style="font-size: 0.72rem; color: var(--text-secondary);">Nested Lovelace views &amp; cards configuration with live entity browser and schema validation</span>
           </div>
         </div>
-        <div class="modal-body"
-          style="flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 12px; overflow: hidden;">
-          <span style="font-size:0.75rem; color:var(--text-secondary);">Directly edit tabs and card properties using
-            Lovelace syntax layout. Use 2 spaces for nested indentation.</span>
-          <div id="yaml-error-banner"
-            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 10px; border-radius: 6px; font-size: 0.72rem; font-family: monospace; white-space: pre-wrap;">
         <button class="modal-close-btn" onclick="closeModal('yaml-config-modal')">&times;</button>
       </div>
 
@@ -2039,22 +2080,20 @@
             <i data-lucide="check-circle" style="width: 13px; height: 13px;"></i>
             <span id="yaml-config-status-text">Valid YAML</span>
           </div>
-          <textarea id="yaml-editor-textarea"
-            style="flex: 1; background: #121214; border: 1px solid var(--border-soft); border-radius: 6px; color: #e4e4e7; font-family: monospace; font-size: 0.8rem; padding: 14px; line-height: 1.5; resize: none; outline: none;"></textarea>
           <select id="yaml-snippet-select" onchange="insertYamlSnippet(this.value); this.value='';" style="background: #1c1c22; color: #e4e4e7; border: 1px solid var(--border-soft); border-radius: 6px; font-size: 0.72rem; padding: 4px 8px; outline: none; cursor: pointer;">
-            <option value="">+ Insert Card Template...</option>
+            <option value="">+ Insert Card / View Template...</option>
             <option value="sensor">Sensor Card</option>
             <option value="gauge">Gauge Card</option>
             <option value="control">Control Switch Card</option>
             <option value="entities">Entities List Card</option>
             <option value="glance">Glance Card</option>
+            <option value="title">Section Title Card</option>
+            <option value="view">New View (Tab)</option>
           </select>
         </div>
-        <div class="modal-footer"
-          style="padding: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 12px;">
 
         <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-          <button type="button" class="btn btn-secondary btn-sm" onclick="formatDashboardYAML()" title="Prettify and format YAML" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="formatDashboardYAML()" title="Prettify and normalize YAML" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
             <i data-lucide="align-left" style="width: 13px; height: 13px;"></i> Prettify
           </button>
           <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-yaml" onclick="copyDashboardYAML()" title="Copy YAML to clipboard" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
@@ -2066,28 +2105,43 @@
           <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('yaml-file-import-input').click()" title="Import from .yaml file" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
             <i data-lucide="upload" style="width: 13px; height: 13px;"></i> Import
           </button>
+          <button type="button" class="btn btn-secondary btn-sm active" id="btn-toggle-yaml-entities" onclick="toggleYamlEntitySidebar()" title="Toggle live entity reference sidebar" style="font-size:0.72rem; padding:4px 10px; display:flex; align-items:center; gap:4px;">
+            <i data-lucide="panel-right" style="width: 13px; height: 13px;"></i> Entities
+          </button>
           <input type="file" id="yaml-file-import-input" accept=".yaml,.yml,.txt" style="display: none;" onchange="importDashboardYAMLFile(event)">
         </div>
       </div>
 
-      <div class="modal-body"
-        style="flex: 1; display: flex; flex-direction: column; padding: 14px 20px; gap: 8px; overflow: hidden;">
-        <div id="yaml-error-banner"
-          style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 10px 14px; border-radius: 6px; font-size: 0.74rem; font-family: monospace; white-space: pre-wrap;">
+      <!-- Split Body: Editor Left + Collapsible Entity Browser Right -->
+      <div class="modal-body yaml-studio-body" style="flex: 1; display: flex; flex-direction: row; padding: 14px 20px; gap: 14px; overflow: hidden; margin-bottom: 0;">
+        <div class="yaml-studio-editor-pane">
+          <div id="yaml-error-banner"
+            style="display: none; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); color: #f43f5e; padding: 10px 14px; border-radius: 6px; font-size: 0.74rem; font-family: monospace; white-space: pre-wrap;">
+          </div>
+          <textarea id="yaml-editor-textarea" spellcheck="false"
+            placeholder="# Paste or edit your Lovelace dashboard YAML here..."
+            style="flex: 1; background: #0c0c0e; border: 1px solid var(--border-soft); border-radius: 8px; color: #f4f4f5; font-family: 'Fira Code', 'Cascadia Code', Consolas, Monaco, monospace; font-size: 0.82rem; padding: 14px; line-height: 1.5; resize: none; outline: none; tab-size: 2; box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);"></textarea>
         </div>
-        <textarea id="yaml-editor-textarea" spellcheck="false"
-          placeholder="# Paste or edit your Lovelace dashboard YAML here..."
-          style="flex: 1; background: #0c0c0e; border: 1px solid var(--border-soft); border-radius: 8px; color: #f4f4f5; font-family: 'Fira Code', 'Cascadia Code', Consolas, Monaco, monospace; font-size: 0.82rem; padding: 14px; line-height: 1.5; resize: none; outline: none; tab-size: 2; box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);"></textarea>
+
+        <aside id="yaml-entity-sidebar" class="yaml-entity-sidebar">
+          <div class="yaml-entity-sidebar-header">
+            <span style="font-size:0.76rem; font-weight:700; color:#fff;">Live Entities</span>
+            <span style="font-size:0.65rem; color:var(--text-secondary);">Click to insert ID</span>
+          </div>
+          <input type="text" id="yaml-entity-search" class="modal-input" placeholder="Search entity name or ID..." style="padding:6px 10px; font-size:0.74rem;" oninput="renderYamlEntitySidebar(this.value)">
+          <div id="yaml-entity-list" class="yaml-entity-list">
+            <!-- Dynamically populated by JS -->
+          </div>
+        </aside>
       </div>
 
       <div class="modal-footer"
         style="padding: 12px 20px; border-top: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.01);">
-        <span style="font-size:0.7rem; color:var(--text-secondary); font-family:monospace;" id="yaml-footer-stats">Tip: Press Tab to indent (2 spaces). Lovelace syntax supported.</span>
+        <span style="font-size:0.7rem; color:var(--text-secondary); font-family:monospace;" id="yaml-footer-stats">Tip: Press Tab to indent (2 spaces). Lovelace nested views &amp; cards supported.</span>
         <div style="display: flex; gap: 10px;">
           <button class="btn btn-secondary" onclick="closeModal('yaml-config-modal')">Close</button>
-          <button class="btn btn-primary" onclick="saveYAMLConfigSettings()">Save Config</button>
           <button class="btn btn-primary" id="btn-save-yaml-config" onclick="saveYAMLConfigSettings()" style="display:flex; align-items:center; gap:6px;">
-            <i data-lucide="check" style="width: 14px; height: 14px;"></i> Save & Apply
+            <i data-lucide="check" style="width: 14px; height: 14px;"></i> Save &amp; Apply
           </button>
         </div>
       </div>
@@ -2101,7 +2155,7 @@
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=3.6"></script>
+    <script src="app.js?v=4.0"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
     <!-- Add Dependency Link Modal Overlay -->
@@ -2781,16 +2835,10 @@
               </div>
 
               <div class="modal-group">
-                <label style="margin-bottom: 8px; display: block;">Enable Health Diagnostic Checkers</label>
-                <label style="margin-bottom: 8px; display: block;">Enable Health Diagnostic Checkers & Routing</label>
+                <label style="margin-bottom: 8px; display: block;">Enable Health Diagnostic Checkers &amp; Routing</label>
                 <div
                   style="display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border-soft); padding: 12px; border-radius: 6px; background: rgba(0,0,0,0.15);">
 
-                  <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
-                    <input type="checkbox" id="host-check-ping">
-                    <span>Ping (ICMP Status latency checks)</span>
-                  </label>
                   <!-- Ping Check -->
                   <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
                     <label
@@ -2805,11 +2853,6 @@
                     </select>
                   </div>
 
-                  <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
-                    <input type="checkbox" id="host-check-http">
-                    <span>HTTP (Port 80 basic connectivity check)</span>
-                  </label>
                   <!-- HTTP Check -->
                   <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
                     <label
@@ -2824,11 +2867,6 @@
                     </select>
                   </div>
 
-                  <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
-                    <input type="checkbox" id="host-check-https">
-                    <span>HTTPS (Port 443 secure TLS web check)</span>
-                  </label>
                   <!-- HTTPS Check -->
                   <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
                     <label
@@ -2843,11 +2881,6 @@
                     </select>
                   </div>
 
-                  <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; font-weight: normal; margin: 0;">
-                    <input type="checkbox" id="host-check-ssl">
-                    <span>SSL Certificate Expiration (Track TLS expiry alerts)</span>
-                  </label>
                   <!-- SSL Check -->
                   <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
                     <label

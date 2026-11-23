@@ -1210,87 +1210,99 @@ window.generateSupportLogs = async function () {
   }
 };
 
-window.getSensorIdForEntity = function (nodeId, entityKey, name, type) {
-  if (nodeId === 'core-mon') {
-    if (entityKey === 'cpu-utilization') return 'sensor.cpu_utilization';
-    if (entityKey === 'memory-saturation') return 'sensor.memory_saturation';
-    if (entityKey === 'network-throughput') return 'sensor.network_throughput';
-    if (entityKey === 'server-room-temp') return 'sensor.cpu_temperature';
-    if (entityKey === 'database-status') return 'sensor.database_status';
-    if (entityKey === 'database-latency') return 'sensor.database_latency';
-    if (entityKey === 'database-storage-pct') return 'sensor.database_storage_pct';
-  }
-
-  if (nodeId === 'monitors') {
-    const match = entityKey.match(/^monitor-(\d+)-(status|latency)$/);
-    if (match) {
-      const monId = match[1];
-      const category = match[2];
-
-      const slugify = (str) => {
-        return str
-          .toLowerCase()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/[\s_-]+/g, '_')
-          .replace(/^-+|-+$/g, '');
-      };
-
-      let monNameSlug = `monitor_${monId}`;
-      let monType = 'ping';
-
-      if (name) {
-        monNameSlug = slugify(name
-          .replace(/\s+Status$/i, '')
-          .replace(/\s+Latency$/i, '')
-          .replace(/\s+Check$/i, '')
-          .replace(/\s*\(Ping\)$/i, '')
-          .replace(/\s*\(HTTP\)$/i, '')
-          .replace(/\s*\(HTTPS\)$/i, '')
-          .replace(/\s*\(SSL\)$/i, '')
-          .replace(/\s*\(Port\)$/i, '')
-        );
-      }
-      if (type) {
-        monType = type;
-      }
-
-      if (category === 'status') {
-        const domain = (monType === 'ping') ? 'ping' : 'binary_sensor';
-        return `${domain}.${monNameSlug}`;
-      } else {
-        return `sensor.${monNameSlug}_latency`;
-      }
-    }
-  }
-
-  return `${nodeId}.${entityKey}`.replace(/-/g, '_');
+window.getSensorIdForEntity = function (nodeId, entityKey, _name, _type) {
+  const nId = String(nodeId || 'core-mon').trim();
+  const eKey = String(entityKey || '').trim();
+  return `${nId}.${eKey}`;
 };
 
 window.resolveSensorIdToEntityRef = function (sensorId) {
-  if (!cachedEntities) return null;
-  const matched = Object.keys(cachedEntities).find(key => {
-    const item = cachedEntities[key];
-    const id = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
-    return id === sensorId;
+  if (!sensorId) return null;
+
+  if (typeof sensorId === 'object') {
+    if (sensorId.nodeId && sensorId.entityKey) {
+      return { nodeId: String(sensorId.nodeId), entityKey: String(sensorId.entityKey) };
+    }
+    if (sensorId.node_id && sensorId.entity_key) {
+      return { nodeId: String(sensorId.node_id), entityKey: String(sensorId.entity_key) };
+    }
+    if (sensorId.entity) {
+      return window.resolveSensorIdToEntityRef(sensorId.entity);
+    }
+    return null;
+  }
+
+  const raw = String(sensorId).trim();
+  if (!raw) return null;
+
+  const normalizeSlug = (s: string) => String(s || '').trim().toLowerCase().replace(/_/g, '-');
+
+  // Known typo & legacy Home Assistant aliases
+  const ALIAS_MAP: Record<string, { nodeId: string; entityKey: string }> = {
+    'core-mon.memory-usage': { nodeId: 'core-mon', entityKey: 'memory-saturation' },
+    'core_mon.memory_usage': { nodeId: 'core-mon', entityKey: 'memory-saturation' },
+    'sensor.memory_usage': { nodeId: 'core-mon', entityKey: 'memory-saturation' },
+    'sensor.cpu_utilization': { nodeId: 'core-mon', entityKey: 'cpu-utilization' },
+    'sensor.memory_saturation': { nodeId: 'core-mon', entityKey: 'memory-saturation' },
+    'sensor.network_throughput': { nodeId: 'core-mon', entityKey: 'network-throughput' },
+    'sensor.cpu_temperature': { nodeId: 'core-mon', entityKey: 'server-room-temp' },
+    'sensor.database_status': { nodeId: 'core-mon', entityKey: 'database-status' },
+    'sensor.database_latency': { nodeId: 'core-mon', entityKey: 'database-latency' },
+    'sensor.database_storage_pct': { nodeId: 'core-mon', entityKey: 'database-storage-pct' },
+  };
+  const lowered = raw.toLowerCase();
+  if (ALIAS_MAP[lowered]) return { ...ALIAS_MAP[lowered] };
+  const hyphenated = normalizeSlug(raw);
+  if (ALIAS_MAP[hyphenated]) return { ...ALIAS_MAP[hyphenated] };
+
+  const entitiesList = cachedEntities ? Object.values(cachedEntities) : [];
+
+  // 1. Exact canonical match (node_id.entity_key)
+  const exact = entitiesList.find(item => `${item.node_id}.${item.entity_key}` === raw);
+  if (exact) return { nodeId: exact.node_id, entityKey: exact.entity_key };
+
+  // 2. Hyphen/underscore & case-insensitive match against full canonical ID or entity_key alone
+  const normMatch = entitiesList.find(item => {
+    const canon = normalizeSlug(`${item.node_id}.${item.entity_key}`);
+    const keyOnly = normalizeSlug(item.entity_key);
+    return canon === hyphenated || keyOnly === hyphenated;
   });
+  if (normMatch) return { nodeId: normMatch.node_id, entityKey: normMatch.entity_key };
 
-  if (matched) {
-    const item = cachedEntities[matched];
-    return { nodeId: item.node_id, entityKey: item.entity_key };
+  // 3. Legacy HA monitor slug match (ping.<slug>, binary_sensor.<slug>, sensor.<slug>_latency)
+  const dotIdx = raw.indexOf('.');
+  if (dotIdx !== -1) {
+    const domain = raw.slice(0, dotIdx).toLowerCase();
+    const slug = raw.slice(dotIdx + 1).toLowerCase();
+    const slugify = (str: string) => str
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '_')
+      .replace(/^-+|-+$/g, '');
+
+    if (domain === 'ping' || domain === 'binary_sensor' || domain === 'sensor') {
+      const legacyMatch = entitiesList.find(item => {
+        if (item.node_id !== 'monitors' || !item.name) return false;
+        const cleanName = slugify(String(item.name)
+          .replace(/\s+Status$/i, '')
+          .replace(/\s+Latency$/i, '')
+          .replace(/\s+Check$/i, '')
+          .replace(/\s*\((Ping|HTTP|HTTPS|SSL|Port)\)$/i, ''));
+        if (domain === 'sensor' && slug.endsWith('_latency')) {
+          return item.entity_key.endsWith('-latency') && `${cleanName}_latency` === slug;
+        }
+        return item.entity_key.endsWith('-status') && cleanName === slug;
+      });
+      if (legacyMatch) return { nodeId: legacyMatch.node_id, entityKey: legacyMatch.entity_key };
+    }
+
+    return {
+      nodeId: raw.slice(0, dotIdx),
+      entityKey: raw.slice(dotIdx + 1)
+    };
   }
 
-  const parts = sensorId.split('.');
-  if (parts.length === 2) {
-    const slug = parts[1];
-    if (slug === 'cpu_utilization') return { nodeId: 'core-mon', entityKey: 'cpu-utilization' };
-    if (slug === 'memory_saturation') return { nodeId: 'core-mon', entityKey: 'memory-saturation' };
-    if (slug === 'network_throughput') return { nodeId: 'core-mon', entityKey: 'network-throughput' };
-    if (slug === 'cpu_temperature') return { nodeId: 'core-mon', entityKey: 'server-room-temp' };
-    if (slug === 'database_status') return { nodeId: 'core-mon', entityKey: 'database-status' };
-    if (slug === 'database_latency') return { nodeId: 'core-mon', entityKey: 'database-latency' };
-    if (slug === 'database_storage_pct') return { nodeId: 'core-mon', entityKey: 'database-storage-pct' };
-  }
-  return null;
+  return { nodeId: 'core-mon', entityKey: raw };
 };
 
 window.openHostDetail = async function (hostId) {

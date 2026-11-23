@@ -238,6 +238,33 @@ function initializeSidebar() {
   }
 }
 let lastToggleTime = 0;
+let editModeSnapshot = null;
+let editModeDirty = false;
+function markEditModeDirty(dirty = true) {
+  editModeDirty = dirty;
+  const badge = document.getElementById("edit-unsaved-badge");
+  if (badge) badge.style.display = dirty && window.isInEditModeDraft ? "inline-flex" : "none";
+  const saveBtn = document.getElementById("btn-edit-save");
+  if (saveBtn) saveBtn.classList.toggle("has-unsaved", dirty && Boolean(window.isInEditModeDraft));
+}
+window.markEditModeDirty = markEditModeDirty;
+function exitEditModeVisualState() {
+  const mainContent = document.getElementById("main-content");
+  const editToggleBtn = document.getElementById("edit-toggle-btn");
+  const editBanner = document.getElementById("edit-mode-banner");
+  if (mainContent) mainContent.classList.remove("edit-mode");
+  if (editToggleBtn) {
+    editToggleBtn.classList.remove("active");
+    editToggleBtn.style.display = "flex";
+    const spanText = editToggleBtn.querySelector("span");
+    if (spanText) spanText.textContent = "Edit Dashboard";
+    const icon = editToggleBtn.querySelector("i");
+    if (icon) icon.setAttribute("data-lucide", "edit-3");
+  }
+  if (editBanner) editBanner.style.display = "none";
+  markEditModeDirty(false);
+  disableDragAndDrop();
+}
 function toggleEditMode() {
   const now = Date.now();
   if (now - lastToggleTime < 250) return;
@@ -245,31 +272,66 @@ function toggleEditMode() {
   const mainContent = document.getElementById("main-content");
   const editToggleBtn = document.getElementById("edit-toggle-btn");
   if (!mainContent) return;
-  const isEditMode2 = mainContent.classList.toggle("edit-mode");
-  if (editToggleBtn) {
-    editToggleBtn.classList.toggle("active", isEditMode2);
-    const spanText = editToggleBtn.querySelector("span");
-    if (spanText) {
-      spanText.textContent = isEditMode2 ? "Exit Edit Mode" : "Edit Dashboard";
+  const currentlyEditing = mainContent.classList.contains("edit-mode");
+  if (!currentlyEditing) {
+    editModeSnapshot = {
+      dashboards: localStorage.getItem("hp_dashboards"),
+      widgets: localStorage.getItem("hp_dashboard_widgets"),
+      order: localStorage.getItem("hp_widget_order"),
+      activeTab
+    };
+    window.isInEditModeDraft = true;
+    markEditModeDirty(false);
+    mainContent.classList.add("edit-mode");
+    if (editToggleBtn) {
+      editToggleBtn.classList.add("active");
+      editToggleBtn.style.display = "none";
     }
-    const icon = editToggleBtn.querySelector("i");
-    if (icon) {
-      icon.setAttribute("data-lucide", isEditMode2 ? "check" : "edit-3");
-    }
-  }
-  const editBanner = document.getElementById("edit-mode-banner");
-  if (editBanner) {
-    editBanner.style.display = isEditMode2 ? "flex" : "none";
-  }
-  renderDashboards();
-  if (isEditMode2) {
+    const editBanner = document.getElementById("edit-mode-banner");
+    if (editBanner) editBanner.style.display = "flex";
+    renderDashboards();
+    buildDashboardCards(cachedEntities);
     enableDragAndDrop();
+    if (window.lucide) window.lucide.createIcons();
   } else {
-    disableDragAndDrop();
+    window.saveEditModeChanges();
   }
-  if (window.lucide) window.lucide.createIcons();
 }
 window.toggleEditMode = toggleEditMode;
+window.saveEditModeChanges = async function() {
+  window.isInEditModeDraft = false;
+  editModeSnapshot = null;
+  exitEditModeVisualState();
+  await syncLocalConfigToServer();
+  renderDashboards();
+  buildDashboardCards(cachedEntities);
+  if (window.lucide) window.lucide.createIcons();
+  if (typeof showToast === "function") showToast("Dashboard layout saved.", "success");
+};
+window.discardEditModeChanges = async function() {
+  if (editModeDirty && typeof showConfirm === "function") {
+    const ok = await showConfirm("Discard all unsaved dashboard layout changes?", "Discard Changes");
+    if (!ok) return;
+  }
+  window.isSyncingFromServer = true;
+  if (editModeSnapshot) {
+    if (editModeSnapshot.dashboards !== null) localStorage.setItem("hp_dashboards", editModeSnapshot.dashboards);
+    else localStorage.removeItem("hp_dashboards");
+    if (editModeSnapshot.widgets !== null) localStorage.setItem("hp_dashboard_widgets", editModeSnapshot.widgets);
+    else localStorage.removeItem("hp_dashboard_widgets");
+    if (editModeSnapshot.order !== null) localStorage.setItem("hp_widget_order", editModeSnapshot.order);
+    else localStorage.removeItem("hp_widget_order");
+    if (editModeSnapshot.activeTab) activeTab = editModeSnapshot.activeTab;
+  }
+  window.isSyncingFromServer = false;
+  window.isInEditModeDraft = false;
+  editModeSnapshot = null;
+  exitEditModeVisualState();
+  renderDashboards();
+  buildDashboardCards(cachedEntities);
+  if (window.lucide) window.lucide.createIcons();
+  if (typeof showToast === "function") showToast("Changes discarded.", "info");
+};
 function getApiUrls() {
   let host = window.location.host;
   let protocol = window.location.protocol;
@@ -437,6 +499,9 @@ function buildDashboardCards(entitiesMap) {
     syncLocalConfigToServer();
   }
   widgets.forEach((widget) => {
+    if (!widget.options || typeof widget.options !== "object") {
+      widget.options = {};
+    }
     if (widget.entity && typeof widget.entity === "string") {
       const ref = window.resolveSensorIdToEntityRef(widget.entity);
       if (ref) {
@@ -444,17 +509,31 @@ function buildDashboardCards(entitiesMap) {
       }
     }
     if (widget.entities && Array.isArray(widget.entities)) {
-      widget.entities = widget.entities.map((item) => {
-        if (typeof item === "string") {
-          return window.resolveSensorIdToEntityRef(item) || item;
-        }
-        return item;
-      });
+      widget.entities = widget.entities.map((item) => window.resolveSensorIdToEntityRef(item)).filter((e) => e && e.nodeId && e.entityKey);
+    } else {
+      widget.entities = [];
     }
   });
   const placeholder = grid.querySelector(".card-placeholder");
   const existingCards = grid.querySelectorAll(".card:not(.card-placeholder)");
   existingCards.forEach((c) => c.remove());
+  const renderCardEditBar = (widget, currentWidth) => `
+    <div class="card-edit-bar">
+      <button type="button" class="card-edit-btn edit-handle-btn" title="Drag to reorder"><i data-lucide="grip-horizontal"></i></button>
+      <button type="button" class="card-edit-btn width-btn" onclick="event.stopPropagation(); cycleWidgetWidth('${widget.id}')" title="Cycle width (${currentWidth}x -> ${currentWidth >= 3 ? 1 : currentWidth + 1}x)">${currentWidth}x</button>
+      <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')" title="Edit Card"><i data-lucide="sliders"></i></button>
+      <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'yaml')" title="Edit Card YAML"><i data-lucide="code"></i></button>
+      <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); duplicateWidget('${widget.id}')" title="Duplicate Card"><i data-lucide="copy"></i></button>
+      <button type="button" class="card-edit-btn danger" onclick="event.stopPropagation(); quickDeleteWidget('${widget.id}')" title="Remove Card"><i data-lucide="trash-2"></i></button>
+    </div>
+  `;
+  try {
+    const tabs = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
+    if (tabs.length > 0 && !tabs.some((t) => t.id === activeTab)) {
+      activeTab = tabs[0].id;
+    }
+  } catch (e) {
+  }
   try {
     const savedOrder = JSON.parse(localStorage.getItem("hp_widget_order") || "[]");
     if (savedOrder.length > 0) {
@@ -517,179 +596,208 @@ function buildDashboardCards(entitiesMap) {
       if (window.lucide) window.lucide.createIcons();
       return;
     }
-    if (widget.entities && widget.entities.length === 1 && (widget.type === "sensor" || widget.type === "control" || widget.type === "value")) {
-      const eRef = widget.entities[0];
-      const matchedKey = Object.keys(entitiesMap).find((key) => {
-        const item2 = entitiesMap[key];
-        return item2.node_id === eRef.nodeId && item2.entity_key === eRef.entityKey;
-      });
-      const item = matchedKey ? entitiesMap[matchedKey] : null;
-      if (item) {
-        cardEl.setAttribute("data-node-id", item.node_id);
-        cardEl.setAttribute("data-entity-key", item.entity_key);
-        cardEl.setAttribute("data-value-type", item.value_type || "float");
-        const resolvedItemUnit = item.unit || item.attributes && item.attributes.unit || "";
-        cardEl.setAttribute("data-unit", widget.options.unit || resolvedItemUnit);
-        if (item.value === true || item.value === "true" || item.value >= 1) {
-          cardEl.classList.add("highlighted");
-        }
-        const displayName = widget.title || item.name || item.entity_key;
-        const displayUnit = widget.options.unit !== void 0 ? widget.options.unit : resolvedItemUnit;
-        const displayColor = widget.options.color || item.color || "var(--color-optimal)";
-        const sensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
-        let headerHTML = `
-          <div class="card-header">
+    if (widget.type === "sensor" || widget.type === "control" || widget.type === "value") {
+      const eRef = widget.entities && widget.entities[0];
+      if (!eRef) {
+        cardEl.classList.add("unavailable");
+        cardEl.innerHTML = `
+          <div class="card-header" style="opacity: 0.75;">
             <div class="card-title-area">
-              <span class="card-title">${displayName}</span>
-              <span class="card-subtitle">${item.node_id}.local</span>
-              <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${sensorId}" onclick="navigator.clipboard?.writeText('${sensorId}'); showToast?.('Copied Entity ID')">Entity ID: ${sensorId}</span>
+              <span class="card-title">${widget.title || "Unconfigured Card"}</span>
+              <span class="card-subtitle">${widget.type} card</span>
             </div>
-            <span class="status-pill ${item.status_type || "default"}">${item.status || "Stable"}</span>
+            <span class="status-pill caution">Unbound</span>
           </div>
+          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:64px; gap:8px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+            <span>No entity bound</span>
+            <button type="button" class="btn btn-secondary" style="padding:4px 10px; font-size:0.7rem;" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')">Configure Card</button>
+          </div>
+          ${renderCardEditBar(widget, w)}
         `;
-        let bodyHTML = "";
-        const initialVal = item.value !== void 0 ? item.value : "";
-        if (widget.type === "control") {
-          if (item.value_type === "boolean") {
-            const isChecked = item.value === true || item.value === "true" || item.value === "ON";
-            bodyHTML = `
-              <div class="card-body">
-                <div class="card-value">${isChecked ? "ON" : "OFF"}</div>
-                <div class="control-row" style="margin-top: 14px;">
-                  <div class="status-indicator">
-                    <span class="status-dot online"></span>
-                    <span>Active</span>
-                  </div>
-                  <label class="switch">
-                    <input type="checkbox" onchange="onControlChange('${item.node_id}', '${item.entity_key}', this.checked)" ${isChecked ? "checked" : ""}>
-                    <span class="slider"></span>
-                  </label>
-                </div>
+      } else {
+        const matchedKey = Object.keys(entitiesMap).find((key) => {
+          const item2 = entitiesMap[key];
+          return item2.node_id === eRef.nodeId && item2.entity_key === eRef.entityKey;
+        });
+        const item = matchedKey ? entitiesMap[matchedKey] : null;
+        if (item) {
+          cardEl.setAttribute("data-node-id", item.node_id);
+          cardEl.setAttribute("data-entity-key", item.entity_key);
+          cardEl.setAttribute("data-value-type", item.value_type || "float");
+          const resolvedItemUnit = item.unit || item.attributes && item.attributes.unit || "";
+          cardEl.setAttribute("data-unit", widget.options.unit || resolvedItemUnit);
+          if (item.value === true || item.value === "true" || item.value >= 1) {
+            cardEl.classList.add("highlighted");
+          }
+          const displayName = widget.title || item.name || item.entity_key;
+          const displayUnit = widget.options.unit !== void 0 ? widget.options.unit : resolvedItemUnit;
+          const displayColor = widget.options.color || item.color || "var(--color-optimal)";
+          const sensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
+          let headerHTML = `
+            <div class="card-header">
+              <div class="card-title-area">
+                <span class="card-title">${displayName}</span>
+                <span class="card-subtitle">${item.node_id}.local</span>
+                <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${sensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${sensorId}'); if(typeof showToast==='function') showToast('Copied ${sensorId}', 'info')">Entity ID: ${sensorId}</span>
               </div>
-            `;
-          } else {
-            const minVal = item.range ? item.range[0] : 0;
-            const maxVal = item.range ? item.range[1] : 100;
+              <span class="status-pill ${item.status_type || "default"}">${item.status || "Stable"}</span>
+            </div>
+          `;
+          let bodyHTML = "";
+          const initialVal = item.value !== void 0 ? item.value : "";
+          if (widget.type === "control") {
+            if (item.value_type === "boolean") {
+              const isChecked = item.value === true || item.value === "true" || item.value === "ON";
+              bodyHTML = `
+                <div class="card-body">
+                  <div class="card-value">${isChecked ? "ON" : "OFF"}</div>
+                  <div class="control-row" style="margin-top: 14px;">
+                    <div class="status-indicator">
+                      <span class="status-dot online"></span>
+                      <span>Active</span>
+                    </div>
+                    <label class="switch">
+                      <input type="checkbox" onchange="onControlChange('${item.node_id}', '${item.entity_key}', this.checked)" ${isChecked ? "checked" : ""}>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+              `;
+            } else {
+              const minVal = item.range ? item.range[0] : 0;
+              const maxVal = item.range ? item.range[1] : 100;
+              bodyHTML = `
+                <div class="card-body">
+                  <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
+                  <div class="slider-container" style="margin-top: 10px;">
+                    <i data-lucide="${item.icon || "sliders"}"></i>
+                    <input type="range" class="range-slider" min="${minVal}" max="${maxVal}" value="${initialVal}" 
+                      oninput="onSliderDrag('${item.node_id}', '${item.entity_key}', this.value)" 
+                      onchange="onControlChange('${item.node_id}', '${item.entity_key}', parseInt(this.value))">
+                  </div>
+                </div>
+              `;
+            }
+          } else if (widget.type === "value") {
             bodyHTML = `
               <div class="card-body">
                 <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
-                <div class="slider-container" style="margin-top: 10px;">
-                  <i data-lucide="${item.icon || "sliders"}"></i>
-                  <input type="range" class="range-slider" min="${minVal}" max="${maxVal}" value="${initialVal}" 
-                    oninput="onSliderDrag('${item.node_id}', '${item.entity_key}', this.value)" 
-                    onchange="onControlChange('${item.node_id}', '${item.entity_key}', parseInt(this.value))">
-                </div>
+                <div class="flat-bottom-bar blue" style="background-color: ${displayColor}"></div>
+              </div>
+            `;
+          } else {
+            const sparklineHTML = widget.options.graphic === "sparkline" ? `
+              <div class="card-graphic-container">
+                <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
+                  <path d="" fill="none" stroke="${displayColor}" stroke-width="1.5"></path>
+                </svg>
+              </div>
+            ` : "";
+            bodyHTML = `
+              <div class="card-body">
+                <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
+                ${sparklineHTML}
               </div>
             `;
           }
-        } else if (widget.type === "value") {
-          bodyHTML = `
-            <div class="card-body">
-              <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
-              <div class="flat-bottom-bar blue" style="background-color: ${displayColor}"></div>
-            </div>
-          `;
+          cardEl.innerHTML = headerHTML + bodyHTML + renderCardEditBar(widget, w);
         } else {
-          const sparklineHTML = widget.options.graphic === "sparkline" ? `
-            <div class="card-graphic-container">
-              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
-                <path d="" fill="none" stroke="${displayColor}" stroke-width="1.5"></path>
-              </svg>
+          cardEl.classList.add("unavailable");
+          cardEl.innerHTML = `
+            <div class="card-header" style="opacity: 0.6;">
+              <div class="card-title-area">
+                <span class="card-title">${widget.title || eRef.entityKey}</span>
+                <span class="card-subtitle">${eRef.nodeId}.${eRef.entityKey}</span>
+              </div>
+              <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
             </div>
-          ` : "";
-          bodyHTML = `
-            <div class="card-body">
-              <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
-              ${sparklineHTML}
+            <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+              <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
+              <span>Entity unavailable or offline</span>
             </div>
+            ${renderCardEditBar(widget, w)}
           `;
         }
-        cardEl.innerHTML = headerHTML + bodyHTML + `
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
-        `;
-      } else {
-        cardEl.classList.add("unavailable");
-        cardEl.innerHTML = `
-          <div class="card-header" style="opacity: 0.6;">
-            <div class="card-title-area">
-              <span class="card-title">${widget.title || eRef.entityKey}</span>
-              <span class="card-subtitle">${eRef.nodeId}.local</span>
-            </div>
-            <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
-          </div>
-          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
-            <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
-            <span>Entity unavailable or offline</span>
-          </div>
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
-        `;
       }
     } else if (widget.type === "gauge") {
-      const eRef = widget.entities[0];
-      const matchedKey = Object.keys(entitiesMap).find((key) => {
-        const item2 = entitiesMap[key];
-        return item2.node_id === eRef.nodeId && item2.entity_key === eRef.entityKey;
-      });
-      const item = matchedKey ? entitiesMap[matchedKey] : null;
-      if (item) {
-        cardEl.setAttribute("data-node-id", item.node_id);
-        cardEl.setAttribute("data-entity-id", item.entity_key);
-        cardEl.setAttribute("data-scale-min", widget.options.min !== void 0 ? widget.options.min : "0");
-        cardEl.setAttribute("data-scale-max", widget.options.max !== void 0 ? widget.options.max : "100");
-        const resolvedGaugeUnit = item.unit || item.attributes && item.attributes.unit || "";
-        cardEl.setAttribute("data-unit", widget.options.unit || resolvedGaugeUnit);
-        cardEl.classList.add("card-gauge");
-        const min = parseFloat(widget.options.min !== void 0 ? widget.options.min : 0);
-        const max = parseFloat(widget.options.max !== void 0 ? widget.options.max : 100);
-        const numericVal = parseFloat(item.value) || 0;
-        const pct = Math.max(0, Math.min(1, (numericVal - min) / (max - min)));
-        const offset = 110 - pct * 110;
-        const displayColor = widget.options.color || item.color || "var(--color-optimal)";
-        const unit = widget.options.unit || resolvedGaugeUnit;
-        cardEl.innerHTML = `
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">${widget.title || item.name || item.entity_key}</span>
-              <span class="card-subtitle">${item.node_id}.local \u2022 Gauge</span>
-            </div>
-            <span class="status-pill ${item.status_type || "default"}">${item.status || "Stable"}</span>
-          </div>
-          <div class="card-body" style="padding: 0 16px 16px 16px;">
-            <div class="gauge-container">
-              <svg viewBox="0 0 100 60" class="gauge-svg">
-                <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="var(--bg-secondary)" stroke-width="8" stroke-linecap="round"/>
-                <path class="gauge-value-arc" d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="${displayColor}" stroke-width="8" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="${offset}"/>
-                <text x="50" y="44" text-anchor="middle" class="gauge-text" fill="var(--text-primary)" font-size="12" font-weight="700">${item.value}</text>
-                <text x="50" y="54" text-anchor="middle" class="gauge-unit" fill="var(--text-secondary)" font-size="7">${unit}</text>
-              </svg>
-            </div>
-          </div>
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
-        `;
-      } else {
+      const eRef = widget.entities && widget.entities[0];
+      if (!eRef) {
         cardEl.classList.add("unavailable");
         cardEl.innerHTML = `
-          <div class="card-header" style="opacity: 0.6;">
+          <div class="card-header" style="opacity: 0.75;">
             <div class="card-title-area">
-              <span class="card-title">${widget.title || eRef.entityKey}</span>
-              <span class="card-subtitle">${eRef.nodeId}.local \u2022 Gauge</span>
+              <span class="card-title">${widget.title || "Unconfigured Gauge"}</span>
+              <span class="card-subtitle">gauge card</span>
             </div>
-            <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
+            <span class="status-pill caution">Unbound</span>
           </div>
-          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
-            <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
-            <span>Entity unavailable or offline</span>
+          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:64px; gap:8px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+            <span>No entity bound</span>
+            <button type="button" class="btn btn-secondary" style="padding:4px 10px; font-size:0.7rem;" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')">Configure Card</button>
           </div>
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+          ${renderCardEditBar(widget, w)}
         `;
+      } else {
+        const matchedKey = Object.keys(entitiesMap).find((key) => {
+          const item2 = entitiesMap[key];
+          return item2.node_id === eRef.nodeId && item2.entity_key === eRef.entityKey;
+        });
+        const item = matchedKey ? entitiesMap[matchedKey] : null;
+        if (item) {
+          cardEl.setAttribute("data-node-id", item.node_id);
+          cardEl.setAttribute("data-entity-id", item.entity_key);
+          cardEl.setAttribute("data-scale-min", widget.options.min !== void 0 ? widget.options.min : "0");
+          cardEl.setAttribute("data-scale-max", widget.options.max !== void 0 ? widget.options.max : "100");
+          const resolvedGaugeUnit = item.unit || item.attributes && item.attributes.unit || "";
+          cardEl.setAttribute("data-unit", widget.options.unit || resolvedGaugeUnit);
+          cardEl.classList.add("card-gauge");
+          const min = parseFloat(widget.options.min !== void 0 ? widget.options.min : 0);
+          const max = parseFloat(widget.options.max !== void 0 ? widget.options.max : 100);
+          const span = max - min || 100;
+          const numericVal = parseFloat(item.value) || 0;
+          const pct = Math.max(0, Math.min(1, (numericVal - min) / span));
+          const offset = 110 - pct * 110;
+          const displayColor = widget.options.color || item.color || "var(--color-optimal)";
+          const unit = widget.options.unit !== void 0 ? widget.options.unit : resolvedGaugeUnit;
+          const gaugeSensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
+          cardEl.innerHTML = `
+            <div class="card-header">
+              <div class="card-title-area">
+                <span class="card-title">${widget.title || item.name || item.entity_key}</span>
+                <span class="card-subtitle">${item.node_id}.local \u2022 Gauge</span>
+                <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${gaugeSensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${gaugeSensorId}'); if(typeof showToast==='function') showToast('Copied ${gaugeSensorId}', 'info')">Entity ID: ${gaugeSensorId}</span>
+              </div>
+              <span class="status-pill ${item.status_type || "default"}">${item.status || "Stable"}</span>
+            </div>
+            <div class="card-body" style="padding: 0 16px 16px 16px;">
+              <div class="gauge-container">
+                <svg viewBox="0 0 100 60" class="gauge-svg">
+                  <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="var(--bg-secondary)" stroke-width="8" stroke-linecap="round"/>
+                  <path class="gauge-value-arc" d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="${displayColor}" stroke-width="8" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="${offset}"/>
+                  <text x="50" y="44" text-anchor="middle" class="gauge-text" fill="var(--text-primary)" font-size="12" font-weight="700">${item.value}</text>
+                  <text x="50" y="54" text-anchor="middle" class="gauge-unit" fill="var(--text-secondary)" font-size="7">${unit}</text>
+                </svg>
+              </div>
+            </div>
+            ${renderCardEditBar(widget, w)}
+          `;
+        } else {
+          cardEl.classList.add("unavailable");
+          cardEl.innerHTML = `
+            <div class="card-header" style="opacity: 0.6;">
+              <div class="card-title-area">
+                <span class="card-title">${widget.title || eRef.entityKey}</span>
+                <span class="card-subtitle">${eRef.nodeId}.${eRef.entityKey} \u2022 Gauge</span>
+              </div>
+              <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
+            </div>
+            <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+              <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
+              <span>Entity unavailable or offline</span>
+            </div>
+            ${renderCardEditBar(widget, w)}
+          `;
+        }
       }
     } else if (widget.type === "title") {
       cardEl.classList.add("card-title-type");
@@ -699,9 +807,7 @@ function buildDashboardCards(entitiesMap) {
         <div style="display: flex; align-items: center; width: 100%; height: 100%;">
           <span style="font-size: 1.05rem; font-weight: 700; color: ${titleColor};">${widget.title || "Section Title"}</span>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     } else if (widget.type === "entities") {
       let rowsHTML = "";
@@ -751,12 +857,10 @@ function buildDashboardCards(entitiesMap) {
         </div>
         <div class="card-body">
           <div class="entities-list">
-            ${rowsHTML || '<div style="color:var(--text-secondary); text-align:center; padding:10px; font-size:0.8rem;">No entities selected</div>'}
+            ${rowsHTML || '<div style="color:var(--text-secondary); text-align:center; padding:10px; font-size:0.8rem;">No entities bound \u2014 click Edit in Edit Mode to pick entities</div>'}
           </div>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     } else if (widget.type === "glance") {
       let itemsHTML = "";
@@ -788,9 +892,7 @@ function buildDashboardCards(entitiesMap) {
             ${itemsHTML || '<div style="color:var(--text-secondary); grid-column:1/-1; text-align:center; font-size:0.8rem;">No items</div>'}
           </div>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     } else if (widget.type === "health") {
       const isEditModeActive = document.getElementById("main-content")?.classList.contains("edit-mode");
@@ -836,9 +938,7 @@ function buildDashboardCards(entitiesMap) {
             ${snapshotNoticeText}
           </div>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     } else if (widget.type === "audit") {
       cardEl.innerHTML = `
@@ -872,11 +972,14 @@ function buildDashboardCards(entitiesMap) {
             <!-- Dynamically populated -->
           </div>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     }
+    cardEl.ondblclick = () => {
+      if (document.getElementById("main-content")?.classList.contains("edit-mode")) {
+        openCardEditor(widget.id, "ui");
+      }
+    };
     if (placeholder) {
       grid.insertBefore(cardEl, placeholder);
     } else {
@@ -890,9 +993,10 @@ function buildDashboardCards(entitiesMap) {
   });
   widgets.forEach((widget) => {
     if (widget.tab !== activeTab || widget.type !== "sensor") return;
+    if (!widget.entities || !widget.entities[0]) return;
     const eRef = widget.entities[0];
     const key = `${eRef.nodeId}-${eRef.entityKey}`;
-    const cardEl = document.getElementById(`card-${key}`);
+    const cardEl = document.getElementById(`card-${widget.id}`);
     if (cardEl && telemetryHistory[key] && telemetryHistory[key].length > 0) {
       const path = cardEl.querySelector(".sparkline path");
       if (path) {
@@ -903,7 +1007,7 @@ function buildDashboardCards(entitiesMap) {
   updateHealthSnapshot();
 }
 function onSliderDrag(nodeId, entityId, val) {
-  const card = document.getElementById(`card-${nodeId}-${entityId}`);
+  const card = document.querySelector(`.card[data-node-id="${nodeId}"][data-entity-key="${entityId}"]`) || document.getElementById(`card-${nodeId}-${entityId}`);
   if (card) {
     const valueDisp = card.querySelector(".card-value");
     const unit = card.getAttribute("data-unit") || "";
@@ -1424,7 +1528,15 @@ async function syncDashboardConfigFromServer() {
         localStorage.setItem("hp_widget_order", JSON.stringify(data.order));
       }
       if (data.tabs && data.tabs.length > 0) {
-        localStorage.setItem("hp_dashboards", JSON.stringify(data.tabs));
+        const normalizedTabs = data.tabs.map((t, idx) => ({
+          id: String(t.id || t.path || `view_${idx + 1}`),
+          name: String(t.name || t.title || t.id || `View ${idx + 1}`),
+          icon: t.icon || "layout-dashboard"
+        }));
+        localStorage.setItem("hp_dashboards", JSON.stringify(normalizedTabs));
+        if (!normalizedTabs.some((t) => t.id === activeTab)) {
+          activeTab = normalizedTabs[0].id;
+        }
         hasData = true;
       }
       window.isSyncingFromServer = false;
@@ -1435,7 +1547,7 @@ async function syncDashboardConfigFromServer() {
         localStorage.removeItem("hp_dashboards");
         window.isSyncingFromServer = false;
         localStorage.setItem("hp_dashboards", JSON.stringify([
-          { id: "main", name: "Main" }
+          { id: "main", name: "Main", icon: "layout-dashboard" }
         ]));
       }
     }
@@ -1445,11 +1557,25 @@ async function syncDashboardConfigFromServer() {
   }
 }
 function applyGlobalDashboardConfig(widgets, order, tabs) {
+  if (window.isInEditModeDraft) {
+    console.log("Skipping server dashboard broadcast while Edit Mode draft is active.");
+    return;
+  }
   console.log("Applying live dynamically-received global dashboard configurations.");
   window.isSyncingFromServer = true;
   if (widgets) localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
   if (order) localStorage.setItem("hp_widget_order", JSON.stringify(order));
-  if (tabs) localStorage.setItem("hp_dashboards", JSON.stringify(tabs));
+  if (tabs) {
+    const normalizedTabs = tabs.map((t, idx) => ({
+      id: String(t.id || t.path || `view_${idx + 1}`),
+      name: String(t.name || t.title || t.id || `View ${idx + 1}`),
+      icon: t.icon || "layout-dashboard"
+    }));
+    localStorage.setItem("hp_dashboards", JSON.stringify(normalizedTabs));
+    if (normalizedTabs.length > 0 && !normalizedTabs.some((t) => t.id === activeTab)) {
+      activeTab = normalizedTabs[0].id;
+    }
+  }
   window.isSyncingFromServer = false;
   renderDashboards();
   if (cachedEntities && Object.keys(cachedEntities).length > 0) {
@@ -1462,7 +1588,11 @@ function applyGlobalDashboardConfig(widgets, order, tabs) {
     originalSetItem.apply(this, arguments);
     if (key === "hp_dashboard_widgets" || key === "hp_widget_order" || key === "hp_dashboards") {
       if (!window.isSyncingFromServer) {
-        syncLocalConfigToServer();
+        if (window.isInEditModeDraft) {
+          markEditModeDirty(true);
+        } else {
+          syncLocalConfigToServer();
+        }
       }
     }
   };
@@ -2285,22 +2415,80 @@ function renderDashboards() {
   } catch (err) {
     dashboards = [{ id: "main", name: "Main", icon: "layout-dashboard" }];
   }
+  if (!Array.isArray(dashboards) || dashboards.length === 0) {
+    dashboards = [{ id: "main", name: "Main", icon: "layout-dashboard" }];
+  }
+  if (!dashboards.some((t) => t.id === activeTab)) {
+    activeTab = dashboards[0].id;
+  }
   const isEditMode = document.getElementById("main-content")?.classList.contains("edit-mode");
-  dashboards.forEach((tab) => {
-    const btn = document.createElement("button");
-    btn.className = "tab-btn";
-    btn.setAttribute("data-tab", tab.id);
-    btn.onclick = () => switchTab(tab.id);
-    btn.ondblclick = () => openManageDashboardsModal(tab.id);
+  dashboards.forEach((tab, idx) => {
     const iconName = tab.icon || "layout-dashboard";
-    btn.innerHTML = `<i data-lucide="${iconName}"></i><span>${tab.name}</span>`;
-    btn.title = isEditMode ? "Click to view \u2022 Double-click to manage" : `View ${tab.name}`;
-    if (tab.id === activeTab) {
-      btn.classList.add("active");
+    if (isEditMode) {
+      const wrap = document.createElement("div");
+      wrap.className = `tab-btn-wrap ${tab.id === activeTab ? "active" : ""}`;
+      if (idx > 0) {
+        const leftBtn = document.createElement("button");
+        leftBtn.type = "button";
+        leftBtn.className = "tab-mini-btn";
+        leftBtn.title = "Move view left";
+        leftBtn.innerHTML = '<i data-lucide="chevron-left"></i>';
+        leftBtn.onclick = (e) => {
+          e.stopPropagation();
+          window.moveDashboardTab(tab.id, -1);
+        };
+        wrap.appendChild(leftBtn);
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tab-btn";
+      btn.setAttribute("data-tab", tab.id);
+      btn.onclick = () => switchTab(tab.id);
+      btn.ondblclick = () => openManageDashboardsModal(tab.id);
+      btn.innerHTML = `<i data-lucide="${iconName}"></i><span>${tab.name || tab.id}</span>`;
+      btn.title = "Click to view \u2022 Double-click to edit";
+      if (tab.id === activeTab) btn.classList.add("active");
+      wrap.appendChild(btn);
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "tab-mini-btn";
+      editBtn.title = "Edit or delete view";
+      editBtn.innerHTML = '<i data-lucide="pencil"></i>';
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        openManageDashboardsModal(tab.id);
+      };
+      wrap.appendChild(editBtn);
+      if (idx < dashboards.length - 1) {
+        const rightBtn = document.createElement("button");
+        rightBtn.type = "button";
+        rightBtn.className = "tab-mini-btn";
+        rightBtn.title = "Move view right";
+        rightBtn.innerHTML = '<i data-lucide="chevron-right"></i>';
+        rightBtn.onclick = (e) => {
+          e.stopPropagation();
+          window.moveDashboardTab(tab.id, 1);
+        };
+        wrap.appendChild(rightBtn);
+      }
+      container.appendChild(wrap);
+    } else {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tab-btn";
+      btn.setAttribute("data-tab", tab.id);
+      btn.onclick = () => switchTab(tab.id);
+      btn.ondblclick = () => openManageDashboardsModal(tab.id);
+      btn.innerHTML = `<i data-lucide="${iconName}"></i><span>${tab.name || tab.id}</span>`;
+      btn.title = `View ${tab.name || tab.id}`;
+      if (tab.id === activeTab) {
+        btn.classList.add("active");
+      }
+      container.appendChild(btn);
     }
-    container.appendChild(btn);
   });
   const plusBtn = document.createElement("button");
+  plusBtn.type = "button";
   plusBtn.className = "add-tab-btn";
   plusBtn.onclick = () => openNewDashboardModal();
   plusBtn.title = "Add or Manage Dashboard Views";
@@ -2308,10 +2496,25 @@ function renderDashboards() {
   container.appendChild(plusBtn);
   if (window.lucide) window.lucide.createIcons();
 }
+window.moveDashboardTab = function(tabId, delta) {
+  let list = [];
+  try {
+    list = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
+  } catch (e) {
+    return;
+  }
+  const idx = list.findIndex((t) => t.id === tabId);
+  const newIdx = idx + delta;
+  if (idx === -1 || newIdx < 0 || newIdx >= list.length) return;
+  const [item] = list.splice(idx, 1);
+  list.splice(newIdx, 0, item);
+  localStorage.setItem("hp_dashboards", JSON.stringify(list));
+  renderDashboards();
+};
 function switchTab(tabId) {
   activeTab = tabId;
-  buildDashboardCards(cachedEntities);
   renderDashboards();
+  buildDashboardCards(cachedEntities);
   if (document.getElementById("main-content")?.classList.contains("edit-mode")) {
     enableDragAndDrop();
   }
@@ -2623,6 +2826,131 @@ window.closeModal = function(modalId) {
     modal.style.pointerEvents = "none";
   }
 };
+let currentEditingEntities = [];
+function isMultiEntityCardType(type) {
+  return type === "entities" || type === "glance";
+}
+function isEntitylessCardType(type) {
+  return type === "title" || type === "health" || type === "audit";
+}
+function getEditSelectedCardType() {
+  const sel = document.getElementById("edit-widget-type");
+  return sel ? String(sel.value || "sensor") : "sensor";
+}
+function renderEditEntityList(filterText = "") {
+  const listEl = document.getElementById("edit-entity-list");
+  const section = document.getElementById("edit-entity-picker-section");
+  const hint = document.getElementById("edit-entity-picker-hint");
+  if (!listEl || !section) return;
+  const type = getEditSelectedCardType();
+  if (isEntitylessCardType(type)) {
+    section.style.display = "none";
+    updateEditorVisualPreview();
+    return;
+  }
+  section.style.display = "flex";
+  const multi = isMultiEntityCardType(type);
+  if (hint) {
+    hint.textContent = multi ? `${currentEditingEntities.length} selected (multi)` : currentEditingEntities.length > 0 ? "1 selected" : "Select 1 entity";
+  }
+  const q = String(filterText || "").trim().toLowerCase();
+  const entities = Object.values(cachedEntities || {}).sort(
+    (a, b) => String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
+  );
+  const filtered = entities.filter((item) => {
+    if (!q) return true;
+    const canon = `${item.node_id}.${item.entity_key}`.toLowerCase();
+    const name = String(item.name || "").toLowerCase();
+    return canon.includes(q) || name.includes(q);
+  });
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div style="padding:10px; text-align:center; font-size:0.75rem; color:var(--text-secondary);">No matching live entities</div>`;
+    return;
+  }
+  listEl.innerHTML = filtered.map((item) => {
+    const canon = `${item.node_id}.${item.entity_key}`;
+    const isChecked = currentEditingEntities.some((e) => e.nodeId === item.node_id && e.entityKey === item.entity_key);
+    const valStr = item.value !== void 0 && item.value !== null ? `${item.value}${item.unit ? " " + item.unit : ""}` : "--";
+    return `
+      <label class="entity-picker-item ${isChecked ? "selected" : ""}" onclick="toggleEditEntitySelection('${item.node_id}', '${item.entity_key}')">
+        <div class="entity-picker-left">
+          <input type="${multi ? "checkbox" : "radio"}" name="edit-entity-pick" ${isChecked ? "checked" : ""} style="pointer-events:none; margin:0;">
+          <div style="display:flex; flex-direction:column; min-width:0;">
+            <span class="entity-picker-name">${item.name || item.entity_key}</span>
+            <span class="entity-picker-id">${canon}</span>
+          </div>
+        </div>
+        <span class="entity-picker-val">${valStr}</span>
+      </label>
+    `;
+  }).join("");
+}
+window.filterEditEntityList = function(filterText) {
+  renderEditEntityList(filterText);
+};
+window.toggleEditEntitySelection = function(nodeId, entityKey) {
+  const type = getEditSelectedCardType();
+  const multi = isMultiEntityCardType(type);
+  const existingIdx = currentEditingEntities.findIndex((e) => e.nodeId === nodeId && e.entityKey === entityKey);
+  if (multi) {
+    if (existingIdx !== -1) {
+      currentEditingEntities.splice(existingIdx, 1);
+    } else {
+      currentEditingEntities.push({ nodeId, entityKey });
+    }
+  } else {
+    currentEditingEntities = [{ nodeId, entityKey }];
+  }
+  const searchVal = document.getElementById("edit-entity-search")?.value || "";
+  renderEditEntityList(searchVal);
+  updateEditorVisualPreview();
+};
+window.onEditTypeChange = function(newType, preserveEntities = false) {
+  const scaleGroup = document.querySelector(".edit-scale-group");
+  if (scaleGroup) {
+    scaleGroup.style.display = newType === "gauge" || newType === "sensor" ? "flex" : "none";
+  }
+  const unitGroup = document.querySelector(".edit-unit-group");
+  if (unitGroup) {
+    unitGroup.style.display = isEntitylessCardType(newType) ? "none" : "flex";
+  }
+  if (!preserveEntities && !isMultiEntityCardType(newType) && currentEditingEntities.length > 1) {
+    currentEditingEntities = [currentEditingEntities[0]];
+  }
+  const searchVal = document.getElementById("edit-entity-search")?.value || "";
+  renderEditEntityList(searchVal);
+  updateEditorVisualPreview();
+};
+function renderCardYamlEntityChips(filterText = "") {
+  const container = document.getElementById("card-yaml-entity-chips");
+  if (!container) return;
+  const q = String(filterText || "").trim().toLowerCase();
+  const entities = Object.values(cachedEntities || {}).sort(
+    (a, b) => String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
+  );
+  const filtered = entities.filter((item) => {
+    if (!q) return true;
+    const canon = `${item.node_id}.${item.entity_key}`.toLowerCase();
+    const name = String(item.name || "").toLowerCase();
+    return canon.includes(q) || name.includes(q);
+  }).slice(0, 24);
+  container.innerHTML = filtered.map((item) => {
+    const canon = `${item.node_id}.${item.entity_key}`;
+    return `<button type="button" class="yaml-entity-chip" title="${item.name || canon} \u2014 click to insert" onclick="insertCardEntityIntoYaml('${canon}')">${canon}</button>`;
+  }).join("") || '<span style="font-size:0.7rem; color:var(--text-secondary);">No matching entities</span>';
+}
+window.renderCardYamlEntityChips = renderCardYamlEntityChips;
+window.insertCardEntityIntoYaml = function(canonId) {
+  const textarea = document.getElementById("edit-widget-yaml-textarea");
+  if (!textarea) return;
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  textarea.value = textarea.value.substring(0, start) + canonId + textarea.value.substring(end);
+  textarea.selectionStart = textarea.selectionEnd = start + canonId.length;
+  textarea.focus();
+  updateYamlPreview(textarea.value);
+  if (typeof showToast === "function") showToast(`Inserted ${canonId}`, "info");
+};
 function openCardEditor(widgetId, initialMode = "ui") {
   let widgets = [];
   try {
@@ -2632,13 +2960,29 @@ function openCardEditor(widgetId, initialMode = "ui") {
   const widget = widgets.find((w) => w.id === widgetId);
   if (!widget) return;
   document.getElementById("edit-widget-id").value = widgetId;
+  const typeSelect = document.getElementById("edit-widget-type");
+  if (typeSelect) typeSelect.value = widget.type || "sensor";
   document.getElementById("edit-widget-title").value = widget.title || "";
-  document.getElementById("edit-widget-unit").value = widget.options.unit || "";
-  document.getElementById("edit-widget-color").value = widget.options.color || "var(--color-optimal)";
-  document.getElementById("edit-widget-width").value = widget.options.gridWidth || 1;
-  document.getElementById("edit-widget-height").value = widget.options.gridHeight || 1;
-  document.getElementById("edit-scale-min").value = widget.options.min !== void 0 ? widget.options.min : 0;
-  document.getElementById("edit-scale-max").value = widget.options.max !== void 0 ? widget.options.max : 100;
+  document.getElementById("edit-widget-unit").value = widget.options && widget.options.unit || "";
+  document.getElementById("edit-widget-color").value = widget.options && widget.options.color || "var(--color-optimal)";
+  document.getElementById("edit-widget-width").value = widget.options && widget.options.gridWidth || 1;
+  document.getElementById("edit-widget-height").value = widget.options && widget.options.gridHeight || 1;
+  document.getElementById("edit-scale-min").value = widget.options && widget.options.min !== void 0 ? widget.options.min : 0;
+  document.getElementById("edit-scale-max").value = widget.options && widget.options.max !== void 0 ? widget.options.max : 100;
+  let resolvedEnts = [];
+  if (widget.entity) {
+    const r = window.resolveSensorIdToEntityRef(widget.entity);
+    if (r) resolvedEnts.push(r);
+  }
+  if (Array.isArray(widget.entities)) {
+    widget.entities.forEach((e) => {
+      const r = window.resolveSensorIdToEntityRef(e);
+      if (r && !resolvedEnts.some((x) => x.nodeId === r.nodeId && x.entityKey === r.entityKey)) {
+        resolvedEnts.push(r);
+      }
+    });
+  }
+  currentEditingEntities = resolvedEnts;
   const tabSelect = document.getElementById("edit-widget-tab");
   if (tabSelect) {
     tabSelect.innerHTML = "";
@@ -2649,28 +2993,24 @@ function openCardEditor(widgetId, initialMode = "ui") {
       opt.textContent = t.name;
       tabSelect.appendChild(opt);
     });
-    tabSelect.value = widget.tab;
+    tabSelect.value = widget.tab || activeTab;
   }
-  const scaleGroup = document.querySelector(".edit-scale-group");
-  if (scaleGroup) {
-    scaleGroup.style.display = widget.type === "gauge" || widget.type === "sensor" ? "flex" : "none";
-  }
-  const modal = document.getElementById("widget-editor-modal");
-  if (modal) {
-    modal.style.display = "flex";
-    setTimeout(() => modal.classList.add("active"), 10);
-  }
+  const searchInput = document.getElementById("edit-entity-search");
+  if (searchInput) searchInput.value = "";
+  const yamlSearchInput = document.getElementById("card-yaml-entity-search");
+  if (yamlSearchInput) yamlSearchInput.value = "";
+  window.onEditTypeChange(widget.type || "sensor", true);
+  renderCardYamlEntityChips("");
+  window.openModal("widget-editor-modal");
   toggleWidgetEditorMode(initialMode);
   updateEditorVisualPreview();
   const yamlTextarea = document.getElementById("edit-widget-yaml-textarea");
   if (yamlTextarea) {
     setupYamlTextareaTabKey(yamlTextarea);
     updateYamlPreview(yamlTextarea.value);
-    const onYamlInput = () => {
+    yamlTextarea.oninput = () => {
       updateYamlPreview(yamlTextarea.value);
     };
-    yamlTextarea.removeEventListener("input", onYamlInput);
-    yamlTextarea.addEventListener("input", onYamlInput);
   }
 }
 function saveWidgetSettings() {
@@ -2692,53 +3032,62 @@ function saveWidgetSettings() {
   let parsedWidget = null;
   try {
     parsedWidget = jsyaml.load(yamlTextarea.value);
-    if (!parsedWidget || typeof parsedWidget !== "object") {
-      throw new Error("YAML must represent a valid Lovelace card object structure.");
+    if (!parsedWidget || typeof parsedWidget !== "object" || Array.isArray(parsedWidget)) {
+      throw new Error("Card YAML must be a single card mapping object (type, title, entity/entities, options).");
     }
-    if (!parsedWidget.id) {
-      parsedWidget.id = id;
+    const finalType = String(parsedWidget.type || widgets[widgetIdx].type || "sensor").trim();
+    if (!finalType || finalType === "error") {
+      throw new Error("Please specify a valid card 'type' (sensor, gauge, control, value, entities, glance, title).");
     }
-    if (!parsedWidget.tab) {
-      parsedWidget.tab = widgets[widgetIdx].tab || activeTab;
+    const finalTab = String(parsedWidget.tab || widgets[widgetIdx].tab || activeTab || "main").trim();
+    const finalTitle = parsedWidget.title !== void 0 ? parsedWidget.title : parsedWidget.name !== void 0 ? parsedWidget.name : "";
+    let normalizedEntities = [];
+    if (Array.isArray(parsedWidget.entities)) {
+      normalizedEntities = parsedWidget.entities.map((e) => window.resolveSensorIdToEntityRef(e)).filter((e) => e && e.nodeId && e.entityKey);
+    } else if (parsedWidget.entity) {
+      const ref = window.resolveSensorIdToEntityRef(parsedWidget.entity);
+      if (ref) normalizedEntities.push(ref);
     }
-    if (!parsedWidget.type) {
-      parsedWidget.type = widgets[widgetIdx].type || "sensor";
-    }
-    if (!parsedWidget.title && parsedWidget.name) {
-      parsedWidget.title = parsedWidget.name;
-    }
-    if (parsedWidget.entity && (!parsedWidget.entities || parsedWidget.entities.length === 0)) {
-      const norm = normalizeEntityRef(parsedWidget.entity);
-      if (norm) parsedWidget.entities = [norm];
-    } else if (Array.isArray(parsedWidget.entities)) {
-      parsedWidget.entities = parsedWidget.entities.map(normalizeEntityRef).filter(Boolean);
-    }
-    if (!parsedWidget.options) parsedWidget.options = {};
-  } catch (e) {
-    console.warn("Card YAML editor parse warning, saving as error widget: ", e);
-    const tabMatch = yamlTextarea.value.match(/tab:\s*['"]?([a-zA-Z0-9_\-]+)['"]?/);
-    const tab = tabMatch ? tabMatch[1] : widgets[widgetIdx].tab || activeTab;
+    const opts = { ...parsedWidget.options || {} };
+    if (parsedWidget.unit !== void 0) opts.unit = parsedWidget.unit;
+    if (parsedWidget.color !== void 0) opts.color = parsedWidget.color;
+    if (parsedWidget.min !== void 0) opts.min = parseFloat(parsedWidget.min);
+    if (parsedWidget.max !== void 0) opts.max = parseFloat(parsedWidget.max);
+    if (parsedWidget.gridWidth !== void 0) opts.gridWidth = parseInt(parsedWidget.gridWidth, 10);
+    if (parsedWidget.gridHeight !== void 0) opts.gridHeight = parseInt(parsedWidget.gridHeight, 10);
     parsedWidget = {
       id,
-      type: "error",
-      tab,
-      title: "Misconfigured Card",
-      options: {
-        gridWidth: 1,
-        gridHeight: 1,
-        yaml_error_config: yamlTextarea.value,
-        error_message: e.message
-      }
+      type: finalType,
+      tab: finalTab,
+      title: finalTitle,
+      entities: normalizedEntities,
+      options: opts
     };
+  } catch (e) {
+    if (errorBanner) {
+      errorBanner.textContent = "Cannot save invalid Card YAML: " + e.message;
+      errorBanner.style.display = "block";
+    }
+    if (typeof showToast === "function") {
+      showToast("Fix YAML errors before saving.", "error");
+    }
+    return;
   }
   widgets[widgetIdx] = parsedWidget;
   localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
-  syncLocalConfigToServer().catch((err) => console.error("Failed to sync card to server:", err));
-  closeModal("widget-editor-modal");
+  if (parsedWidget.tab && parsedWidget.tab !== activeTab) {
+    activeTab = parsedWidget.tab;
+    renderDashboards();
+  }
+  if (!window.isInEditModeDraft) {
+    syncLocalConfigToServer().catch((err) => console.error("Failed to sync card to server:", err));
+  }
+  window.closeModal("widget-editor-modal");
   buildDashboardCards(cachedEntities);
-  if (document.getElementById("main-content").classList.contains("edit-mode")) {
+  if (document.getElementById("main-content")?.classList.contains("edit-mode")) {
     enableDragAndDrop();
   }
+  if (typeof showToast === "function") showToast("Card updated.", "success");
 }
 let widgetEditorMode = "ui";
 function toggleWidgetEditorMenu(e) {
@@ -2779,7 +3128,7 @@ function toggleWidgetEditorMode(mode) {
     menuLink.textContent = mode === "ui" ? "Edit in YAML" : "Edit in visual editor";
   }
   if (mode === "ui") {
-    if (uiFields) uiFields.style.display = "flex";
+    if (uiFields) uiFields.style.display = "grid";
     if (yamlContainer) yamlContainer.style.display = "none";
     syncYAMLToFormFields();
     updateEditorVisualPreview();
@@ -2787,6 +3136,8 @@ function toggleWidgetEditorMode(mode) {
     if (uiFields) uiFields.style.display = "none";
     if (yamlContainer) yamlContainer.style.display = "flex";
     syncFormFieldsToYAML();
+    const yamlTextarea = document.getElementById("edit-widget-yaml-textarea");
+    if (yamlTextarea) updateYamlPreview(yamlTextarea.value);
   }
 }
 function syncFormFieldsToYAML() {
@@ -2799,30 +3150,43 @@ function syncFormFieldsToYAML() {
     if (yamlTextarea) yamlTextarea.value = widget.options.yaml_error_config;
     return;
   }
-  const draftWidget = {
-    id: widget.id,
-    type: widget.type,
-    title: document.getElementById("edit-widget-title").value,
-    tab: document.getElementById("edit-widget-tab").value,
-    entities: widget.entities || [],
-    options: {
-      ...widget.options || {},
-      unit: document.getElementById("edit-widget-unit").value,
-      color: document.getElementById("edit-widget-color").value,
-      gridWidth: parseInt(document.getElementById("edit-widget-width").value),
-      gridHeight: parseInt(document.getElementById("edit-widget-height").value)
-    }
+  const chosenType = getEditSelectedCardType();
+  const optionsObj = {
+    ...widget.options || {},
+    color: document.getElementById("edit-widget-color").value,
+    gridWidth: parseInt(document.getElementById("edit-widget-width").value, 10) || 1,
+    gridHeight: parseInt(document.getElementById("edit-widget-height").value, 10) || 1
   };
+  const unitVal = document.getElementById("edit-widget-unit").value;
+  if (unitVal !== "") {
+    optionsObj.unit = unitVal;
+  } else {
+    delete optionsObj.unit;
+  }
   const minInput = document.getElementById("edit-scale-min");
   const maxInput = document.getElementById("edit-scale-max");
-  if (minInput && maxInput && (widget.type === "gauge" || widget.type === "sensor")) {
-    draftWidget.options.min = parseFloat(minInput.value);
-    draftWidget.options.max = parseFloat(maxInput.value);
+  if (minInput && maxInput && (chosenType === "gauge" || chosenType === "sensor")) {
+    optionsObj.min = parseFloat(minInput.value);
+    optionsObj.max = parseFloat(maxInput.value);
   }
+  const draftWidget = {
+    type: chosenType,
+    title: document.getElementById("edit-widget-title").value,
+    tab: document.getElementById("edit-widget-tab").value || activeTab || "main"
+  };
+  if (!isEntitylessCardType(chosenType)) {
+    if (currentEditingEntities.length === 1 && !isMultiEntityCardType(chosenType)) {
+      draftWidget.entity = `${currentEditingEntities[0].nodeId}.${currentEditingEntities[0].entityKey}`;
+    } else if (currentEditingEntities.length > 0) {
+      draftWidget.entities = currentEditingEntities.map((e) => `${e.nodeId}.${e.entityKey}`);
+    } else {
+      draftWidget.entities = [];
+    }
+  }
+  draftWidget.options = optionsObj;
   try {
-    const yamlVal = jsyaml.dump(draftWidget, { indent: 2, noRefs: true });
-    const yamlTextarea2 = document.getElementById("edit-widget-yaml-textarea");
-    if (yamlTextarea2) yamlTextarea2.value = yamlVal;
+    const yamlVal = jsyaml.dump(draftWidget, { indent: 2, noRefs: true, lineWidth: -1 });
+    if (yamlTextarea) yamlTextarea.value = yamlVal;
   } catch (err) {
     console.error("Widget YAML dump failed: ", err);
   }
@@ -2832,21 +3196,40 @@ function syncYAMLToFormFields() {
   if (!yamlTextarea) return;
   try {
     const parsed = jsyaml.load(yamlTextarea.value);
-    if (parsed && typeof parsed === "object") {
-      if (parsed.title !== void 0) document.getElementById("edit-widget-title").value = parsed.title;
-      if (parsed.tab !== void 0) document.getElementById("edit-widget-tab").value = parsed.tab;
-      if (parsed.options) {
-        if (parsed.options.unit !== void 0) document.getElementById("edit-widget-unit").value = parsed.options.unit;
-        if (parsed.options.color !== void 0) document.getElementById("edit-widget-color").value = parsed.options.color;
-        if (parsed.options.gridWidth !== void 0) document.getElementById("edit-widget-width").value = parsed.options.gridWidth;
-        if (parsed.options.gridHeight !== void 0) document.getElementById("edit-widget-height").value = parsed.options.gridHeight;
-        if (parsed.options.min !== void 0 && document.getElementById("edit-scale-min")) {
-          document.getElementById("edit-scale-min").value = parsed.options.min;
-        }
-        if (parsed.options.max !== void 0 && document.getElementById("edit-scale-max")) {
-          document.getElementById("edit-scale-max").value = parsed.options.max;
-        }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      if (parsed.type && document.getElementById("edit-widget-type")) {
+        document.getElementById("edit-widget-type").value = parsed.type;
       }
+      if (parsed.title !== void 0 || parsed.name !== void 0) {
+        document.getElementById("edit-widget-title").value = parsed.title !== void 0 ? parsed.title : parsed.name;
+      }
+      if (parsed.tab !== void 0) document.getElementById("edit-widget-tab").value = parsed.tab;
+      const resolved = [];
+      if (Array.isArray(parsed.entities)) {
+        parsed.entities.forEach((e) => {
+          const r = window.resolveSensorIdToEntityRef(e);
+          if (r) resolved.push(r);
+        });
+      } else if (parsed.entity) {
+        const r = window.resolveSensorIdToEntityRef(parsed.entity);
+        if (r) resolved.push(r);
+      }
+      currentEditingEntities = resolved;
+      const opts = parsed.options || {};
+      const unitVal = opts.unit !== void 0 ? opts.unit : parsed.unit !== void 0 ? parsed.unit : "";
+      document.getElementById("edit-widget-unit").value = unitVal;
+      if (opts.color !== void 0 || parsed.color !== void 0) {
+        document.getElementById("edit-widget-color").value = opts.color || parsed.color;
+      }
+      if (opts.gridWidth !== void 0) document.getElementById("edit-widget-width").value = opts.gridWidth;
+      if (opts.gridHeight !== void 0) document.getElementById("edit-widget-height").value = opts.gridHeight;
+      if ((opts.min !== void 0 || parsed.min !== void 0) && document.getElementById("edit-scale-min")) {
+        document.getElementById("edit-scale-min").value = opts.min !== void 0 ? opts.min : parsed.min;
+      }
+      if ((opts.max !== void 0 || parsed.max !== void 0) && document.getElementById("edit-scale-max")) {
+        document.getElementById("edit-scale-max").value = opts.max !== void 0 ? opts.max : parsed.max;
+      }
+      window.onEditTypeChange(document.getElementById("edit-widget-type")?.value || "sensor", true);
     }
   } catch (err) {
   }
@@ -2857,8 +3240,8 @@ function updateYamlPreview(yamlStr) {
   if (!linterStatus) return;
   try {
     const parsed = jsyaml.load(yamlStr);
-    if (!parsed || typeof parsed !== "object") {
-      throw new Error("YAML must represent a valid Lovelace card object structure.");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("YAML must represent a valid Lovelace card mapping object.");
     }
     if (!parsed.type) {
       throw new Error("Card configuration is missing a 'type' field.");
@@ -2883,103 +3266,126 @@ function updateYamlPreview(yamlStr) {
     }
   }
 }
-function renderMockCardHTML(widget) {
+function findLiveEntity(ref) {
+  if (!cachedEntities || !ref) return null;
+  return Object.values(cachedEntities).find((e) => e.node_id === ref.nodeId && e.entity_key === ref.entityKey) || null;
+}
+function renderRealPreviewCard(widget) {
   const title = widget.title || "Untitled Card";
   const type = widget.type || "sensor";
-  const unit = widget.options && widget.options.unit || "";
-  const color = widget.options && widget.options.color || "var(--color-optimal)";
+  const opts = widget.options || {};
+  const color = opts.color || "var(--color-optimal)";
+  const ents = widget.entities || [];
   if (type === "title") {
     return `
-      <div class="card card-title-type" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:10px 14px; display:flex; align-items:center; min-height:48px;">
-        <span style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">${title}</span>
+      <div class="card card-title-type" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:12px 16px; display:flex; align-items:center; min-height:48px;">
+        <span style="font-size:1rem; font-weight:700; color:${color};">${title}</span>
       </div>
     `;
   }
-  let body = "";
+  const primaryRef = ents[0];
+  const primaryItem = primaryRef ? findLiveEntity(primaryRef) : null;
+  const resolvedUnit = opts.unit !== void 0 && opts.unit !== "" ? opts.unit : primaryItem?.unit || "";
+  if (type === "entities") {
+    const rows = ents.map((r) => {
+      const item = findLiveEntity(r);
+      const val = item ? `${item.value ?? "--"}${item.unit ? " " + item.unit : ""}` : "Offline";
+      return `
+        <div class="entity-row" style="padding:6px 10px;">
+          <span class="entity-row-name" style="font-size:0.75rem;">${item ? item.name || item.entity_key : `${r.nodeId}.${r.entityKey}`}</span>
+          <span class="entity-row-state" style="font-size:0.75rem; color:${item ? color : "#ef4444"};">${val}</span>
+        </div>
+      `;
+    }).join("");
+    return `
+      <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:130px; margin:0; width:100%;">
+        <div class="card-header" style="margin-bottom:8px;">
+          <div class="card-title-area">
+            <span class="card-title" style="font-size:0.9rem;">${title}</span>
+            <span class="card-subtitle">Multiple Devices Overview</span>
+          </div>
+        </div>
+        <div class="entities-list" style="gap:6px; padding-top:4px;">
+          ${rows || '<div style="font-size:0.75rem; color:var(--text-secondary); text-align:center; padding:8px;">Pick entities on the left</div>'}
+        </div>
+      </div>
+    `;
+  }
+  if (type === "glance") {
+    const items = ents.map((r) => {
+      const item = findLiveEntity(r);
+      const val = item ? `${item.value ?? "--"}${item.unit ? " " + item.unit : ""}` : "--";
+      return `
+        <div class="glance-item" style="padding:8px 4px;">
+          <span class="glance-item-name">${item ? item.name || item.entity_key : r.entityKey}</span>
+          <i data-lucide="${item?.icon || "activity"}" style="width:15px; height:15px; color:${color}; margin-bottom:4px;"></i>
+          <span class="glance-item-state">${val}</span>
+        </div>
+      `;
+    }).join("");
+    return `
+      <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:120px; margin:0; width:100%;">
+        <div class="card-header" style="margin-bottom:6px;">
+          <div class="card-title-area">
+            <span class="card-title" style="font-size:0.9rem;">${title}</span>
+            <span class="card-subtitle">At a glance metrics</span>
+          </div>
+        </div>
+        <div class="glance-grid" style="padding-top:6px;">
+          ${items || '<div style="grid-column:1/-1; font-size:0.75rem; color:var(--text-secondary); text-align:center;">Pick entities on the left</div>'}
+        </div>
+      </div>
+    `;
+  }
   if (type === "gauge") {
-    body = `
-      <div class="card-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1;">
-        <div style="width:70px; height:35px; background:rgba(255,255,255,0.05); border-radius:35px 35px 0 0; position:relative; overflow:hidden; border:1px solid var(--border-soft);">
-          <div style="position:absolute; bottom:0; left:0; width:100%; height:100%; background:${color}; transform:rotate(45deg); transform-origin:bottom center;"></div>
+    const min = parseFloat(opts.min !== void 0 ? opts.min : 0);
+    const max = parseFloat(opts.max !== void 0 ? opts.max : 100);
+    const span = max - min || 100;
+    const valNum = primaryItem ? parseFloat(primaryItem.value) || 0 : 50;
+    const pct = Math.max(0, Math.min(1, (valNum - min) / span));
+    const offset = 110 - pct * 110;
+    const dispVal2 = primaryItem ? primaryItem.value : "--";
+    return `
+      <div class="card card-gauge grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:150px; margin:0; width:100%;">
+        <div class="card-header">
+          <div class="card-title-area">
+            <span class="card-title" style="font-size:0.9rem;">${widget.title || primaryItem?.name || "Gauge Card"}</span>
+            <span class="card-subtitle">${primaryRef ? `${primaryRef.nodeId}.local` : "Unbound"} \u2022 Gauge</span>
+          </div>
+          <span class="status-pill ${primaryItem?.status_type || "default"}">${primaryItem?.status || (primaryRef ? "Offline" : "Unbound")}</span>
         </div>
-        <div style="font-size:0.8rem; font-weight:bold; margin-top:6px;">50<span style="font-size:0.55rem;"> ${unit}</span></div>
-      </div>
-    `;
-  } else if (type === "control") {
-    body = `
-      <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
-        <div style="font-size:0.8rem; font-weight:bold; margin-bottom:4px;">ON</div>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:0.6rem; color:var(--text-secondary);">Active State</span>
-          <label class="switch" style="scale:0.7; pointer-events:none;"><input type="checkbox" checked><span class="slider"></span></label>
-        </div>
-      </div>
-    `;
-  } else if (type === "value") {
-    body = `
-      <div class="card-body" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
-        <div style="font-size:0.9rem; font-weight:bold;">84.2<span style="font-size:0.6rem;"> ${unit}</span></div>
-        <div style="height:3px; background:${color}; margin-top:8px; border-radius:1px;"></div>
-      </div>
-    `;
-  } else if (type === "entities") {
-    body = `
-      <div class="card-body" style="display:flex; flex-direction:column; gap:6px; flex:1; justify-content:center;">
-        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem;">
-          <span style="color:var(--text-primary);">Node Status</span>
-          <span style="font-weight:600; color:${color};">Optimal</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem;">
-          <span style="color:var(--text-primary);">Load Rate</span>
-          <span style="font-weight:600;">142${unit ? " " + unit : " req/s"}</span>
-        </div>
-      </div>
-    `;
-  } else if (type === "glance") {
-    body = `
-      <div class="card-body" style="display:flex; justify-content:space-around; align-items:center; flex:1;">
-        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-          <i data-lucide="cpu" style="width:16px; height:16px; color:${color};"></i>
-          <span style="font-size:0.6rem; color:var(--text-secondary);">CPU</span>
-          <span style="font-size:0.72rem; font-weight:600;">18%</span>
-        </div>
-        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-          <i data-lucide="database" style="width:16px; height:16px; color:${color};"></i>
-          <span style="font-size:0.6rem; color:var(--text-secondary);">RAM</span>
-          <span style="font-size:0.72rem; font-weight:600;">52%</span>
-        </div>
-      </div>
-    `;
-  } else {
-    body = `
-      <div class="card-body" style="padding-bottom: 0; flex:1; display:flex; flex-direction:column; justify-content:flex-end;">
-        <div style="font-size:0.9rem; font-weight:bold; margin-bottom:6px;">32<span style="font-size:0.6rem;"> ${unit}</span></div>
-        <div style="height:20px; width:100%; display:flex; align-items:flex-end; gap:2px;">
-          <div style="flex:1; height:8px; background:${color}; opacity:0.8; border-radius:1px;"></div>
-          <div style="flex:1; height:12px; background:${color}; opacity:0.8; border-radius:1px;"></div>
-          <div style="flex:1; height:18px; background:${color}; opacity:0.8; border-radius:1px;"></div>
-          <div style="flex:1; height:14px; background:${color}; opacity:0.8; border-radius:1px;"></div>
-          <div style="flex:1; height:20px; background:${color}; opacity:0.8; border-radius:1px;"></div>
+        <div class="gauge-container" style="padding:4px 0;">
+          <svg viewBox="0 0 100 60" class="gauge-svg">
+            <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="var(--bg-primary)" stroke-width="8" stroke-linecap="round"/>
+            <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="${offset}"/>
+            <text x="50" y="44" text-anchor="middle" fill="var(--text-primary)" font-size="12" font-weight="700">${dispVal2}</text>
+            <text x="50" y="54" text-anchor="middle" fill="var(--text-secondary)" font-size="7">${resolvedUnit}</text>
+          </svg>
         </div>
       </div>
     `;
   }
+  const dispVal = primaryItem ? primaryItem.value : "--";
+  const bodyHtml = type === "control" ? `<div style="font-size:1.2rem; font-weight:700;">${primaryItem ? primaryItem.value ? "ON" : "OFF" : "OFF"}</div>` : `<div class="card-value" style="font-size:1.35rem;">${dispVal}<span class="card-unit"> ${resolvedUnit}</span></div>`;
   return `
-    <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); pointer-events:none; display:flex; flex-direction:column; min-height:95px; box-sizing:border-box; margin:0; width: 100%;">
-      <div class="card-header" style="padding:6px 10px; border-bottom:1px solid var(--border-soft); display:flex; justify-content:space-between; align-items:center;">
-        <div class="card-title-area" style="display:flex; flex-direction:column;">
-          <span class="card-title" style="font-size:0.75rem; font-weight:bold; color:var(--text-primary);">${title}</span>
+    <div class="card grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:130px; margin:0; width:100%; pointer-events:none;">
+      <div class="card-header">
+        <div class="card-title-area">
+          <span class="card-title" style="font-size:0.9rem;">${widget.title || primaryItem?.name || "Metric Card"}</span>
+          <span class="card-subtitle">${primaryRef ? `${primaryRef.nodeId}.local` : "Select entity"}</span>
         </div>
-        <span class="status-pill success" style="font-size:0.5rem; padding:1px 4px;">Live</span>
+        <span class="status-pill ${primaryItem?.status_type || "default"}">${primaryItem?.status || (primaryRef ? "Offline" : "Unbound")}</span>
       </div>
-      <div style="padding:6px 10px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
-        ${body}
+      <div class="card-body" style="padding-top:8px;">
+        ${bodyHtml}
+        <div style="height:3px; background:${color}; margin-top:10px; border-radius:2px; opacity:0.85;"></div>
       </div>
     </div>
   `;
 }
 function updateEditorVisualPreview() {
   const container = document.getElementById("editor-visual-preview-container");
+  const summaryEl = document.getElementById("editor-bound-entities-summary");
   if (!container) return;
   const widgetId = document.getElementById("edit-widget-id")?.value;
   let widgets = [];
@@ -2988,15 +3394,27 @@ function updateEditorVisualPreview() {
   } catch (e) {
   }
   const widget = widgets.find((w) => w.id === widgetId);
-  const type = widget ? widget.type : "sensor";
+  const type = getEditSelectedCardType() || (widget ? widget.type : "sensor");
   const title = document.getElementById("edit-widget-title")?.value || (widget ? widget.title : "Widget");
   const unit = document.getElementById("edit-widget-unit")?.value || "";
   const color = document.getElementById("edit-widget-color")?.value || "var(--color-optimal)";
-  container.innerHTML = renderMockCardHTML({
+  const min = parseFloat(document.getElementById("edit-scale-min")?.value || "0");
+  const max = parseFloat(document.getElementById("edit-scale-max")?.value || "100");
+  container.innerHTML = renderRealPreviewCard({
     type,
     title,
-    options: { unit, color }
+    entities: currentEditingEntities,
+    options: { unit, color, min, max }
   });
+  if (summaryEl) {
+    if (isEntitylessCardType(type)) {
+      summaryEl.textContent = `Card type '${type}' requires no bound entities.`;
+    } else if (currentEditingEntities.length === 0) {
+      summaryEl.textContent = "Bound Entities: None selected";
+    } else {
+      summaryEl.textContent = "Bound Entity IDs: " + currentEditingEntities.map((e) => `${e.nodeId}.${e.entityKey}`).join(", ");
+    }
+  }
   if (window.lucide) window.lucide.createIcons();
 }
 function updateCreatorVisualPreview() {
@@ -3006,13 +3424,94 @@ function updateCreatorVisualPreview() {
   const title = document.getElementById("catalog-widget-title")?.value || type.charAt(0).toUpperCase() + type.slice(1) + " Card";
   const unit = document.getElementById("catalog-widget-unit")?.value || "";
   const color = document.getElementById("catalog-widget-color")?.value || "var(--color-optimal)";
-  container.innerHTML = renderMockCardHTML({
+  container.innerHTML = renderRealPreviewCard({
     type,
     title,
+    entities: [],
     options: { unit, color }
   });
   if (window.lucide) window.lucide.createIcons();
 }
+window.cycleWidgetWidth = function(widgetId) {
+  let widgets = [];
+  try {
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+    return;
+  }
+  const widget = widgets.find((w) => w.id === widgetId);
+  if (!widget) return;
+  if (!widget.options) widget.options = {};
+  const curW = parseInt(widget.options.gridWidth, 10) || 1;
+  const nextW = curW >= 3 ? 1 : curW + 1;
+  widget.options.gridWidth = nextW;
+  localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
+  buildDashboardCards(cachedEntities);
+  if (document.getElementById("main-content")?.classList.contains("edit-mode")) {
+    enableDragAndDrop();
+  }
+  if (typeof showToast === "function") showToast(`Card width: ${nextW}x`, "info");
+};
+window.duplicateWidget = function(widgetId) {
+  let widgets = [];
+  try {
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+    return;
+  }
+  const idx = widgets.findIndex((w) => w.id === widgetId);
+  if (idx === -1) return;
+  const clone = JSON.parse(JSON.stringify(widgets[idx]));
+  clone.id = "widget_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
+  clone.title = clone.title ? `${clone.title} (Copy)` : "Copy";
+  widgets.splice(idx + 1, 0, clone);
+  localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
+  try {
+    const order = JSON.parse(localStorage.getItem("hp_widget_order") || "[]");
+    const orderIdx = order.indexOf(`card-${widgetId}`);
+    if (orderIdx !== -1) {
+      order.splice(orderIdx + 1, 0, `card-${clone.id}`);
+      localStorage.setItem("hp_widget_order", JSON.stringify(order));
+    }
+  } catch (e) {
+  }
+  buildDashboardCards(cachedEntities);
+  if (document.getElementById("main-content")?.classList.contains("edit-mode")) {
+    enableDragAndDrop();
+  }
+  if (typeof showToast === "function") showToast("Card duplicated.", "info");
+};
+window.duplicateEditingWidget = function() {
+  const id = document.getElementById("edit-widget-id")?.value;
+  if (!id) return;
+  window.closeModal("widget-editor-modal");
+  window.duplicateWidget(id);
+};
+window.quickDeleteWidget = async function(widgetId) {
+  if (!window.isInEditModeDraft && typeof showConfirm === "function") {
+    const ok = await showConfirm("Remove this card from the dashboard?", "Remove Card");
+    if (!ok) return;
+  }
+  let widgets = [];
+  try {
+    widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "[]");
+  } catch (e) {
+  }
+  widgets = widgets.filter((w) => w.id !== widgetId);
+  localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
+  try {
+    const order = JSON.parse(localStorage.getItem("hp_widget_order") || "[]").filter((cId) => cId !== `card-${widgetId}`);
+    localStorage.setItem("hp_widget_order", JSON.stringify(order));
+  } catch (e) {
+  }
+  buildDashboardCards(cachedEntities);
+  if (document.getElementById("main-content")?.classList.contains("edit-mode")) {
+    enableDragAndDrop();
+  }
+  if (typeof showToast === "function") {
+    showToast(window.isInEditModeDraft ? "Card removed (Discard to undo)." : "Card removed.", "info");
+  }
+};
 async function deleteWidgetSettings() {
   const id = document.getElementById("edit-widget-id").value;
   if (!await showConfirm("Are you sure you want to remove this widget card?", "Delete Widget")) return;
@@ -3023,9 +3522,9 @@ async function deleteWidgetSettings() {
   }
   widgets = widgets.filter((w) => w.id !== id);
   localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
-  closeModal("widget-editor-modal");
+  window.closeModal("widget-editor-modal");
   buildDashboardCards(cachedEntities);
-  if (document.getElementById("main-content").classList.contains("edit-mode")) {
+  if (document.getElementById("main-content")?.classList.contains("edit-mode")) {
     enableDragAndDrop();
   }
   addAuditEntry("warning", `Widget Card "${id}" deleted from dashboard layout.`);
@@ -3185,24 +3684,16 @@ function addWidgetToGrid() {
 }
 function normalizeEntityRef(ent) {
   if (!ent) return null;
+  if (window.resolveSensorIdToEntityRef) {
+    return window.resolveSensorIdToEntityRef(ent);
+  }
   if (typeof ent === "object") {
     if (ent.nodeId && ent.entityKey) return { nodeId: String(ent.nodeId), entityKey: String(ent.entityKey) };
-    if (ent.entity) {
-      const parts = String(ent.entity).split(".");
-      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join(".") } : { nodeId: "system", entityKey: parts[0] };
-    }
-    if (ent.id) {
-      const parts = String(ent.id).split(".");
-      return parts.length > 1 ? { nodeId: parts[0], entityKey: parts.slice(1).join(".") } : { nodeId: "system", entityKey: parts[0] };
-    }
   } else if (typeof ent === "string") {
     const s = ent.trim();
     if (!s) return null;
-    const parts = s.split(".");
-    if (parts.length > 1) {
-      return { nodeId: parts[0], entityKey: parts.slice(1).join(".") };
-    }
-    return { nodeId: "system", entityKey: s };
+    const dotIdx = s.indexOf(".");
+    return dotIdx !== -1 ? { nodeId: s.slice(0, dotIdx), entityKey: s.slice(dotIdx + 1) } : { nodeId: "core-mon", entityKey: s };
   }
   return null;
 }
@@ -3210,7 +3701,7 @@ function normalizeCardObject(rawCard, defaultTab = "main", index = 0) {
   if (!rawCard || typeof rawCard !== "object") return null;
   const id = rawCard.id || "widget-" + Date.now().toString(36) + "-" + Math.random().toString(36).substr(2, 5) + "-" + index;
   const type = rawCard.type || "sensor";
-  const tab = rawCard.tab || rawCard.view || defaultTab || "main";
+  const tab = String(rawCard.tab || rawCard.view || defaultTab || "main");
   const title = rawCard.title !== void 0 ? rawCard.title : rawCard.name !== void 0 ? rawCard.name : rawCard.header || "";
   let entities = [];
   if (Array.isArray(rawCard.entities)) {
@@ -3253,22 +3744,26 @@ function normalizeDashboardConfig(input) {
   let widgets = [];
   if (Array.isArray(input)) {
     const currentTabs = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
-    dashboards = currentTabs.length > 0 ? currentTabs : [{ id: "main", name: "Main" }];
+    dashboards = currentTabs.length > 0 ? currentTabs : [{ id: "main", name: "Main", icon: "layout-dashboard" }];
     const defaultTab = activeTab || dashboards[0].id;
     widgets = input.map((item, idx) => normalizeCardObject(item, defaultTab, idx)).filter(Boolean);
-    return { dashboards, widgets };
+    return { dashboards, widgets, order: widgets.map((w) => `card-${w.id}`), remappedCount: 0 };
   }
   if (typeof input !== "object") {
     throw new Error("YAML layout content must be a structured configuration object or list of cards.");
   }
   if (Array.isArray(input.views)) {
     input.views.forEach((v, vIdx) => {
-      const viewId = String(v.path || v.id || "view_" + (vIdx + 1)).toLowerCase().replace(/[^a-z0-9_-]/g, "_");
-      const viewName = v.title || v.name || "View " + (vIdx + 1);
-      dashboards.push({ id: viewId, name: viewName });
+      if (!v || typeof v !== "object") return;
+      const viewId = String(v.id || v.path || "view_" + (vIdx + 1)).toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+      const viewName = String(v.title || v.name || "View " + (vIdx + 1));
+      const viewIcon = String(v.icon || "layout-dashboard");
+      if (!dashboards.some((existing) => existing.id === viewId)) {
+        dashboards.push({ id: viewId, name: viewName, icon: viewIcon });
+      }
       if (Array.isArray(v.cards)) {
         v.cards.forEach((card, cIdx) => {
-          const w = normalizeCardObject(card, viewId, cIdx);
+          const w = normalizeCardObject(card, viewId, widgets.length + cIdx);
           if (w) widgets.push(w);
         });
       }
@@ -3277,29 +3772,107 @@ function normalizeDashboardConfig(input) {
   const rawDashboards = input.dashboards || input.tabs;
   if (Array.isArray(rawDashboards)) {
     rawDashboards.forEach((d, dIdx) => {
+      if (!d || typeof d !== "object") return;
       const dId = String(d.id || d.path || "view_" + (dIdx + 1)).toLowerCase().replace(/[^a-z0-9_-]/g, "_");
-      const dName = d.name || d.title || "View " + (dIdx + 1);
+      const dName = String(d.name || d.title || "View " + (dIdx + 1));
+      const dIcon = String(d.icon || "layout-dashboard");
       if (!dashboards.some((existing) => existing.id === dId)) {
-        dashboards.push({ id: dId, name: dName });
+        dashboards.push({ id: dId, name: dName, icon: dIcon });
+      }
+      if (Array.isArray(d.cards)) {
+        d.cards.forEach((card, cIdx) => {
+          const w = normalizeCardObject(card, dId, widgets.length + cIdx);
+          if (w) widgets.push(w);
+        });
       }
     });
   }
   if (dashboards.length === 0) {
     const existing = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
-    dashboards = existing.length > 0 ? existing : [{ id: "main", name: "Main" }];
+    dashboards = existing.length > 0 ? existing : [{ id: "main", name: "Main", icon: "layout-dashboard" }];
   }
   const rawWidgets = input.widgets || input.cards;
   if (Array.isArray(rawWidgets)) {
     const defaultTab = dashboards[0].id;
     rawWidgets.forEach((w, idx) => {
-      const cardObj = normalizeCardObject(w, defaultTab, idx);
+      const cardObj = normalizeCardObject(w, defaultTab, widgets.length + idx);
       if (cardObj) widgets.push(cardObj);
     });
   }
-  if (widgets.length === 0 && (!input.widgets && !input.cards && !input.views)) {
-    throw new Error("YAML does not contain any cards or widgets ('cards:', 'widgets:', or 'views:').");
+  if (widgets.length === 0 && (!input.widgets && !input.cards && !input.views && !input.dashboards && !input.tabs)) {
+    throw new Error("YAML does not contain any views or cards ('views:', 'cards:', or 'widgets:').");
   }
-  return { dashboards, widgets };
+  const validTabIds = new Set(dashboards.map((d) => d.id));
+  let remappedCount = 0;
+  widgets.forEach((w) => {
+    if (!validTabIds.has(w.tab)) {
+      w.tab = dashboards[0].id;
+      remappedCount++;
+    }
+  });
+  const order = widgets.map((w) => `card-${w.id}`);
+  return { dashboards, widgets, order, remappedCount };
+}
+function formatCardForYamlExport(w, includeTab = false) {
+  const card = {
+    type: w.type || "sensor",
+    title: w.title !== void 0 ? w.title : ""
+  };
+  if (includeTab) {
+    card.tab = w.tab || "main";
+  }
+  let rawList = [];
+  if (Array.isArray(w.entities) && w.entities.length > 0) {
+    rawList = w.entities;
+  } else if (w.entity) {
+    rawList = [w.entity];
+  }
+  const canonStrings = rawList.map((e) => normalizeEntityRef(e)).filter(Boolean).map((ref) => `${ref.nodeId}.${ref.entityKey}`);
+  if (canonStrings.length === 1 && !isMultiEntityCardType(card.type)) {
+    card.entity = canonStrings[0];
+  } else if (canonStrings.length > 0) {
+    card.entities = canonStrings;
+  }
+  if (w.options && Object.keys(w.options).length > 0) {
+    card.options = w.options;
+  }
+  return card;
+}
+function buildCanonicalLovelaceObject(dashboards, widgets, order = []) {
+  const safeDashboards = dashboards && dashboards.length > 0 ? dashboards : [{ id: "main", name: "Main", icon: "layout-dashboard" }];
+  const sortedWidgets = [...widgets || []];
+  if (Array.isArray(order) && order.length > 0) {
+    sortedWidgets.sort((a, b) => {
+      let idxA = order.indexOf(`card-${a.id}`);
+      let idxB = order.indexOf(`card-${b.id}`);
+      if (idxA === -1) idxA = order.indexOf(a.id);
+      if (idxB === -1) idxB = order.indexOf(b.id);
+      if (idxA === -1) idxA = 9999;
+      if (idxB === -1) idxB = 9999;
+      return idxA - idxB;
+    });
+  }
+  const viewsMap = {};
+  const views = safeDashboards.map((d) => {
+    const viewObj = {
+      id: d.id,
+      title: d.name || d.title || d.id,
+      icon: d.icon || "layout-dashboard",
+      cards: []
+    };
+    viewsMap[d.id] = viewObj;
+    return viewObj;
+  });
+  sortedWidgets.forEach((w) => {
+    const targetView = viewsMap[w.tab] || views[0];
+    if (targetView) {
+      targetView.cards.push(formatCardForYamlExport(w, false));
+    }
+  });
+  return {
+    title: "HomePulse Dashboard",
+    views
+  };
 }
 function setupYamlTextareaTabKey(textarea) {
   if (!textarea || textarea._tabKeyBound) return;
@@ -3326,7 +3899,6 @@ function setupYamlTextareaTabKey(textarea) {
 }
 function updateDashboardYamlValidation(yamlStr) {
   const statusEl = document.getElementById("yaml-config-status");
-  const statusText = document.getElementById("yaml-config-status-text");
   const errorBanner = document.getElementById("yaml-error-banner");
   const footerStats = document.getElementById("yaml-footer-stats");
   if (!statusEl) return;
@@ -3344,10 +3916,11 @@ function updateDashboardYamlValidation(yamlStr) {
     const normalized = normalizeDashboardConfig(parsed);
     const viewsCount = normalized.dashboards.length;
     const cardsCount = normalized.widgets.length;
+    const remapNote = normalized.remappedCount > 0 ? ` (${normalized.remappedCount} auto-assigned)` : "";
     statusEl.style.background = "rgba(16, 185, 129, 0.15)";
     statusEl.style.color = "#10b981";
     statusEl.style.borderColor = "rgba(16, 185, 129, 0.3)";
-    statusEl.innerHTML = `<i data-lucide="check-circle" style="width:13px;height:13px;"></i><span>Valid YAML (${viewsCount} view${viewsCount === 1 ? "" : "s"}, ${cardsCount} card${cardsCount === 1 ? "" : "s"})</span>`;
+    statusEl.innerHTML = `<i data-lucide="check-circle" style="width:13px;height:13px;"></i><span>Valid YAML (${viewsCount} view${viewsCount === 1 ? "" : "s"}, ${cardsCount} card${cardsCount === 1 ? "" : "s"})${remapNote}</span>`;
     if (errorBanner) errorBanner.style.display = "none";
     if (footerStats) {
       footerStats.textContent = `Parsed: ${viewsCount} views, ${cardsCount} cards. Press Tab to indent (2 spaces).`;
@@ -3361,7 +3934,7 @@ function updateDashboardYamlValidation(yamlStr) {
     if (err.mark && err.mark.line !== void 0) {
       msg = `Line ${err.mark.line + 1}: ${err.reason || err.message}`;
     }
-    statusEl.innerHTML = `<i data-lucide="alert-circle" style="width:13px;height:13px;"></i><span>${escapeHtml(msg.slice(0, 35))}</span>`;
+    statusEl.innerHTML = `<i data-lucide="alert-circle" style="width:13px;height:13px;"></i><span>${escapeHtml(msg.slice(0, 40))}</span>`;
     if (errorBanner) {
       errorBanner.textContent = "YAML Error: " + err.message;
       errorBanner.style.display = "block";
@@ -3369,38 +3942,68 @@ function updateDashboardYamlValidation(yamlStr) {
     if (window.lucide) window.lucide.createIcons();
   }
 }
+window.toggleYamlEntitySidebar = function() {
+  const sidebar = document.getElementById("yaml-entity-sidebar");
+  const btn = document.getElementById("btn-toggle-yaml-entities");
+  if (!sidebar) return;
+  const isHidden = sidebar.style.display === "none";
+  sidebar.style.display = isHidden ? "flex" : "none";
+  if (btn) btn.classList.toggle("active", isHidden);
+};
+window.renderYamlEntitySidebar = function(filterText = "") {
+  const listEl = document.getElementById("yaml-entity-list");
+  if (!listEl) return;
+  const q = String(filterText || "").trim().toLowerCase();
+  const entities = Object.values(cachedEntities || {}).sort(
+    (a, b) => String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
+  );
+  const filtered = entities.filter((item) => {
+    if (!q) return true;
+    const canon = `${item.node_id}.${item.entity_key}`.toLowerCase();
+    const name = String(item.name || "").toLowerCase();
+    return canon.includes(q) || name.includes(q);
+  });
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<div style="padding:12px; text-align:center; font-size:0.74rem; color:var(--text-secondary);">No matching live entities</div>';
+    return;
+  }
+  listEl.innerHTML = filtered.map((item) => {
+    const canon = `${item.node_id}.${item.entity_key}`;
+    const val = item.value !== void 0 && item.value !== null ? `${item.value}${item.unit ? " " + item.unit : ""}` : "--";
+    return `
+      <div class="yaml-entity-item" onclick="insertEntityIntoYaml('${canon}')" title="Click to insert '${canon}' at cursor">
+        <div class="yaml-entity-top">
+          <span class="yaml-entity-name">${item.name || item.entity_key}</span>
+          <span class="yaml-entity-val">${val}</span>
+        </div>
+        <div class="yaml-entity-bottom">
+          <code>${canon}</code>
+          <button type="button" class="yaml-copy-mini" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${canon}'); if(typeof showToast==='function') showToast('Copied ${canon}', 'info')" title="Copy ID">Copy</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+};
+window.insertEntityIntoYaml = function(canonId) {
+  const textarea = document.getElementById("yaml-editor-textarea");
+  if (!textarea) return;
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  textarea.value = textarea.value.substring(0, start) + canonId + textarea.value.substring(end);
+  textarea.selectionStart = textarea.selectionEnd = start + canonId.length;
+  textarea.focus();
+  updateDashboardYamlValidation(textarea.value);
+  if (typeof showToast === "function") showToast(`Inserted ${canonId}`, "info");
+};
 function openYAMLConfigEditor() {
   const errorBanner = document.getElementById("yaml-error-banner");
   if (errorBanner) errorBanner.style.display = "none";
   const dashboards = JSON.parse(localStorage.getItem("hp_dashboards") || "null") || [
-    { id: "main", name: "Main" }
+    { id: "main", name: "Main", icon: "layout-dashboard" }
   ];
   const widgets = JSON.parse(localStorage.getItem("hp_dashboard_widgets") || "null") || [];
-  const views = dashboards.map((d) => ({
-    id: d.id,
-    title: d.name || d.title || d.id
-  }));
-  const cards = widgets.map((w) => {
-    const card = {
-      type: w.type || "sensor",
-      title: w.title !== void 0 ? w.title : "",
-      tab: w.tab || "main"
-    };
-    if (w.entities && w.entities.length === 1) {
-      card.entity = `${w.entities[0].nodeId}.${w.entities[0].entityKey}`;
-    } else if (w.entities && w.entities.length > 1) {
-      card.entities = w.entities.map((e) => `${e.nodeId}.${e.entityKey}`);
-    }
-    if (w.options && Object.keys(w.options).length > 0) {
-      card.options = w.options;
-    }
-    return card;
-  });
-  const exportObj = {
-    title: "HomePulse Dashboard",
-    views,
-    cards
-  };
+  const order = JSON.parse(localStorage.getItem("hp_widget_order") || "null") || [];
+  const exportObj = buildCanonicalLovelaceObject(dashboards, widgets, order);
   try {
     const yamlContent = jsyaml.dump(exportObj, { indent: 2, noRefs: true, lineWidth: -1 });
     const textarea = document.getElementById("yaml-editor-textarea");
@@ -3412,10 +4015,13 @@ function openYAMLConfigEditor() {
         updateDashboardYamlValidation(textarea.value);
       };
     }
-    openModal("yaml-config-modal");
+    const searchInput = document.getElementById("yaml-entity-search");
+    if (searchInput) searchInput.value = "";
+    window.renderYamlEntitySidebar("");
+    window.openModal("yaml-config-modal");
   } catch (e) {
     console.error("YAML serialization failed: ", e);
-    alert("Error serializing to YAML: " + e.message);
+    if (typeof showToast === "function") showToast("Error serializing to YAML: " + e.message, "error");
   }
 }
 async function saveYAMLConfigSettings() {
@@ -3430,28 +4036,35 @@ async function saveYAMLConfigSettings() {
     }
     const parsed = jsyaml.load(yamlText);
     const normalized = normalizeDashboardConfig(parsed);
+    window.isSyncingFromServer = true;
     localStorage.setItem("hp_dashboards", JSON.stringify(normalized.dashboards));
     localStorage.setItem("hp_dashboard_widgets", JSON.stringify(normalized.widgets));
+    localStorage.setItem("hp_widget_order", JSON.stringify(normalized.order));
+    window.isSyncingFromServer = false;
     const tabExists = normalized.dashboards.some((db) => db.id === activeTab);
     if (!tabExists && normalized.dashboards.length > 0) {
       activeTab = normalized.dashboards[0].id;
     }
+    if (window.isInEditModeDraft) {
+      window.markEditModeDirty?.(false);
+    }
     await syncLocalConfigToServer();
-    closeModal("yaml-config-modal");
+    window.closeModal("yaml-config-modal");
     renderDashboards();
     buildDashboardCards(cachedEntities);
-    showToast?.("Dashboard YAML configuration applied and saved.");
-    addAuditEntry("success", "Dashboard configuration updated and validated via YAML settings editor.");
+    if (document.getElementById("main-content")?.classList.contains("edit-mode")) {
+      enableDragAndDrop();
+    }
+    if (typeof showToast === "function") showToast("Dashboard YAML configuration applied and saved.", "success");
+    addAuditEntry("success", "Dashboard configuration updated and validated via YAML Studio.");
   } catch (e) {
+    window.isSyncingFromServer = false;
     console.error("YAML parsing error: ", e);
     if (errorBanner) {
       errorBanner.textContent = "Validation Failure: " + e.message;
       errorBanner.style.display = "block";
-      const modalBody = document.querySelector("#yaml-config-modal .modal-body");
-      if (modalBody) modalBody.scrollTop = 0;
-    } else {
-      alert("Validation Error: " + e.message);
     }
+    if (typeof showToast === "function") showToast("YAML validation failed: " + e.message, "error");
   }
 }
 window.formatDashboardYAML = function() {
@@ -3460,36 +4073,12 @@ window.formatDashboardYAML = function() {
   try {
     const parsed = jsyaml.load(textarea.value);
     const normalized = normalizeDashboardConfig(parsed);
-    const views = normalized.dashboards.map((d) => ({
-      id: d.id,
-      title: d.name || d.title || d.id
-    }));
-    const cards = normalized.widgets.map((w) => {
-      const card = {
-        type: w.type || "sensor",
-        title: w.title !== void 0 ? w.title : "",
-        tab: w.tab || "main"
-      };
-      if (w.entities && w.entities.length === 1) {
-        card.entity = `${w.entities[0].nodeId}.${w.entities[0].entityKey}`;
-      } else if (w.entities && w.entities.length > 1) {
-        card.entities = w.entities.map((e) => `${e.nodeId}.${e.entityKey}`);
-      }
-      if (w.options && Object.keys(w.options).length > 0) {
-        card.options = w.options;
-      }
-      return card;
-    });
-    const exportObj = {
-      title: "HomePulse Dashboard",
-      views,
-      cards
-    };
+    const exportObj = buildCanonicalLovelaceObject(normalized.dashboards, normalized.widgets, normalized.order);
     textarea.value = jsyaml.dump(exportObj, { indent: 2, noRefs: true, lineWidth: -1 });
     updateDashboardYamlValidation(textarea.value);
-    showToast?.("YAML formatted cleanly.");
+    if (typeof showToast === "function") showToast("YAML formatted cleanly.", "success");
   } catch (err) {
-    alert("Cannot format invalid YAML: " + err.message);
+    if (typeof showToast === "function") showToast("Cannot format invalid YAML: " + err.message, "error");
   }
 };
 window.copyDashboardYAML = function() {
@@ -3503,11 +4092,11 @@ window.copyDashboardYAML = function() {
         if (copyText) copyText.textContent = "Copy";
       }, 2e3);
     }
-    showToast?.("Dashboard YAML copied to clipboard.");
+    if (typeof showToast === "function") showToast("Dashboard YAML copied to clipboard.", "info");
   }).catch(() => {
     textarea.select();
     document.execCommand("copy");
-    showToast?.("Copied to clipboard.");
+    if (typeof showToast === "function") showToast("Copied to clipboard.", "info");
   });
 };
 window.downloadDashboardYAML = function() {
@@ -3522,7 +4111,7 @@ window.downloadDashboardYAML = function() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast?.("Dashboard YAML exported.");
+  if (typeof showToast === "function") showToast("Dashboard YAML exported.", "info");
 };
 window.importDashboardYAMLFile = function(event) {
   const file = event.target.files && event.target.files[0];
@@ -3534,7 +4123,7 @@ window.importDashboardYAMLFile = function(event) {
     if (textarea) {
       textarea.value = content;
       updateDashboardYamlValidation(content);
-      showToast?.(`Loaded '${file.name}'. Click 'Save & Apply' to activate.`);
+      if (typeof showToast === "function") showToast(`Loaded '${file.name}'. Click 'Save & Apply' to activate.`, "info");
     }
   };
   reader.readAsText(file);
@@ -3544,85 +4133,103 @@ window.insertYamlSnippet = function(type) {
   if (!type) return;
   const textarea = document.getElementById("yaml-editor-textarea");
   if (!textarea) return;
-  const currentTab = activeTab || "main";
   let snippet = "";
   switch (type) {
     case "sensor":
       snippet = `
-  - type: sensor
-    title: "New Sensor"
-    tab: "${currentTab}"
-    entity: "system.cpu_usage"
-    options:
-      unit: "%"
-      color: "var(--color-optimal)"
-      gridWidth: 1
-      gridHeight: 1
+      - type: sensor
+        title: New Sensor
+        entity: core-mon.cpu-utilization
+        options:
+          unit: '%'
+          color: var(--color-optimal)
+          gridWidth: 1
+          gridHeight: 1
 `;
       break;
     case "gauge":
       snippet = `
-  - type: gauge
-    title: "Resource Gauge"
-    tab: "${currentTab}"
-    entity: "system.memory_usage"
-    options:
-      min: 0
-      max: 100
-      unit: "%"
-      color: "var(--accent-orange)"
-      gridWidth: 1
-      gridHeight: 1
+      - type: gauge
+        title: Resource Gauge
+        entity: core-mon.memory-saturation
+        options:
+          min: 0
+          max: 100
+          unit: '%'
+          color: var(--accent-orange)
+          gridWidth: 1
+          gridHeight: 1
 `;
       break;
     case "control":
       snippet = `
-  - type: control
-    title: "Toggle Control"
-    tab: "${currentTab}"
-    entity: "plugins.service_switch"
-    options:
-      color: "var(--accent-blue)"
-      gridWidth: 1
-      gridHeight: 1
+      - type: control
+        title: Toggle Control
+        entity: plugins.service-switch
+        options:
+          color: var(--accent-blue)
+          gridWidth: 1
+          gridHeight: 1
 `;
       break;
     case "entities":
       snippet = `
-  - type: entities
-    title: "System Overview"
-    tab: "${currentTab}"
-    entities:
-      - system.cpu_usage
-      - system.memory_usage
-      - system.disk_usage
-    options:
-      gridWidth: 2
-      gridHeight: 2
+      - type: entities
+        title: System Overview
+        entities:
+          - core-mon.cpu-utilization
+          - core-mon.memory-saturation
+          - core-mon.server-room-temp
+        options:
+          gridWidth: 2
+          gridHeight: 1
 `;
       break;
     case "glance":
       snippet = `
-  - type: glance
-    title: "Quick Glance"
-    tab: "${currentTab}"
-    entities:
-      - system.cpu_usage
-      - system.temperature
-    options:
-      gridWidth: 2
-      gridHeight: 1
+      - type: glance
+        title: Quick Glance
+        entities:
+          - core-mon.cpu-utilization
+          - core-mon.server-room-temp
+        options:
+          gridWidth: 2
+          gridHeight: 1
+`;
+      break;
+    case "title":
+      snippet = `
+      - type: title
+        title: Section Header
+        options:
+          color: var(--accent-orange)
+          gridWidth: 3
+          gridHeight: 1
+`;
+      break;
+    case "view":
+      snippet = `
+  - id: view_${Date.now().toString(36)}
+    title: New View
+    icon: server
+    cards:
+      - type: sensor
+        title: View Metric
+        entity: core-mon.cpu-utilization
+        options:
+          gridWidth: 1
+          gridHeight: 1
 `;
       break;
   }
   if (snippet) {
     const val = textarea.value;
-    const pos = textarea.selectionStart;
+    const pos = textarea.selectionStart ?? val.length;
     textarea.value = val.substring(0, pos) + snippet + val.substring(pos);
     textarea.selectionStart = textarea.selectionEnd = pos + snippet.length;
     textarea.focus();
     updateDashboardYamlValidation(textarea.value);
-    showToast?.(`Inserted ${type} card template.`);
+    if (typeof showToast === "function") showToast(`Inserted ${type} template.`, "info");
   }
 };
 
@@ -7714,67 +8321,75 @@ window.generateSupportLogs = async function() {
     else alert(`Support log generation failed: ${err.message}`);
   }
 };
-window.getSensorIdForEntity = function(nodeId, entityKey, name, type) {
-  if (nodeId === "core-mon") {
-    if (entityKey === "cpu-utilization") return "sensor.cpu_utilization";
-    if (entityKey === "memory-saturation") return "sensor.memory_saturation";
-    if (entityKey === "network-throughput") return "sensor.network_throughput";
-    if (entityKey === "server-room-temp") return "sensor.cpu_temperature";
-    if (entityKey === "database-status") return "sensor.database_status";
-    if (entityKey === "database-latency") return "sensor.database_latency";
-    if (entityKey === "database-storage-pct") return "sensor.database_storage_pct";
-  }
-  if (nodeId === "monitors") {
-    const match = entityKey.match(/^monitor-(\d+)-(status|latency)$/);
-    if (match) {
-      const monId = match[1];
-      const category = match[2];
-      const slugify = (str) => {
-        return str.toLowerCase().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "_").replace(/^-+|-+$/g, "");
-      };
-      let monNameSlug = `monitor_${monId}`;
-      let monType = "ping";
-      if (name) {
-        monNameSlug = slugify(
-          name.replace(/\s+Status$/i, "").replace(/\s+Latency$/i, "").replace(/\s+Check$/i, "").replace(/\s*\(Ping\)$/i, "").replace(/\s*\(HTTP\)$/i, "").replace(/\s*\(HTTPS\)$/i, "").replace(/\s*\(SSL\)$/i, "").replace(/\s*\(Port\)$/i, "")
-        );
-      }
-      if (type) {
-        monType = type;
-      }
-      if (category === "status") {
-        const domain = monType === "ping" ? "ping" : "binary_sensor";
-        return `${domain}.${monNameSlug}`;
-      } else {
-        return `sensor.${monNameSlug}_latency`;
-      }
-    }
-  }
-  return `${nodeId}.${entityKey}`.replace(/-/g, "_");
+window.getSensorIdForEntity = function(nodeId, entityKey, _name, _type) {
+  const nId = String(nodeId || "core-mon").trim();
+  const eKey = String(entityKey || "").trim();
+  return `${nId}.${eKey}`;
 };
 window.resolveSensorIdToEntityRef = function(sensorId) {
-  if (!cachedEntities) return null;
-  const matched = Object.keys(cachedEntities).find((key) => {
-    const item = cachedEntities[key];
-    const id = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
-    return id === sensorId;
+  if (!sensorId) return null;
+  if (typeof sensorId === "object") {
+    if (sensorId.nodeId && sensorId.entityKey) {
+      return { nodeId: String(sensorId.nodeId), entityKey: String(sensorId.entityKey) };
+    }
+    if (sensorId.node_id && sensorId.entity_key) {
+      return { nodeId: String(sensorId.node_id), entityKey: String(sensorId.entity_key) };
+    }
+    if (sensorId.entity) {
+      return window.resolveSensorIdToEntityRef(sensorId.entity);
+    }
+    return null;
+  }
+  const raw = String(sensorId).trim();
+  if (!raw) return null;
+  const normalizeSlug = (s) => String(s || "").trim().toLowerCase().replace(/_/g, "-");
+  const ALIAS_MAP = {
+    "core-mon.memory-usage": { nodeId: "core-mon", entityKey: "memory-saturation" },
+    "core_mon.memory_usage": { nodeId: "core-mon", entityKey: "memory-saturation" },
+    "sensor.memory_usage": { nodeId: "core-mon", entityKey: "memory-saturation" },
+    "sensor.cpu_utilization": { nodeId: "core-mon", entityKey: "cpu-utilization" },
+    "sensor.memory_saturation": { nodeId: "core-mon", entityKey: "memory-saturation" },
+    "sensor.network_throughput": { nodeId: "core-mon", entityKey: "network-throughput" },
+    "sensor.cpu_temperature": { nodeId: "core-mon", entityKey: "server-room-temp" },
+    "sensor.database_status": { nodeId: "core-mon", entityKey: "database-status" },
+    "sensor.database_latency": { nodeId: "core-mon", entityKey: "database-latency" },
+    "sensor.database_storage_pct": { nodeId: "core-mon", entityKey: "database-storage-pct" }
+  };
+  const lowered = raw.toLowerCase();
+  if (ALIAS_MAP[lowered]) return { ...ALIAS_MAP[lowered] };
+  const hyphenated = normalizeSlug(raw);
+  if (ALIAS_MAP[hyphenated]) return { ...ALIAS_MAP[hyphenated] };
+  const entitiesList = cachedEntities ? Object.values(cachedEntities) : [];
+  const exact = entitiesList.find((item) => `${item.node_id}.${item.entity_key}` === raw);
+  if (exact) return { nodeId: exact.node_id, entityKey: exact.entity_key };
+  const normMatch = entitiesList.find((item) => {
+    const canon = normalizeSlug(`${item.node_id}.${item.entity_key}`);
+    const keyOnly = normalizeSlug(item.entity_key);
+    return canon === hyphenated || keyOnly === hyphenated;
   });
-  if (matched) {
-    const item = cachedEntities[matched];
-    return { nodeId: item.node_id, entityKey: item.entity_key };
+  if (normMatch) return { nodeId: normMatch.node_id, entityKey: normMatch.entity_key };
+  const dotIdx = raw.indexOf(".");
+  if (dotIdx !== -1) {
+    const domain = raw.slice(0, dotIdx).toLowerCase();
+    const slug = raw.slice(dotIdx + 1).toLowerCase();
+    const slugify = (str) => str.toLowerCase().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "_").replace(/^-+|-+$/g, "");
+    if (domain === "ping" || domain === "binary_sensor" || domain === "sensor") {
+      const legacyMatch = entitiesList.find((item) => {
+        if (item.node_id !== "monitors" || !item.name) return false;
+        const cleanName = slugify(String(item.name).replace(/\s+Status$/i, "").replace(/\s+Latency$/i, "").replace(/\s+Check$/i, "").replace(/\s*\((Ping|HTTP|HTTPS|SSL|Port)\)$/i, ""));
+        if (domain === "sensor" && slug.endsWith("_latency")) {
+          return item.entity_key.endsWith("-latency") && `${cleanName}_latency` === slug;
+        }
+        return item.entity_key.endsWith("-status") && cleanName === slug;
+      });
+      if (legacyMatch) return { nodeId: legacyMatch.node_id, entityKey: legacyMatch.entity_key };
+    }
+    return {
+      nodeId: raw.slice(0, dotIdx),
+      entityKey: raw.slice(dotIdx + 1)
+    };
   }
-  const parts = sensorId.split(".");
-  if (parts.length === 2) {
-    const slug = parts[1];
-    if (slug === "cpu_utilization") return { nodeId: "core-mon", entityKey: "cpu-utilization" };
-    if (slug === "memory_saturation") return { nodeId: "core-mon", entityKey: "memory-saturation" };
-    if (slug === "network_throughput") return { nodeId: "core-mon", entityKey: "network-throughput" };
-    if (slug === "cpu_temperature") return { nodeId: "core-mon", entityKey: "server-room-temp" };
-    if (slug === "database_status") return { nodeId: "core-mon", entityKey: "database-status" };
-    if (slug === "database_latency") return { nodeId: "core-mon", entityKey: "database-latency" };
-    if (slug === "database_storage_pct") return { nodeId: "core-mon", entityKey: "database-storage-pct" };
-  }
-  return null;
+  return { nodeId: "core-mon", entityKey: raw };
 };
 window.openHostDetail = async function(hostId) {
   if (typeof hostId === "string" && hostId.startsWith("plugin-")) {

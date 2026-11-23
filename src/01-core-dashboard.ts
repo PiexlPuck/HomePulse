@@ -292,6 +292,37 @@ function initializeSidebar() {
 }
 
 let lastToggleTime = 0;
+let editModeSnapshot: { dashboards: string | null; widgets: string | null; order: string | null; activeTab: string } | null = null;
+let editModeDirty = false;
+
+function markEditModeDirty(dirty = true) {
+  editModeDirty = dirty;
+  const badge = document.getElementById('edit-unsaved-badge');
+  if (badge) badge.style.display = (dirty && window.isInEditModeDraft) ? 'inline-flex' : 'none';
+  const saveBtn = document.getElementById('btn-edit-save');
+  if (saveBtn) saveBtn.classList.toggle('has-unsaved', dirty && Boolean(window.isInEditModeDraft));
+}
+window.markEditModeDirty = markEditModeDirty;
+
+function exitEditModeVisualState() {
+  const mainContent = document.getElementById('main-content');
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  const editBanner = document.getElementById('edit-mode-banner');
+
+  if (mainContent) mainContent.classList.remove('edit-mode');
+  if (editToggleBtn) {
+    editToggleBtn.classList.remove('active');
+    editToggleBtn.style.display = 'flex';
+    const spanText = editToggleBtn.querySelector('span');
+    if (spanText) spanText.textContent = 'Edit Dashboard';
+    const icon = editToggleBtn.querySelector('i');
+    if (icon) icon.setAttribute('data-lucide', 'edit-3');
+  }
+  if (editBanner) editBanner.style.display = 'none';
+  markEditModeDirty(false);
+  disableDragAndDrop();
+}
+
 function toggleEditMode() {
   const now = Date.now();
   if (now - lastToggleTime < 250) return;
@@ -301,35 +332,76 @@ function toggleEditMode() {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   if (!mainContent) return;
 
-  const isEditMode = mainContent.classList.toggle('edit-mode');
-  if (editToggleBtn) {
-    editToggleBtn.classList.toggle('active', isEditMode);
-    const spanText = editToggleBtn.querySelector('span');
-    if (spanText) {
-      spanText.textContent = isEditMode ? 'Exit Edit Mode' : 'Edit Dashboard';
-    }
-    const icon = editToggleBtn.querySelector('i');
-    if (icon) {
-      icon.setAttribute('data-lucide', isEditMode ? 'check' : 'edit-3');
-    }
-  }
+  const currentlyEditing = mainContent.classList.contains('edit-mode');
+  if (!currentlyEditing) {
+    // Enter edit mode & snapshot pre-edit state for Discard
+    editModeSnapshot = {
+      dashboards: localStorage.getItem('hp_dashboards'),
+      widgets: localStorage.getItem('hp_dashboard_widgets'),
+      order: localStorage.getItem('hp_widget_order'),
+      activeTab: activeTab
+    };
+    window.isInEditModeDraft = true;
+    markEditModeDirty(false);
 
-  const editBanner = document.getElementById('edit-mode-banner');
-  if (editBanner) {
-    editBanner.style.display = isEditMode ? 'flex' : 'none';
-  }
+    mainContent.classList.add('edit-mode');
+    if (editToggleBtn) {
+      editToggleBtn.classList.add('active');
+      editToggleBtn.style.display = 'none'; // Toolbar owns Save Layout / Discard
+    }
 
-  // Update dynamic tab bar and enable/disable drag-and-drop
-  renderDashboards();
-  if (isEditMode) {
+    const editBanner = document.getElementById('edit-mode-banner');
+    if (editBanner) editBanner.style.display = 'flex';
+
+    renderDashboards();
+    buildDashboardCards(cachedEntities);
     enableDragAndDrop();
+    if (window.lucide) window.lucide.createIcons();
   } else {
-    disableDragAndDrop();
+    window.saveEditModeChanges();
   }
-
-  if (window.lucide) window.lucide.createIcons();
 }
 window.toggleEditMode = toggleEditMode;
+
+window.saveEditModeChanges = async function () {
+  window.isInEditModeDraft = false;
+  editModeSnapshot = null;
+  exitEditModeVisualState();
+
+  await syncLocalConfigToServer();
+  renderDashboards();
+  buildDashboardCards(cachedEntities);
+  if (window.lucide) window.lucide.createIcons();
+  if (typeof showToast === 'function') showToast('Dashboard layout saved.', 'success');
+};
+
+window.discardEditModeChanges = async function () {
+  if (editModeDirty && typeof showConfirm === 'function') {
+    const ok = await showConfirm('Discard all unsaved dashboard layout changes?', 'Discard Changes');
+    if (!ok) return;
+  }
+
+  window.isSyncingFromServer = true;
+  if (editModeSnapshot) {
+    if (editModeSnapshot.dashboards !== null) localStorage.setItem('hp_dashboards', editModeSnapshot.dashboards);
+    else localStorage.removeItem('hp_dashboards');
+    if (editModeSnapshot.widgets !== null) localStorage.setItem('hp_dashboard_widgets', editModeSnapshot.widgets);
+    else localStorage.removeItem('hp_dashboard_widgets');
+    if (editModeSnapshot.order !== null) localStorage.setItem('hp_widget_order', editModeSnapshot.order);
+    else localStorage.removeItem('hp_widget_order');
+    if (editModeSnapshot.activeTab) activeTab = editModeSnapshot.activeTab;
+  }
+  window.isSyncingFromServer = false;
+
+  window.isInEditModeDraft = false;
+  editModeSnapshot = null;
+  exitEditModeVisualState();
+
+  renderDashboards();
+  buildDashboardCards(cachedEntities);
+  if (window.lucide) window.lucide.createIcons();
+  if (typeof showToast === 'function') showToast('Changes discarded.', 'info');
+};
 
 // (Legacy switchTab definition removed; active switchTab is defined below renderDashboards)
 
@@ -516,8 +588,11 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
     syncLocalConfigToServer();
   }
 
-  // Normalize widgets: resolve sensor_id strings to { nodeId, entityKey } structures to support HA style entity tags
+  // Normalize widgets: ensure options object and resolve entity/entities strings into { nodeId, entityKey }
   widgets.forEach(widget => {
+    if (!widget.options || typeof widget.options !== 'object') {
+      widget.options = {};
+    }
     if (widget.entity && typeof widget.entity === 'string') {
       const ref = window.resolveSensorIdToEntityRef(widget.entity);
       if (ref) {
@@ -525,12 +600,11 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
       }
     }
     if (widget.entities && Array.isArray(widget.entities)) {
-      widget.entities = widget.entities.map(item => {
-        if (typeof item === 'string') {
-          return window.resolveSensorIdToEntityRef(item) || item;
-        }
-        return item;
-      });
+      widget.entities = widget.entities
+        .map(item => window.resolveSensorIdToEntityRef(item))
+        .filter(e => e && e.nodeId && e.entityKey);
+    } else {
+      widget.entities = [];
     }
   });
 
@@ -540,6 +614,26 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
   // Clear existing cards
   const existingCards = grid.querySelectorAll('.card:not(.card-placeholder)');
   existingCards.forEach(c => c.remove());
+
+  // Helper: Unified Edit Mode card toolbar
+  const renderCardEditBar = (widget: any, currentWidth: number) => `
+    <div class="card-edit-bar">
+      <button type="button" class="card-edit-btn edit-handle-btn" title="Drag to reorder"><i data-lucide="grip-horizontal"></i></button>
+      <button type="button" class="card-edit-btn width-btn" onclick="event.stopPropagation(); cycleWidgetWidth('${widget.id}')" title="Cycle width (${currentWidth}x -> ${currentWidth >= 3 ? 1 : currentWidth + 1}x)">${currentWidth}x</button>
+      <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')" title="Edit Card"><i data-lucide="sliders"></i></button>
+      <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'yaml')" title="Edit Card YAML"><i data-lucide="code"></i></button>
+      <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); duplicateWidget('${widget.id}')" title="Duplicate Card"><i data-lucide="copy"></i></button>
+      <button type="button" class="card-edit-btn danger" onclick="event.stopPropagation(); quickDeleteWidget('${widget.id}')" title="Remove Card"><i data-lucide="trash-2"></i></button>
+    </div>
+  `;
+
+  // Ensure activeTab exists in hp_dashboards so cards don't vanish on orphaned tab
+  try {
+    const tabs = JSON.parse(localStorage.getItem('hp_dashboards') || '[]');
+    if (tabs.length > 0 && !tabs.some((t: any) => t.id === activeTab)) {
+      activeTab = tabs[0].id;
+    }
+  } catch (e) { }
 
   // 2. Sort widgets by saved order array
   try {
@@ -615,194 +709,223 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
       return;
     }
 
-    // If widget has single primary entity target
-    if (widget.entities && widget.entities.length === 1 && (widget.type === 'sensor' || widget.type === 'control' || widget.type === 'value')) {
-      const eRef = widget.entities[0];
-      const matchedKey = Object.keys(entitiesMap).find(key => {
-        const item = entitiesMap[key];
-        return item.node_id === eRef.nodeId && item.entity_key === eRef.entityKey;
-      });
-      const item = matchedKey ? entitiesMap[matchedKey] : null;
-
-      if (item) {
-        cardEl.setAttribute('data-node-id', item.node_id);
-        cardEl.setAttribute('data-entity-key', item.entity_key);
-        cardEl.setAttribute('data-value-type', item.value_type || 'float');
-        const resolvedItemUnit = item.unit || (item.attributes && item.attributes.unit) || '';
-        cardEl.setAttribute('data-unit', widget.options.unit || resolvedItemUnit);
-
-        if (item.value === true || item.value === 'true' || item.value >= 1) {
-          cardEl.classList.add('highlighted');
-        }
-
-        const displayName = widget.title || item.name || item.entity_key;
-        const displayUnit = widget.options.unit !== undefined ? widget.options.unit : resolvedItemUnit;
-        const displayColor = widget.options.color || item.color || 'var(--color-optimal)';
-        const sensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
-
-        let headerHTML = `
-          <div class="card-header">
+    // Single-entity card types: sensor, control, value
+    if (widget.type === 'sensor' || widget.type === 'control' || widget.type === 'value') {
+      const eRef = widget.entities && widget.entities[0];
+      if (!eRef) {
+        cardEl.classList.add('unavailable');
+        cardEl.innerHTML = `
+          <div class="card-header" style="opacity: 0.75;">
             <div class="card-title-area">
-              <span class="card-title">${displayName}</span>
-              <span class="card-subtitle">${item.node_id}.local</span>
-              <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${sensorId}" onclick="navigator.clipboard?.writeText('${sensorId}'); showToast?.('Copied Entity ID')">Entity ID: ${sensorId}</span>
+              <span class="card-title">${widget.title || 'Unconfigured Card'}</span>
+              <span class="card-subtitle">${widget.type} card</span>
             </div>
-            <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
+            <span class="status-pill caution">Unbound</span>
           </div>
+          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:64px; gap:8px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+            <span>No entity bound</span>
+            <button type="button" class="btn btn-secondary" style="padding:4px 10px; font-size:0.7rem;" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')">Configure Card</button>
+          </div>
+          ${renderCardEditBar(widget, w)}
         `;
+      } else {
+        const matchedKey = Object.keys(entitiesMap).find(key => {
+          const item = entitiesMap[key];
+          return item.node_id === eRef.nodeId && item.entity_key === eRef.entityKey;
+        });
+        const item = matchedKey ? entitiesMap[matchedKey] : null;
 
-        let bodyHTML = '';
-        const initialVal = item.value !== undefined ? item.value : '';
+        if (item) {
+          cardEl.setAttribute('data-node-id', item.node_id);
+          cardEl.setAttribute('data-entity-key', item.entity_key);
+          cardEl.setAttribute('data-value-type', item.value_type || 'float');
+          const resolvedItemUnit = item.unit || (item.attributes && item.attributes.unit) || '';
+          cardEl.setAttribute('data-unit', widget.options.unit || resolvedItemUnit);
 
-        if (widget.type === 'control') {
-          if (item.value_type === 'boolean') {
-            const isChecked = (item.value === true || item.value === 'true' || item.value === 'ON');
-            bodyHTML = `
-              <div class="card-body">
-                <div class="card-value">${isChecked ? 'ON' : 'OFF'}</div>
-                <div class="control-row" style="margin-top: 14px;">
-                  <div class="status-indicator">
-                    <span class="status-dot online"></span>
-                    <span>Active</span>
-                  </div>
-                  <label class="switch">
-                    <input type="checkbox" onchange="onControlChange('${item.node_id}', '${item.entity_key}', this.checked)" ${isChecked ? 'checked' : ''}>
-                    <span class="slider"></span>
-                  </label>
-                </div>
+          if (item.value === true || item.value === 'true' || item.value >= 1) {
+            cardEl.classList.add('highlighted');
+          }
+
+          const displayName = widget.title || item.name || item.entity_key;
+          const displayUnit = widget.options.unit !== undefined ? widget.options.unit : resolvedItemUnit;
+          const displayColor = widget.options.color || item.color || 'var(--color-optimal)';
+          const sensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
+
+          let headerHTML = `
+            <div class="card-header">
+              <div class="card-title-area">
+                <span class="card-title">${displayName}</span>
+                <span class="card-subtitle">${item.node_id}.local</span>
+                <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${sensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${sensorId}'); if(typeof showToast==='function') showToast('Copied ${sensorId}', 'info')">Entity ID: ${sensorId}</span>
               </div>
-            `;
-          } else {
-            const minVal = item.range ? item.range[0] : 0;
-            const maxVal = item.range ? item.range[1] : 100;
+              <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
+            </div>
+          `;
+
+          let bodyHTML = '';
+          const initialVal = item.value !== undefined ? item.value : '';
+
+          if (widget.type === 'control') {
+            if (item.value_type === 'boolean') {
+              const isChecked = (item.value === true || item.value === 'true' || item.value === 'ON');
+              bodyHTML = `
+                <div class="card-body">
+                  <div class="card-value">${isChecked ? 'ON' : 'OFF'}</div>
+                  <div class="control-row" style="margin-top: 14px;">
+                    <div class="status-indicator">
+                      <span class="status-dot online"></span>
+                      <span>Active</span>
+                    </div>
+                    <label class="switch">
+                      <input type="checkbox" onchange="onControlChange('${item.node_id}', '${item.entity_key}', this.checked)" ${isChecked ? 'checked' : ''}>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+              `;
+            } else {
+              const minVal = item.range ? item.range[0] : 0;
+              const maxVal = item.range ? item.range[1] : 100;
+              bodyHTML = `
+                <div class="card-body">
+                  <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
+                  <div class="slider-container" style="margin-top: 10px;">
+                    <i data-lucide="${item.icon || 'sliders'}"></i>
+                    <input type="range" class="range-slider" min="${minVal}" max="${maxVal}" value="${initialVal}" 
+                      oninput="onSliderDrag('${item.node_id}', '${item.entity_key}', this.value)" 
+                      onchange="onControlChange('${item.node_id}', '${item.entity_key}', parseInt(this.value))">
+                  </div>
+                </div>
+              `;
+            }
+          } else if (widget.type === 'value') {
             bodyHTML = `
               <div class="card-body">
                 <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
-                <div class="slider-container" style="margin-top: 10px;">
-                  <i data-lucide="${item.icon || 'sliders'}"></i>
-                  <input type="range" class="range-slider" min="${minVal}" max="${maxVal}" value="${initialVal}" 
-                    oninput="onSliderDrag('${item.node_id}', '${item.entity_key}', this.value)" 
-                    onchange="onControlChange('${item.node_id}', '${item.entity_key}', parseInt(this.value))">
-                </div>
+                <div class="flat-bottom-bar blue" style="background-color: ${displayColor}"></div>
+              </div>
+            `;
+          } else { // sensor
+            const sparklineHTML = widget.options.graphic === 'sparkline' ? `
+              <div class="card-graphic-container">
+                <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
+                  <path d="" fill="none" stroke="${displayColor}" stroke-width="1.5"></path>
+                </svg>
+              </div>
+            ` : '';
+
+            bodyHTML = `
+              <div class="card-body">
+                <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
+                ${sparklineHTML}
               </div>
             `;
           }
-        } else if (widget.type === 'value') {
-          bodyHTML = `
-            <div class="card-body">
-              <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
-              <div class="flat-bottom-bar blue" style="background-color: ${displayColor}"></div>
-            </div>
-          `;
-        } else { // sensor
-          const sparklineHTML = widget.options.graphic === 'sparkline' ? `
-            <div class="card-graphic-container">
-              <svg class="sparkline" viewBox="0 0 100 40" preserveAspectRatio="none">
-                <path d="" fill="none" stroke="${displayColor}" stroke-width="1.5"></path>
-              </svg>
-            </div>
-          ` : '';
 
-          bodyHTML = `
-            <div class="card-body">
-              <div class="card-value">${initialVal}<span class="card-unit"> ${displayUnit}</span></div>
-              ${sparklineHTML}
+          cardEl.innerHTML = headerHTML + bodyHTML + renderCardEditBar(widget, w);
+        } else {
+          cardEl.classList.add('unavailable');
+          cardEl.innerHTML = `
+            <div class="card-header" style="opacity: 0.6;">
+              <div class="card-title-area">
+                <span class="card-title">${widget.title || eRef.entityKey}</span>
+                <span class="card-subtitle">${eRef.nodeId}.${eRef.entityKey}</span>
+              </div>
+              <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
             </div>
+            <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+              <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
+              <span>Entity unavailable or offline</span>
+            </div>
+            ${renderCardEditBar(widget, w)}
           `;
         }
-
-        cardEl.innerHTML = headerHTML + bodyHTML + `
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
-        `;
-      } else {
-        cardEl.classList.add('unavailable');
-        cardEl.innerHTML = `
-          <div class="card-header" style="opacity: 0.6;">
-            <div class="card-title-area">
-              <span class="card-title">${widget.title || eRef.entityKey}</span>
-              <span class="card-subtitle">${eRef.nodeId}.local</span>
-            </div>
-            <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
-          </div>
-          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
-            <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
-            <span>Entity unavailable or offline</span>
-          </div>
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
-        `;
       }
     }
 
     // TYPE A: Circular Gauge Card
     else if (widget.type === 'gauge') {
-      const eRef = widget.entities[0];
-      const matchedKey = Object.keys(entitiesMap).find(key => {
-        const item = entitiesMap[key];
-        return item.node_id === eRef.nodeId && item.entity_key === eRef.entityKey;
-      });
-      const item = matchedKey ? entitiesMap[matchedKey] : null;
-
-      if (item) {
-        cardEl.setAttribute('data-node-id', item.node_id);
-        cardEl.setAttribute('data-entity-id', item.entity_key);
-        cardEl.setAttribute('data-scale-min', widget.options.min !== undefined ? widget.options.min : '0');
-        cardEl.setAttribute('data-scale-max', widget.options.max !== undefined ? widget.options.max : '100');
-        const resolvedGaugeUnit = item.unit || (item.attributes && item.attributes.unit) || '';
-        cardEl.setAttribute('data-unit', widget.options.unit || resolvedGaugeUnit);
-        cardEl.classList.add('card-gauge');
-
-        const min = parseFloat(widget.options.min !== undefined ? widget.options.min : 0);
-        const max = parseFloat(widget.options.max !== undefined ? widget.options.max : 100);
-        const numericVal = parseFloat(item.value) || 0;
-        const pct = Math.max(0, Math.min(1, (numericVal - min) / (max - min)));
-        const offset = 110 - (pct * 110);
-        const displayColor = widget.options.color || item.color || 'var(--color-optimal)';
-        const unit = widget.options.unit || resolvedGaugeUnit;
-
-        cardEl.innerHTML = `
-          <div class="card-header">
-            <div class="card-title-area">
-              <span class="card-title">${widget.title || item.name || item.entity_key}</span>
-              <span class="card-subtitle">${item.node_id}.local • Gauge</span>
-            </div>
-            <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
-          </div>
-          <div class="card-body" style="padding: 0 16px 16px 16px;">
-            <div class="gauge-container">
-              <svg viewBox="0 0 100 60" class="gauge-svg">
-                <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="var(--bg-secondary)" stroke-width="8" stroke-linecap="round"/>
-                <path class="gauge-value-arc" d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="${displayColor}" stroke-width="8" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="${offset}"/>
-                <text x="50" y="44" text-anchor="middle" class="gauge-text" fill="var(--text-primary)" font-size="12" font-weight="700">${item.value}</text>
-                <text x="50" y="54" text-anchor="middle" class="gauge-unit" fill="var(--text-secondary)" font-size="7">${unit}</text>
-              </svg>
-            </div>
-          </div>
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
-        `;
-      } else {
+      const eRef = widget.entities && widget.entities[0];
+      if (!eRef) {
         cardEl.classList.add('unavailable');
         cardEl.innerHTML = `
-          <div class="card-header" style="opacity: 0.6;">
+          <div class="card-header" style="opacity: 0.75;">
             <div class="card-title-area">
-              <span class="card-title">${widget.title || eRef.entityKey}</span>
-              <span class="card-subtitle">${eRef.nodeId}.local • Gauge</span>
+              <span class="card-title">${widget.title || 'Unconfigured Gauge'}</span>
+              <span class="card-subtitle">gauge card</span>
             </div>
-            <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
+            <span class="status-pill caution">Unbound</span>
           </div>
-          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
-            <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
-            <span>Entity unavailable or offline</span>
+          <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:64px; gap:8px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+            <span>No entity bound</span>
+            <button type="button" class="btn btn-secondary" style="padding:4px 10px; font-size:0.7rem;" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')">Configure Card</button>
           </div>
-          <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-          <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-          <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+          ${renderCardEditBar(widget, w)}
         `;
+      } else {
+        const matchedKey = Object.keys(entitiesMap).find(key => {
+          const item = entitiesMap[key];
+          return item.node_id === eRef.nodeId && item.entity_key === eRef.entityKey;
+        });
+        const item = matchedKey ? entitiesMap[matchedKey] : null;
+
+        if (item) {
+          cardEl.setAttribute('data-node-id', item.node_id);
+          cardEl.setAttribute('data-entity-id', item.entity_key);
+          cardEl.setAttribute('data-scale-min', widget.options.min !== undefined ? widget.options.min : '0');
+          cardEl.setAttribute('data-scale-max', widget.options.max !== undefined ? widget.options.max : '100');
+          const resolvedGaugeUnit = item.unit || (item.attributes && item.attributes.unit) || '';
+          cardEl.setAttribute('data-unit', widget.options.unit || resolvedGaugeUnit);
+          cardEl.classList.add('card-gauge');
+
+          const min = parseFloat(widget.options.min !== undefined ? widget.options.min : 0);
+          const max = parseFloat(widget.options.max !== undefined ? widget.options.max : 100);
+          const span = (max - min) || 100;
+          const numericVal = parseFloat(item.value) || 0;
+          const pct = Math.max(0, Math.min(1, (numericVal - min) / span));
+          const offset = 110 - (pct * 110);
+          const displayColor = widget.options.color || item.color || 'var(--color-optimal)';
+          const unit = widget.options.unit !== undefined ? widget.options.unit : resolvedGaugeUnit;
+          const gaugeSensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
+
+          cardEl.innerHTML = `
+            <div class="card-header">
+              <div class="card-title-area">
+                <span class="card-title">${widget.title || item.name || item.entity_key}</span>
+                <span class="card-subtitle">${item.node_id}.local • Gauge</span>
+                <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${gaugeSensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${gaugeSensorId}'); if(typeof showToast==='function') showToast('Copied ${gaugeSensorId}', 'info')">Entity ID: ${gaugeSensorId}</span>
+              </div>
+              <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
+            </div>
+            <div class="card-body" style="padding: 0 16px 16px 16px;">
+              <div class="gauge-container">
+                <svg viewBox="0 0 100 60" class="gauge-svg">
+                  <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="var(--bg-secondary)" stroke-width="8" stroke-linecap="round"/>
+                  <path class="gauge-value-arc" d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="${displayColor}" stroke-width="8" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="${offset}"/>
+                  <text x="50" y="44" text-anchor="middle" class="gauge-text" fill="var(--text-primary)" font-size="12" font-weight="700">${item.value}</text>
+                  <text x="50" y="54" text-anchor="middle" class="gauge-unit" fill="var(--text-secondary)" font-size="7">${unit}</text>
+                </svg>
+              </div>
+            </div>
+            ${renderCardEditBar(widget, w)}
+          `;
+        } else {
+          cardEl.classList.add('unavailable');
+          cardEl.innerHTML = `
+            <div class="card-header" style="opacity: 0.6;">
+              <div class="card-title-area">
+                <span class="card-title">${widget.title || eRef.entityKey}</span>
+                <span class="card-subtitle">${eRef.nodeId}.${eRef.entityKey} • Gauge</span>
+              </div>
+              <span class="status-pill default" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.2);">Offline</span>
+            </div>
+            <div class="card-body" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:60px; color:var(--text-secondary); font-size:0.75rem; text-align:center;">
+              <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
+              <span>Entity unavailable or offline</span>
+            </div>
+            ${renderCardEditBar(widget, w)}
+          `;
+        }
       }
     }
     // TYPE A.1: Title / Section Header Card
@@ -816,9 +939,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
         <div style="display: flex; align-items: center; width: 100%; height: 100%;">
           <span style="font-size: 1.05rem; font-weight: 700; color: ${titleColor};">${widget.title || 'Section Title'}</span>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     }
 
@@ -874,12 +995,10 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
         </div>
         <div class="card-body">
           <div class="entities-list">
-            ${rowsHTML || '<div style="color:var(--text-secondary); text-align:center; padding:10px; font-size:0.8rem;">No entities selected</div>'}
+            ${rowsHTML || '<div style="color:var(--text-secondary); text-align:center; padding:10px; font-size:0.8rem;">No entities bound — click Edit in Edit Mode to pick entities</div>'}
           </div>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     }
 
@@ -916,9 +1035,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
             ${itemsHTML || '<div style="color:var(--text-secondary); grid-column:1/-1; text-align:center; font-size:0.8rem;">No items</div>'}
           </div>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     }
 
@@ -970,9 +1087,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
             ${snapshotNoticeText}
           </div>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     }
 
@@ -1009,11 +1124,16 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
             <!-- Dynamically populated -->
           </div>
         </div>
-        <div class="edit-handle"><i data-lucide="grip-horizontal"></i></div>
-        <div class="edit-settings" onclick="openCardEditor('${widget.id}', 'ui')"><i data-lucide="sliders"></i></div>
-        <div class="edit-code" onclick="openCardEditor('${widget.id}', 'yaml')"><i data-lucide="code"></i></div>
+        ${renderCardEditBar(widget, w)}
       `;
     }
+
+    // Bind double-click edit on all cards in edit mode
+    cardEl.ondblclick = () => {
+      if (document.getElementById('main-content')?.classList.contains('edit-mode')) {
+        openCardEditor(widget.id, 'ui');
+      }
+    };
 
     // Insert card inside the grid
     if (placeholder) {
@@ -1032,12 +1152,13 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
     btn.classList.toggle('active', btn.getAttribute('data-tab') === activeTab);
   });
 
-  // Re-sync historical elements (sparklines)
+  // Re-sync historical elements (sparklines) using actual card-${widget.id} element
   widgets.forEach(widget => {
     if (widget.tab !== activeTab || widget.type !== 'sensor') return;
+    if (!widget.entities || !widget.entities[0]) return;
     const eRef = widget.entities[0];
     const key = `${eRef.nodeId}-${eRef.entityKey}`;
-    const cardEl = document.getElementById(`card-${key}`);
+    const cardEl = document.getElementById(`card-${widget.id}`);
     if (cardEl && telemetryHistory[key] && telemetryHistory[key].length > 0) {
       const path = cardEl.querySelector('.sparkline path');
       if (path) {
@@ -1052,7 +1173,8 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
 
 // 6. Action handlers triggered from Card DOM elements
 function onSliderDrag(nodeId, entityId, val) {
-  const card = document.getElementById(`card-${nodeId}-${entityId}`);
+  const card = document.querySelector(`.card[data-node-id="${nodeId}"][data-entity-key="${entityId}"]`) ||
+    document.getElementById(`card-${nodeId}-${entityId}`);
   if (card) {
     const valueDisp = card.querySelector('.card-value');
     const unit = card.getAttribute('data-unit') || '';
@@ -1702,7 +1824,15 @@ async function syncDashboardConfigFromServer() {
         localStorage.setItem('hp_widget_order', JSON.stringify(data.order));
       }
       if (data.tabs && data.tabs.length > 0) {
-        localStorage.setItem('hp_dashboards', JSON.stringify(data.tabs));
+        const normalizedTabs = data.tabs.map((t: any, idx: number) => ({
+          id: String(t.id || t.path || `view_${idx + 1}`),
+          name: String(t.name || t.title || t.id || `View ${idx + 1}`),
+          icon: t.icon || 'layout-dashboard'
+        }));
+        localStorage.setItem('hp_dashboards', JSON.stringify(normalizedTabs));
+        if (!normalizedTabs.some((t: any) => t.id === activeTab)) {
+          activeTab = normalizedTabs[0].id;
+        }
         hasData = true;
       }
       window.isSyncingFromServer = false;
@@ -1716,7 +1846,7 @@ async function syncDashboardConfigFromServer() {
 
         // Initialize default tabs; widgets will be initialized once entities load
         localStorage.setItem('hp_dashboards', JSON.stringify([
-          { id: "main", name: "Main" }
+          { id: "main", name: "Main", icon: "layout-dashboard" }
         ]));
       }
     }
@@ -1727,11 +1857,25 @@ async function syncDashboardConfigFromServer() {
 }
 
 function applyGlobalDashboardConfig(widgets, order, tabs) {
+  if (window.isInEditModeDraft) {
+    console.log("Skipping server dashboard broadcast while Edit Mode draft is active.");
+    return;
+  }
   console.log("Applying live dynamically-received global dashboard configurations.");
   window.isSyncingFromServer = true;
   if (widgets) localStorage.setItem('hp_dashboard_widgets', JSON.stringify(widgets));
   if (order) localStorage.setItem('hp_widget_order', JSON.stringify(order));
-  if (tabs) localStorage.setItem('hp_dashboards', JSON.stringify(tabs));
+  if (tabs) {
+    const normalizedTabs = tabs.map((t: any, idx: number) => ({
+      id: String(t.id || t.path || `view_${idx + 1}`),
+      name: String(t.name || t.title || t.id || `View ${idx + 1}`),
+      icon: t.icon || 'layout-dashboard'
+    }));
+    localStorage.setItem('hp_dashboards', JSON.stringify(normalizedTabs));
+    if (normalizedTabs.length > 0 && !normalizedTabs.some((t: any) => t.id === activeTab)) {
+      activeTab = normalizedTabs[0].id;
+    }
+  }
   window.isSyncingFromServer = false;
 
   renderDashboards();
@@ -1740,14 +1884,18 @@ function applyGlobalDashboardConfig(widgets, order, tabs) {
   }
 }
 
-// Global Proxy to auto-sync local storage updates to the database
+// Global Proxy to auto-sync local storage updates to the database (paused during Edit Mode draft)
 (function () {
   const originalSetItem = localStorage.setItem;
   localStorage.setItem = function (key, value) {
     originalSetItem.apply(this, arguments);
     if (key === 'hp_dashboard_widgets' || key === 'hp_widget_order' || key === 'hp_dashboards') {
       if (!window.isSyncingFromServer) {
-        syncLocalConfigToServer();
+        if (window.isInEditModeDraft) {
+          markEditModeDirty(true);
+        } else {
+          syncLocalConfigToServer();
+        }
       }
     }
   };
