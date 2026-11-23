@@ -559,6 +559,33 @@ function setupFallbackMocks() {
   buildDashboardCards(mockEntities);
 }
 
+const GAUGE_ARC_LENGTH = 291.82;
+window.GAUGE_ARC_LENGTH = GAUGE_ARC_LENGTH;
+
+window.renderGaugeSVG = function (rawValue: any, unit: string, min: number, max: number, color: string) {
+  const safeMin = isNaN(Number(min)) ? 0 : Number(min);
+  const safeMax = isNaN(Number(max)) ? 100 : Number(max);
+  const span = (safeMax - safeMin) || 100;
+  const numericVal = parseFloat(rawValue);
+  const isNum = !isNaN(numericVal) && isFinite(numericVal);
+  const pct = isNum ? Math.max(0, Math.min(1, (numericVal - safeMin) / span)) : 0;
+  const offset = (GAUGE_ARC_LENGTH * (1 - pct)).toFixed(2);
+  const displayVal = (rawValue !== undefined && rawValue !== null && rawValue !== '') ? rawValue : '--';
+  const strokeColor = color || 'var(--color-optimal)';
+
+  return `
+    <svg viewBox="0 0 220 148" class="gauge-svg">
+      <path d="M 30.13 131.07 A 85 85 0 1 1 189.87 131.07" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-dasharray="1.5 10.6" stroke-linecap="round"/>
+      <path d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="12" stroke-linecap="round"/>
+      <path class="gauge-value-arc" d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="${strokeColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${GAUGE_ARC_LENGTH}" stroke-dashoffset="${offset}" style="filter: drop-shadow(0 0 5px ${strokeColor});"/>
+      <text x="110" y="96" text-anchor="middle" class="gauge-text" font-size="28" font-weight="800">${displayVal}</text>
+      <text x="110" y="116" text-anchor="middle" class="gauge-unit" font-size="11" font-weight="600">${unit || ''}</text>
+      <text x="38" y="143" text-anchor="middle" class="gauge-bound">${safeMin}</text>
+      <text x="182" y="143" text-anchor="middle" class="gauge-bound">${safeMax}</text>
+    </svg>
+  `;
+};
+
 // 5. Build dynamic Cards DOM
 function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
   cachedEntities = entitiesMap;
@@ -616,16 +643,19 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
   existingCards.forEach(c => c.remove());
 
   // Helper: Unified Edit Mode card toolbar
-  const renderCardEditBar = (widget: any, currentWidth: number) => `
+  const renderCardEditBar = (widget: any, currentWidth: number) => {
+    const nextWidth = currentWidth === 0.5 ? 1 : (currentWidth === 1 ? 2 : (currentWidth === 2 ? 3 : 0.5));
+    return `
     <div class="card-edit-bar">
       <button type="button" class="card-edit-btn edit-handle-btn" title="Drag to reorder"><i data-lucide="grip-horizontal"></i></button>
-      <button type="button" class="card-edit-btn width-btn" onclick="event.stopPropagation(); cycleWidgetWidth('${widget.id}')" title="Cycle width (${currentWidth}x -> ${currentWidth >= 3 ? 1 : currentWidth + 1}x)">${currentWidth}x</button>
+      <button type="button" class="card-edit-btn width-btn" onclick="event.stopPropagation(); cycleWidgetWidth('${widget.id}')" title="Cycle width (${currentWidth}x -> ${nextWidth}x)">${currentWidth}x</button>
       <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')" title="Edit Card"><i data-lucide="sliders"></i></button>
       <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'yaml')" title="Edit Card YAML"><i data-lucide="code"></i></button>
       <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); duplicateWidget('${widget.id}')" title="Duplicate Card"><i data-lucide="copy"></i></button>
       <button type="button" class="card-edit-btn danger" onclick="event.stopPropagation(); quickDeleteWidget('${widget.id}')" title="Remove Card"><i data-lucide="trash-2"></i></button>
     </div>
   `;
+  };
 
   // Ensure activeTab exists in hp_dashboards so cards don't vanish on orphaned tab
   try {
@@ -660,10 +690,11 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
     cardEl.className = 'card';
     cardEl.id = `card-${widget.id}`;
 
-    // Apply sizing options classes
-    const w = widget.options.gridWidth || 1;
-    const h = widget.options.gridHeight || 1;
-    if (w > 1) cardEl.classList.add(`grid-w-${w}`);
+    // Apply sizing options classes (supports 0.5x half-width subcolumn and 1x/2x/3x spans)
+    const w = parseFloat(widget.options.gridWidth) || 1;
+    const h = parseInt(widget.options.gridHeight, 10) || 1;
+    if (w === 0.5) cardEl.classList.add('grid-w-05');
+    else if (w > 1) cardEl.classList.add(`grid-w-${w}`);
     if (h > 1) cardEl.classList.add(`grid-h-${h}`);
 
     if (widget.type === 'error') {
@@ -843,10 +874,10 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
       }
     }
 
-    // TYPE A: Circular Gauge Card
+    // TYPE A: Radial Gauge Card (supports single gauge or multi-gauge grid)
     else if (widget.type === 'gauge') {
-      const eRef = widget.entities && widget.entities[0];
-      if (!eRef) {
+      const boundEntities = widget.entities || [];
+      if (boundEntities.length === 0) {
         cardEl.classList.add('unavailable');
         cardEl.innerHTML = `
           <div class="card-header" style="opacity: 0.75;">
@@ -862,39 +893,62 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
           </div>
           ${renderCardEditBar(widget, w)}
         `;
+      } else if (boundEntities.length > 1) {
+        cardEl.classList.add('card-gauge-multi');
+        const min = parseFloat(widget.options.min !== undefined ? widget.options.min : 0);
+        const max = parseFloat(widget.options.max !== undefined ? widget.options.max : 100);
+
+        const tilesHtml = boundEntities.map(eRef => {
+          const item = Object.values(entitiesMap).find(e => e.node_id === eRef.nodeId && e.entity_key === eRef.entityKey) || null;
+          const canonId = `${eRef.nodeId}.${eRef.entityKey}`;
+          if (!item) {
+            return `
+              <div class="gauge-multi-tile unavailable">
+                <span class="gauge-tile-label" title="Offline: ${canonId}">${eRef.entityKey}</span>
+                <div style="padding:18px 0; font-size:0.72rem; color:#ef4444;">Offline</div>
+              </div>
+            `;
+          }
+          const resolvedUnit = item.unit || (item.attributes && item.attributes.unit) || '';
+          const tileUnit = widget.options.unit !== undefined && widget.options.unit !== '' ? widget.options.unit : resolvedUnit;
+          const tileColor = widget.options.color || item.color || 'var(--color-optimal)';
+          const sensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
+
+          return `
+            <div class="gauge-multi-tile card-gauge"
+                 data-node-id="${item.node_id}"
+                 data-entity-key="${item.entity_key}"
+                 data-entity-id="${item.entity_key}"
+                 data-scale-min="${min}"
+                 data-scale-max="${max}"
+                 data-unit="${tileUnit}">
+              <span class="gauge-tile-label" title="Click to copy: ${sensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${sensorId}'); if(typeof showToast==='function') showToast('Copied ${sensorId}', 'info')">${item.name || item.entity_key}</span>
+              ${window.renderGaugeSVG(item.value, tileUnit, min, max, tileColor)}
+            </div>
+          `;
+        }).join('');
+
+        cardEl.innerHTML = `
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">${widget.title || 'Gauges Overview'}</span>
+              <span class="card-subtitle">${boundEntities.length} gauges • live telemetry</span>
+            </div>
+          </div>
+          <div class="card-body gauge-card-body">
+            <div class="gauge-multi-grid">
+              ${tilesHtml}
+            </div>
+          </div>
+          ${renderCardEditBar(widget, w)}
+        `;
       } else {
+        const eRef = boundEntities[0];
         const matchedKey = Object.keys(entitiesMap).find(key => {
           const item = entitiesMap[key];
           return item.node_id === eRef.nodeId && item.entity_key === eRef.entityKey;
         });
         const item = matchedKey ? entitiesMap[matchedKey] : null;
-
-const GAUGE_ARC_LENGTH = 291.82;
-window.GAUGE_ARC_LENGTH = GAUGE_ARC_LENGTH;
-
-window.renderGaugeSVG = function (rawValue: any, unit: string, min: number, max: number, color: string) {
-  const safeMin = isNaN(Number(min)) ? 0 : Number(min);
-  const safeMax = isNaN(Number(max)) ? 100 : Number(max);
-  const span = (safeMax - safeMin) || 100;
-  const numericVal = parseFloat(rawValue);
-  const isNum = !isNaN(numericVal) && isFinite(numericVal);
-  const pct = isNum ? Math.max(0, Math.min(1, (numericVal - safeMin) / span)) : 0;
-  const offset = (GAUGE_ARC_LENGTH * (1 - pct)).toFixed(2);
-  const displayVal = (rawValue !== undefined && rawValue !== null && rawValue !== '') ? rawValue : '--';
-  const strokeColor = color || 'var(--color-optimal)';
-
-  return `
-    <svg viewBox="0 0 220 148" class="gauge-svg">
-      <path d="M 30.13 131.07 A 85 85 0 1 1 189.87 131.07" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-dasharray="1.5 10.6" stroke-linecap="round"/>
-      <path d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="12" stroke-linecap="round"/>
-      <path class="gauge-value-arc" d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="${strokeColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${GAUGE_ARC_LENGTH}" stroke-dashoffset="${offset}" style="filter: drop-shadow(0 0 5px ${strokeColor});"/>
-      <text x="110" y="96" text-anchor="middle" class="gauge-text" font-size="28" font-weight="800">${displayVal}</text>
-      <text x="110" y="116" text-anchor="middle" class="gauge-unit" font-size="11" font-weight="600">${unit || ''}</text>
-      <text x="38" y="143" text-anchor="middle" class="gauge-bound">${safeMin}</text>
-      <text x="182" y="143" text-anchor="middle" class="gauge-bound">${safeMax}</text>
-    </svg>
-  `;
-};
 
         if (item) {
           cardEl.setAttribute('data-node-id', item.node_id);

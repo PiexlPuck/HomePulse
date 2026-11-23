@@ -474,6 +474,30 @@ function setupFallbackMocks() {
   };
   buildDashboardCards(mockEntities);
 }
+const GAUGE_ARC_LENGTH = 291.82;
+window.GAUGE_ARC_LENGTH = GAUGE_ARC_LENGTH;
+window.renderGaugeSVG = function(rawValue, unit, min, max, color) {
+  const safeMin = isNaN(Number(min)) ? 0 : Number(min);
+  const safeMax = isNaN(Number(max)) ? 100 : Number(max);
+  const span = safeMax - safeMin || 100;
+  const numericVal = parseFloat(rawValue);
+  const isNum = !isNaN(numericVal) && isFinite(numericVal);
+  const pct = isNum ? Math.max(0, Math.min(1, (numericVal - safeMin) / span)) : 0;
+  const offset = (GAUGE_ARC_LENGTH * (1 - pct)).toFixed(2);
+  const displayVal = rawValue !== void 0 && rawValue !== null && rawValue !== "" ? rawValue : "--";
+  const strokeColor = color || "var(--color-optimal)";
+  return `
+    <svg viewBox="0 0 220 148" class="gauge-svg">
+      <path d="M 30.13 131.07 A 85 85 0 1 1 189.87 131.07" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-dasharray="1.5 10.6" stroke-linecap="round"/>
+      <path d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="12" stroke-linecap="round"/>
+      <path class="gauge-value-arc" d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="${strokeColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${GAUGE_ARC_LENGTH}" stroke-dashoffset="${offset}" style="filter: drop-shadow(0 0 5px ${strokeColor});"/>
+      <text x="110" y="96" text-anchor="middle" class="gauge-text" font-size="28" font-weight="800">${displayVal}</text>
+      <text x="110" y="116" text-anchor="middle" class="gauge-unit" font-size="11" font-weight="600">${unit || ""}</text>
+      <text x="38" y="143" text-anchor="middle" class="gauge-bound">${safeMin}</text>
+      <text x="182" y="143" text-anchor="middle" class="gauge-bound">${safeMax}</text>
+    </svg>
+  `;
+};
 function buildDashboardCards(entitiesMap) {
   cachedEntities = entitiesMap;
   const grid = document.getElementById("dashboard-grid");
@@ -517,16 +541,19 @@ function buildDashboardCards(entitiesMap) {
   const placeholder = grid.querySelector(".card-placeholder");
   const existingCards = grid.querySelectorAll(".card:not(.card-placeholder)");
   existingCards.forEach((c) => c.remove());
-  const renderCardEditBar = (widget, currentWidth) => `
+  const renderCardEditBar = (widget, currentWidth) => {
+    const nextWidth = currentWidth === 0.5 ? 1 : currentWidth === 1 ? 2 : currentWidth === 2 ? 3 : 0.5;
+    return `
     <div class="card-edit-bar">
       <button type="button" class="card-edit-btn edit-handle-btn" title="Drag to reorder"><i data-lucide="grip-horizontal"></i></button>
-      <button type="button" class="card-edit-btn width-btn" onclick="event.stopPropagation(); cycleWidgetWidth('${widget.id}')" title="Cycle width (${currentWidth}x -> ${currentWidth >= 3 ? 1 : currentWidth + 1}x)">${currentWidth}x</button>
+      <button type="button" class="card-edit-btn width-btn" onclick="event.stopPropagation(); cycleWidgetWidth('${widget.id}')" title="Cycle width (${currentWidth}x -> ${nextWidth}x)">${currentWidth}x</button>
       <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')" title="Edit Card"><i data-lucide="sliders"></i></button>
       <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'yaml')" title="Edit Card YAML"><i data-lucide="code"></i></button>
       <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); duplicateWidget('${widget.id}')" title="Duplicate Card"><i data-lucide="copy"></i></button>
       <button type="button" class="card-edit-btn danger" onclick="event.stopPropagation(); quickDeleteWidget('${widget.id}')" title="Remove Card"><i data-lucide="trash-2"></i></button>
     </div>
   `;
+  };
   try {
     const tabs = JSON.parse(localStorage.getItem("hp_dashboards") || "[]");
     if (tabs.length > 0 && !tabs.some((t) => t.id === activeTab)) {
@@ -553,9 +580,10 @@ function buildDashboardCards(entitiesMap) {
     const cardEl = document.createElement("div");
     cardEl.className = "card";
     cardEl.id = `card-${widget.id}`;
-    const w = widget.options.gridWidth || 1;
-    const h = widget.options.gridHeight || 1;
-    if (w > 1) cardEl.classList.add(`grid-w-${w}`);
+    const w = parseFloat(widget.options.gridWidth) || 1;
+    const h = parseInt(widget.options.gridHeight, 10) || 1;
+    if (w === 0.5) cardEl.classList.add("grid-w-05");
+    else if (w > 1) cardEl.classList.add(`grid-w-${w}`);
     if (h > 1) cardEl.classList.add(`grid-h-${h}`);
     if (widget.type === "error") {
       cardEl.style.background = "#f59e0b";
@@ -720,8 +748,8 @@ function buildDashboardCards(entitiesMap) {
         }
       }
     } else if (widget.type === "gauge") {
-      const eRef = widget.entities && widget.entities[0];
-      if (!eRef) {
+      const boundEntities = widget.entities || [];
+      if (boundEntities.length === 0) {
         cardEl.classList.add("unavailable");
         cardEl.innerHTML = `
           <div class="card-header" style="opacity: 0.75;">
@@ -737,36 +765,59 @@ function buildDashboardCards(entitiesMap) {
           </div>
           ${renderCardEditBar(widget, w)}
         `;
+      } else if (boundEntities.length > 1) {
+        cardEl.classList.add("card-gauge-multi");
+        const min = parseFloat(widget.options.min !== void 0 ? widget.options.min : 0);
+        const max = parseFloat(widget.options.max !== void 0 ? widget.options.max : 100);
+        const tilesHtml = boundEntities.map((eRef) => {
+          const item = Object.values(entitiesMap).find((e) => e.node_id === eRef.nodeId && e.entity_key === eRef.entityKey) || null;
+          const canonId = `${eRef.nodeId}.${eRef.entityKey}`;
+          if (!item) {
+            return `
+              <div class="gauge-multi-tile unavailable">
+                <span class="gauge-tile-label" title="Offline: ${canonId}">${eRef.entityKey}</span>
+                <div style="padding:18px 0; font-size:0.72rem; color:#ef4444;">Offline</div>
+              </div>
+            `;
+          }
+          const resolvedUnit = item.unit || item.attributes && item.attributes.unit || "";
+          const tileUnit = widget.options.unit !== void 0 && widget.options.unit !== "" ? widget.options.unit : resolvedUnit;
+          const tileColor = widget.options.color || item.color || "var(--color-optimal)";
+          const sensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
+          return `
+            <div class="gauge-multi-tile card-gauge"
+                 data-node-id="${item.node_id}"
+                 data-entity-key="${item.entity_key}"
+                 data-entity-id="${item.entity_key}"
+                 data-scale-min="${min}"
+                 data-scale-max="${max}"
+                 data-unit="${tileUnit}">
+              <span class="gauge-tile-label" title="Click to copy: ${sensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${sensorId}'); if(typeof showToast==='function') showToast('Copied ${sensorId}', 'info')">${item.name || item.entity_key}</span>
+              ${window.renderGaugeSVG(item.value, tileUnit, min, max, tileColor)}
+            </div>
+          `;
+        }).join("");
+        cardEl.innerHTML = `
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title">${widget.title || "Gauges Overview"}</span>
+              <span class="card-subtitle">${boundEntities.length} gauges \u2022 live telemetry</span>
+            </div>
+          </div>
+          <div class="card-body gauge-card-body">
+            <div class="gauge-multi-grid">
+              ${tilesHtml}
+            </div>
+          </div>
+          ${renderCardEditBar(widget, w)}
+        `;
       } else {
+        const eRef = boundEntities[0];
         const matchedKey = Object.keys(entitiesMap).find((key) => {
           const item2 = entitiesMap[key];
           return item2.node_id === eRef.nodeId && item2.entity_key === eRef.entityKey;
         });
         const item = matchedKey ? entitiesMap[matchedKey] : null;
-        const GAUGE_ARC_LENGTH2 = 291.82;
-        window.GAUGE_ARC_LENGTH = GAUGE_ARC_LENGTH2;
-        window.renderGaugeSVG = function(rawValue, unit, min, max, color) {
-          const safeMin = isNaN(Number(min)) ? 0 : Number(min);
-          const safeMax = isNaN(Number(max)) ? 100 : Number(max);
-          const span = safeMax - safeMin || 100;
-          const numericVal = parseFloat(rawValue);
-          const isNum = !isNaN(numericVal) && isFinite(numericVal);
-          const pct = isNum ? Math.max(0, Math.min(1, (numericVal - safeMin) / span)) : 0;
-          const offset = (GAUGE_ARC_LENGTH2 * (1 - pct)).toFixed(2);
-          const displayVal = rawValue !== void 0 && rawValue !== null && rawValue !== "" ? rawValue : "--";
-          const strokeColor = color || "var(--color-optimal)";
-          return `
-    <svg viewBox="0 0 220 148" class="gauge-svg">
-      <path d="M 30.13 131.07 A 85 85 0 1 1 189.87 131.07" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-dasharray="1.5 10.6" stroke-linecap="round"/>
-      <path d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="12" stroke-linecap="round"/>
-      <path class="gauge-value-arc" d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="${strokeColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${GAUGE_ARC_LENGTH2}" stroke-dashoffset="${offset}" style="filter: drop-shadow(0 0 5px ${strokeColor});"/>
-      <text x="110" y="96" text-anchor="middle" class="gauge-text" font-size="28" font-weight="800">${displayVal}</text>
-      <text x="110" y="116" text-anchor="middle" class="gauge-unit" font-size="11" font-weight="600">${unit || ""}</text>
-      <text x="38" y="143" text-anchor="middle" class="gauge-bound">${safeMin}</text>
-      <text x="182" y="143" text-anchor="middle" class="gauge-bound">${safeMax}</text>
-    </svg>
-  `;
-        };
         if (item) {
           cardEl.setAttribute("data-node-id", item.node_id);
           cardEl.setAttribute("data-entity-key", item.entity_key);
@@ -2891,10 +2942,22 @@ window.closeModal = function(modalId) {
 };
 let currentEditingEntities = [];
 function isMultiEntityCardType(type) {
-  return type === "entities" || type === "glance";
+  return type === "entities" || type === "glance" || type === "gauge";
 }
 function isEntitylessCardType(type) {
   return type === "title" || type === "health" || type === "audit";
+}
+function matchesEntitySearch(item, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  const qHyphen = q.replace(/_/g, "-");
+  const nodeId = String(item.node_id || "").toLowerCase();
+  const entityKey = String(item.entity_key || "").toLowerCase();
+  const canon = `${nodeId}.${entityKey}`;
+  const canonUnderscore = canon.replace(/-/g, "_");
+  const name = String(item.name || "").toLowerCase();
+  const nameHyphen = name.replace(/_/g, "-");
+  return name.includes(q) || nameHyphen.includes(qHyphen) || canon.includes(q) || canon.includes(qHyphen) || canonUnderscore.includes(q) || entityKey.includes(q) || entityKey.includes(qHyphen) || nodeId.includes(q) || nodeId.includes(qHyphen);
 }
 function getEditSelectedCardType() {
   const sel = document.getElementById("edit-widget-type");
@@ -2903,6 +2966,7 @@ function getEditSelectedCardType() {
 function renderEditEntityList(filterText = "") {
   const listEl = document.getElementById("edit-entity-list");
   const section = document.getElementById("edit-entity-picker-section");
+  const labelEl = document.getElementById("edit-entity-picker-label");
   const hint = document.getElementById("edit-entity-picker-hint");
   if (!listEl || !section) return;
   const type = getEditSelectedCardType();
@@ -2913,19 +2977,16 @@ function renderEditEntityList(filterText = "") {
   }
   section.style.display = "flex";
   const multi = isMultiEntityCardType(type);
-  if (hint) {
-    hint.textContent = multi ? `${currentEditingEntities.length} selected (multi)` : currentEditingEntities.length > 0 ? "1 selected" : "Select 1 entity";
+  if (labelEl) {
+    labelEl.textContent = multi ? "Target Entities" : "Target Entity";
   }
-  const q = String(filterText || "").trim().toLowerCase();
+  if (hint) {
+    hint.textContent = multi ? `${currentEditingEntities.length} selected (multi-entity)` : currentEditingEntities.length > 0 ? "1 selected" : "Select 1 entity";
+  }
   const entities = Object.values(cachedEntities || {}).sort(
     (a, b) => String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
   );
-  const filtered = entities.filter((item) => {
-    if (!q) return true;
-    const canon = `${item.node_id}.${item.entity_key}`.toLowerCase();
-    const name = String(item.name || "").toLowerCase();
-    return canon.includes(q) || name.includes(q);
-  });
+  const filtered = entities.filter((item) => matchesEntitySearch(item, filterText));
   if (filtered.length === 0) {
     listEl.innerHTML = `<div style="padding:10px; text-align:center; font-size:0.75rem; color:var(--text-secondary);">No matching live entities</div>`;
     return;
@@ -2987,16 +3048,10 @@ window.onEditTypeChange = function(newType, preserveEntities = false) {
 function renderCardYamlEntityChips(filterText = "") {
   const container = document.getElementById("card-yaml-entity-chips");
   if (!container) return;
-  const q = String(filterText || "").trim().toLowerCase();
   const entities = Object.values(cachedEntities || {}).sort(
     (a, b) => String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
   );
-  const filtered = entities.filter((item) => {
-    if (!q) return true;
-    const canon = `${item.node_id}.${item.entity_key}`.toLowerCase();
-    const name = String(item.name || "").toLowerCase();
-    return canon.includes(q) || name.includes(q);
-  }).slice(0, 24);
+  const filtered = entities.filter((item) => matchesEntitySearch(item, filterText)).slice(0, 24);
   container.innerHTML = filtered.map((item) => {
     const canon = `${item.node_id}.${item.entity_key}`;
     return `<button type="button" class="yaml-entity-chip" title="${item.name || canon} \u2014 click to insert" onclick="insertCardEntityIntoYaml('${canon}')">${canon}</button>`;
@@ -3116,7 +3171,7 @@ function saveWidgetSettings() {
     if (parsedWidget.color !== void 0) opts.color = parsedWidget.color;
     if (parsedWidget.min !== void 0) opts.min = parseFloat(parsedWidget.min);
     if (parsedWidget.max !== void 0) opts.max = parseFloat(parsedWidget.max);
-    if (parsedWidget.gridWidth !== void 0) opts.gridWidth = parseInt(parsedWidget.gridWidth, 10);
+    if (parsedWidget.gridWidth !== void 0) opts.gridWidth = parseFloat(parsedWidget.gridWidth);
     if (parsedWidget.gridHeight !== void 0) opts.gridHeight = parseInt(parsedWidget.gridHeight, 10);
     parsedWidget = {
       id,
@@ -3217,7 +3272,7 @@ function syncFormFieldsToYAML() {
   const optionsObj = {
     ...widget.options || {},
     color: document.getElementById("edit-widget-color").value,
-    gridWidth: parseInt(document.getElementById("edit-widget-width").value, 10) || 1,
+    gridWidth: parseFloat(document.getElementById("edit-widget-width").value) || 1,
     gridHeight: parseInt(document.getElementById("edit-widget-height").value, 10) || 1
   };
   const unitVal = document.getElementById("edit-widget-unit").value;
@@ -3238,7 +3293,7 @@ function syncFormFieldsToYAML() {
     tab: document.getElementById("edit-widget-tab").value || activeTab || "main"
   };
   if (!isEntitylessCardType(chosenType)) {
-    if (currentEditingEntities.length === 1 && !isMultiEntityCardType(chosenType)) {
+    if (currentEditingEntities.length === 1 && chosenType !== "entities" && chosenType !== "glance") {
       draftWidget.entity = `${currentEditingEntities[0].nodeId}.${currentEditingEntities[0].entityKey}`;
     } else if (currentEditingEntities.length > 0) {
       draftWidget.entities = currentEditingEntities.map((e) => `${e.nodeId}.${e.entityKey}`);
@@ -3403,6 +3458,35 @@ function renderRealPreviewCard(widget) {
   if (type === "gauge") {
     const min = parseFloat(opts.min !== void 0 ? opts.min : 0);
     const max = parseFloat(opts.max !== void 0 ? opts.max : 100);
+    if (ents.length > 1) {
+      const tilesHtml = ents.map((r) => {
+        const item = findLiveEntity(r);
+        const tileVal = item ? item.value : "--";
+        const tileUnit = opts.unit !== void 0 && opts.unit !== "" ? opts.unit : item?.unit || "";
+        const tileSvg = typeof window.renderGaugeSVG === "function" ? window.renderGaugeSVG(tileVal, tileUnit, min, max, color) : "";
+        return `
+          <div class="gauge-multi-tile">
+            <span class="gauge-tile-label">${item ? item.name || item.entity_key : `${r.nodeId}.${r.entityKey}`}</span>
+            ${tileSvg}
+          </div>
+        `;
+      }).join("");
+      return `
+        <div class="card card-gauge card-gauge-multi grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:175px; margin:0; width:100%;">
+          <div class="card-header">
+            <div class="card-title-area">
+              <span class="card-title" style="font-size:0.9rem;">${widget.title || "Gauges Overview"}</span>
+              <span class="card-subtitle">${ents.length} gauges \u2022 live telemetry</span>
+            </div>
+          </div>
+          <div class="gauge-card-body">
+            <div class="gauge-multi-grid">
+              ${tilesHtml}
+            </div>
+          </div>
+        </div>
+      `;
+    }
     const dispVal2 = primaryItem ? primaryItem.value : 50;
     const svgHtml = typeof window.renderGaugeSVG === "function" ? window.renderGaugeSVG(dispVal2, resolvedUnit, min, max, color) : "";
     return `
@@ -3481,11 +3565,13 @@ function updateCreatorVisualPreview() {
   const title = document.getElementById("catalog-widget-title")?.value || type.charAt(0).toUpperCase() + type.slice(1) + " Card";
   const unit = document.getElementById("catalog-widget-unit")?.value || "";
   const color = document.getElementById("catalog-widget-color")?.value || "var(--color-optimal)";
+  const min = parseFloat(document.getElementById("creator-scale-min")?.value || "0");
+  const max = parseFloat(document.getElementById("creator-scale-max")?.value || "100");
   container.innerHTML = renderRealPreviewCard({
     type,
     title,
-    entities: [],
-    options: { unit, color }
+    entities: currentCreatorEntities,
+    options: { unit, color, min, max }
   });
   if (window.lucide) window.lucide.createIcons();
 }
@@ -3499,8 +3585,10 @@ window.cycleWidgetWidth = function(widgetId) {
   const widget = widgets.find((w) => w.id === widgetId);
   if (!widget) return;
   if (!widget.options) widget.options = {};
-  const curW = parseInt(widget.options.gridWidth, 10) || 1;
-  const nextW = curW >= 3 ? 1 : curW + 1;
+  const steps = [0.5, 1, 2, 3];
+  const curW = parseFloat(widget.options.gridWidth) || 1;
+  const idx = steps.indexOf(curW);
+  const nextW = steps[(idx === -1 ? 2 : idx + 1) % steps.length];
   widget.options.gridWidth = nextW;
   localStorage.setItem("hp_dashboard_widgets", JSON.stringify(widgets));
   buildDashboardCards(cachedEntities);
@@ -3586,7 +3674,9 @@ async function deleteWidgetSettings() {
   }
   addAuditEntry("warning", `Widget Card "${id}" deleted from dashboard layout.`);
 }
+let currentCreatorEntities = [];
 function addNewCardPlaceholder() {
+  currentCreatorEntities = [];
   const typeSelect = document.getElementById("catalog-card-type");
   if (typeSelect) {
     typeSelect.value = "sensor";
@@ -3641,6 +3731,71 @@ function selectCatalogBlock(value) {
   renderCatalogBlocks();
   updateCreatorVisualPreview();
 }
+function renderCreatorEntityList(filterText = "") {
+  const listEl = document.getElementById("creator-entity-list");
+  const hint = document.getElementById("creator-entity-picker-hint");
+  const clearBtn = document.getElementById("creator-entity-clear-btn");
+  if (!listEl) return;
+  const type = document.getElementById("catalog-card-type")?.value || "sensor";
+  const multi = isMultiEntityCardType(type);
+  if (hint) {
+    hint.textContent = multi ? `${currentCreatorEntities.length} selected (multi-entity)` : currentCreatorEntities.length > 0 ? "1 selected" : "Select 1 entity";
+  }
+  if (clearBtn) {
+    clearBtn.style.display = currentCreatorEntities.length > 0 ? "inline-flex" : "none";
+  }
+  const entities = Object.values(cachedEntities || {}).sort(
+    (a, b) => String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
+  );
+  const filtered = entities.filter((item) => matchesEntitySearch(item, filterText));
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div style="padding:10px; text-align:center; font-size:0.75rem; color:var(--text-secondary);">No matching live entities</div>`;
+    return;
+  }
+  listEl.innerHTML = filtered.map((item) => {
+    const canon = `${item.node_id}.${item.entity_key}`;
+    const isChecked = currentCreatorEntities.some((e) => e.nodeId === item.node_id && e.entityKey === item.entity_key);
+    const valStr = item.value !== void 0 && item.value !== null ? `${item.value}${item.unit ? " " + item.unit : ""}` : "--";
+    return `
+      <label class="entity-picker-item ${isChecked ? "selected" : ""}" onclick="toggleCreatorEntitySelection('${item.node_id}', '${item.entity_key}')">
+        <div class="entity-picker-left">
+          <input type="${multi ? "checkbox" : "radio"}" name="creator-entity-pick" ${isChecked ? "checked" : ""} style="pointer-events:none; margin:0;">
+          <div style="display:flex; flex-direction:column; min-width:0;">
+            <span class="entity-picker-name">${item.name || item.entity_key}</span>
+            <span class="entity-picker-id">${canon}</span>
+          </div>
+        </div>
+        <span class="entity-picker-val">${valStr}</span>
+      </label>
+    `;
+  }).join("");
+}
+window.filterCreatorEntityList = function(filterText) {
+  renderCreatorEntityList(filterText);
+};
+window.toggleCreatorEntitySelection = function(nodeId, entityKey) {
+  const type = document.getElementById("catalog-card-type")?.value || "sensor";
+  const multi = isMultiEntityCardType(type);
+  const existingIdx = currentCreatorEntities.findIndex((e) => e.nodeId === nodeId && e.entityKey === entityKey);
+  if (multi) {
+    if (existingIdx !== -1) {
+      currentCreatorEntities.splice(existingIdx, 1);
+    } else {
+      currentCreatorEntities.push({ nodeId, entityKey });
+    }
+  } else {
+    currentCreatorEntities = [{ nodeId, entityKey }];
+  }
+  const searchVal = document.getElementById("creator-entity-search")?.value || "";
+  renderCreatorEntityList(searchVal);
+  updateCreatorVisualPreview();
+};
+window.clearCreatorEntitySelection = function() {
+  currentCreatorEntities = [];
+  const searchVal = document.getElementById("creator-entity-search")?.value || "";
+  renderCreatorEntityList(searchVal);
+  updateCreatorVisualPreview();
+};
 function onCreatorTypeChange(type) {
   const group = document.getElementById("creator-entity-select-group");
   if (!group) return;
@@ -3648,66 +3803,41 @@ function onCreatorTypeChange(type) {
   scaleGroups.forEach((el) => {
     el.style.display = type === "gauge" || type === "sensor" ? "flex" : "none";
   });
-  if (type === "health" || type === "audit" || type === "title") {
+  if (isEntitylessCardType(type)) {
     group.innerHTML = '<span style="color:var(--text-secondary); font-size:0.75rem; font-style: italic;">No entity binding required for this card type.</span>';
     updateCreatorVisualPreview();
     return;
   }
-  if (type === "entities" || type === "glance") {
-    let html = '<label style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Target Entities</label><div style="max-height: 120px; overflow-y: auto; border: 1px solid var(--border-soft); padding: 8px; border-radius: 6px; display:flex; flex-direction:column; gap:6px; background: var(--bg-secondary);">';
-    const entList = Object.values(cachedEntities || {});
-    if (entList.length === 0) {
-      html += '<span style="font-size:0.75rem; color:var(--text-secondary);">No discovered entities available.</span>';
-    } else {
-      entList.forEach((entity) => {
-        html += `
-          <label style="display:flex; align-items:center; gap:8px; font-weight: normal; font-size:0.75rem; cursor:pointer;">
-            <input type="checkbox" name="creator-entities" value="${entity.node_id}|${entity.entity_key}">
-            <span>${entity.name || entity.entity_key} (${entity.node_id}.local)</span>
-          </label>
-        `;
-      });
-    }
-    html += "</div>";
-    group.innerHTML = html;
-  } else {
-    let html = '<label for="creator-select" style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Target Entity</label><select id="creator-select" class="modal-input">';
-    const entList = Object.values(cachedEntities || {});
-    if (entList.length === 0) {
-      html += '<option value="">No discovered entities available</option>';
-    } else {
-      entList.forEach((entity) => {
-        html += `<option value="${entity.node_id}|${entity.entity_key}">${entity.name || entity.entity_key} (${entity.node_id}.local)</option>`;
-      });
-    }
-    html += "</select>";
-    group.innerHTML = html;
+  if (!isMultiEntityCardType(type) && currentCreatorEntities.length > 1) {
+    currentCreatorEntities = [currentCreatorEntities[0]];
   }
+  const multi = isMultiEntityCardType(type);
+  const labelText = multi ? "Target Entities" : "Target Entity";
+  const prevSearch = document.getElementById("creator-entity-search")?.value || "";
+  group.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+      <label for="creator-entity-search" style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary); margin:0;">${labelText}</label>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span id="creator-entity-picker-hint" style="font-size:0.68rem; color:var(--text-secondary);"></span>
+        <button type="button" id="creator-entity-clear-btn" class="yaml-copy-mini" style="display:none;" onclick="clearCreatorEntitySelection()">Clear</button>
+      </div>
+    </div>
+    <input type="text" id="creator-entity-search" class="modal-input" placeholder="Search by name or entity ID (e.g. core-mon.cpu-utilization)..." value="${prevSearch}" oninput="filterCreatorEntityList(this.value)">
+    <div id="creator-entity-list" class="entity-picker-list"></div>
+  `;
+  renderCreatorEntityList(prevSearch);
   updateCreatorVisualPreview();
 }
 function addWidgetToGrid() {
   const type = document.getElementById("catalog-card-type").value;
   const title = document.getElementById("catalog-widget-title").value.trim();
   const unit = document.getElementById("catalog-widget-unit").value.trim();
-  const w = parseInt(document.getElementById("catalog-widget-width").value) || 1;
-  const h = parseInt(document.getElementById("catalog-widget-height").value) || 1;
+  const w = parseFloat(document.getElementById("catalog-widget-width").value) || 1;
+  const h = parseInt(document.getElementById("catalog-widget-height").value, 10) || 1;
   const color = document.getElementById("catalog-widget-color").value;
   const min = parseFloat(document.getElementById("creator-scale-min").value);
   const max = parseFloat(document.getElementById("creator-scale-max").value);
-  let entities = [];
-  if (type === "entities" || type === "glance") {
-    const checked = document.querySelectorAll('input[name="creator-entities"]:checked');
-    checked.forEach((chk) => {
-      const [nId, eKey] = chk.value.split("|");
-      entities.push({ nodeId: nId, entityKey: eKey });
-    });
-  } else if (type !== "health" && type !== "audit" && type !== "title") {
-    const select = document.getElementById("creator-select");
-    if (select && select.value) {
-      const [nId, eKey] = select.value.split("|");
-      entities.push({ nodeId: nId, entityKey: eKey });
-    }
-  }
+  const entities = isEntitylessCardType(type) ? [] : currentCreatorEntities.map((e) => ({ nodeId: e.nodeId, entityKey: e.entityKey }));
   const id = "widget_" + Date.now();
   const newWidget = {
     id,
@@ -3778,8 +3908,8 @@ function normalizeCardObject(rawCard, defaultTab = "main", index = 0) {
   if (rawCard.unit !== void 0) options.unit = rawCard.unit;
   if (rawCard.unit_of_measurement !== void 0) options.unit = rawCard.unit_of_measurement;
   if (rawCard.color !== void 0) options.color = rawCard.color;
-  if (rawCard.gridWidth !== void 0) options.gridWidth = parseInt(rawCard.gridWidth, 10);
-  else if (rawCard.width !== void 0) options.gridWidth = parseInt(rawCard.width, 10);
+  if (rawCard.gridWidth !== void 0) options.gridWidth = parseFloat(rawCard.gridWidth);
+  else if (rawCard.width !== void 0) options.gridWidth = parseFloat(rawCard.width);
   if (rawCard.gridHeight !== void 0) options.gridHeight = parseInt(rawCard.gridHeight, 10);
   else if (rawCard.height !== void 0) options.gridHeight = parseInt(rawCard.height, 10);
   if (rawCard.min !== void 0) options.min = parseFloat(rawCard.min);
@@ -4010,16 +4140,10 @@ window.toggleYamlEntitySidebar = function() {
 window.renderYamlEntitySidebar = function(filterText = "") {
   const listEl = document.getElementById("yaml-entity-list");
   if (!listEl) return;
-  const q = String(filterText || "").trim().toLowerCase();
   const entities = Object.values(cachedEntities || {}).sort(
     (a, b) => String(a.name || a.entity_key).localeCompare(String(b.name || b.entity_key))
   );
-  const filtered = entities.filter((item) => {
-    if (!q) return true;
-    const canon = `${item.node_id}.${item.entity_key}`.toLowerCase();
-    const name = String(item.name || "").toLowerCase();
-    return canon.includes(q) || name.includes(q);
-  });
+  const filtered = entities.filter((item) => matchesEntitySearch(item, filterText));
   if (filtered.length === 0) {
     listEl.innerHTML = '<div style="padding:12px; text-align:center; font-size:0.74rem; color:var(--text-secondary);">No matching live entities</div>';
     return;

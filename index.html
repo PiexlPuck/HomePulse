@@ -7,7 +7,7 @@
   <title>HomePulse Dashboard</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>">
-  <link rel="stylesheet" href="style.css?v=4.1">
+  <link rel="stylesheet" href="style.css?v=4.2">
 </head>
 
 <body>
@@ -1759,7 +1759,7 @@
                 <label for="edit-entity-search" id="edit-entity-picker-label">Target Entity</label>
                 <span id="edit-entity-picker-hint" style="font-size:0.68rem; color:var(--text-secondary);">Select 1 entity</span>
               </div>
-              <input type="text" id="edit-entity-search" class="modal-input" placeholder="Search entities by name or ID..." oninput="filterEditEntityList(this.value)">
+              <input type="text" id="edit-entity-search" class="modal-input" placeholder="Search by name or entity ID (e.g. core-mon.cpu-utilization)..." oninput="filterEditEntityList(this.value)">
               <div id="edit-entity-list" class="entity-picker-list">
                 <!-- Dynamically populated -->
               </div>
@@ -1789,6 +1789,7 @@
                 <div class="modal-group" style="flex: 1;">
                   <label for="edit-widget-width">Width</label>
                   <select id="edit-widget-width" class="modal-input" onchange="updateEditorVisualPreview()">
+                    <option value="0.5">0.5x (Half)</option>
                     <option value="1">1x (Normal)</option>
                     <option value="2">2x (Wide)</option>
                     <option value="3">3x (Full)</option>
@@ -1936,8 +1937,9 @@
           <div style="display: flex; gap: 10px;">
             <div class="modal-group" style="flex: 1;">
               <label for="catalog-widget-width">Card Width</label>
-              <select id="catalog-widget-width" class="modal-input">
-                <option value="1">1x (Normal)</option>
+              <select id="catalog-widget-width" class="modal-input" onchange="updateCreatorVisualPreview()">
+                <option value="0.5">0.5x (Half)</option>
+                <option value="1" selected>1x (Normal)</option>
                 <option value="2">2x (Wide)</option>
                 <option value="3">3x (Full)</option>
               </select>
@@ -1960,11 +1962,11 @@
         <div class="creator-scale-group form-grid-2col" style="display: flex;">
           <div class="modal-group">
             <label for="creator-scale-min">Scale Min</label>
-            <input type="number" class="modal-input" id="creator-scale-min" value="0">
+            <input type="number" class="modal-input" id="creator-scale-min" value="0" oninput="updateCreatorVisualPreview()">
           </div>
           <div class="modal-group">
             <label for="creator-scale-max">Scale Max</label>
-            <input type="number" class="modal-input" id="creator-scale-max" value="100">
+            <input type="number" class="modal-input" id="creator-scale-max" value="100" oninput="updateCreatorVisualPreview()">
           </div>
         </div>
 
@@ -2155,7 +2157,7 @@
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=4.1"></script>
+    <script src="app.js?v=4.2"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
     <!-- Add Dependency Link Modal Overlay -->
