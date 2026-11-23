@@ -743,8 +743,33 @@ function buildDashboardCards(entitiesMap) {
           return item2.node_id === eRef.nodeId && item2.entity_key === eRef.entityKey;
         });
         const item = matchedKey ? entitiesMap[matchedKey] : null;
+        const GAUGE_ARC_LENGTH2 = 291.82;
+        window.GAUGE_ARC_LENGTH = GAUGE_ARC_LENGTH2;
+        window.renderGaugeSVG = function(rawValue, unit, min, max, color) {
+          const safeMin = isNaN(Number(min)) ? 0 : Number(min);
+          const safeMax = isNaN(Number(max)) ? 100 : Number(max);
+          const span = safeMax - safeMin || 100;
+          const numericVal = parseFloat(rawValue);
+          const isNum = !isNaN(numericVal) && isFinite(numericVal);
+          const pct = isNum ? Math.max(0, Math.min(1, (numericVal - safeMin) / span)) : 0;
+          const offset = (GAUGE_ARC_LENGTH2 * (1 - pct)).toFixed(2);
+          const displayVal = rawValue !== void 0 && rawValue !== null && rawValue !== "" ? rawValue : "--";
+          const strokeColor = color || "var(--color-optimal)";
+          return `
+    <svg viewBox="0 0 220 148" class="gauge-svg">
+      <path d="M 30.13 131.07 A 85 85 0 1 1 189.87 131.07" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-dasharray="1.5 10.6" stroke-linecap="round"/>
+      <path d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="12" stroke-linecap="round"/>
+      <path class="gauge-value-arc" d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="${strokeColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${GAUGE_ARC_LENGTH2}" stroke-dashoffset="${offset}" style="filter: drop-shadow(0 0 5px ${strokeColor});"/>
+      <text x="110" y="96" text-anchor="middle" class="gauge-text" font-size="28" font-weight="800">${displayVal}</text>
+      <text x="110" y="116" text-anchor="middle" class="gauge-unit" font-size="11" font-weight="600">${unit || ""}</text>
+      <text x="38" y="143" text-anchor="middle" class="gauge-bound">${safeMin}</text>
+      <text x="182" y="143" text-anchor="middle" class="gauge-bound">${safeMax}</text>
+    </svg>
+  `;
+        };
         if (item) {
           cardEl.setAttribute("data-node-id", item.node_id);
+          cardEl.setAttribute("data-entity-key", item.entity_key);
           cardEl.setAttribute("data-entity-id", item.entity_key);
           cardEl.setAttribute("data-scale-min", widget.options.min !== void 0 ? widget.options.min : "0");
           cardEl.setAttribute("data-scale-max", widget.options.max !== void 0 ? widget.options.max : "100");
@@ -753,10 +778,6 @@ function buildDashboardCards(entitiesMap) {
           cardEl.classList.add("card-gauge");
           const min = parseFloat(widget.options.min !== void 0 ? widget.options.min : 0);
           const max = parseFloat(widget.options.max !== void 0 ? widget.options.max : 100);
-          const span = max - min || 100;
-          const numericVal = parseFloat(item.value) || 0;
-          const pct = Math.max(0, Math.min(1, (numericVal - min) / span));
-          const offset = 110 - pct * 110;
           const displayColor = widget.options.color || item.color || "var(--color-optimal)";
           const unit = widget.options.unit !== void 0 ? widget.options.unit : resolvedGaugeUnit;
           const gaugeSensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
@@ -769,14 +790,9 @@ function buildDashboardCards(entitiesMap) {
               </div>
               <span class="status-pill ${item.status_type || "default"}">${item.status || "Stable"}</span>
             </div>
-            <div class="card-body" style="padding: 0 16px 16px 16px;">
+            <div class="card-body gauge-card-body">
               <div class="gauge-container">
-                <svg viewBox="0 0 100 60" class="gauge-svg">
-                  <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="var(--bg-secondary)" stroke-width="8" stroke-linecap="round"/>
-                  <path class="gauge-value-arc" d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="${displayColor}" stroke-width="8" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="${offset}"/>
-                  <text x="50" y="44" text-anchor="middle" class="gauge-text" fill="var(--text-primary)" font-size="12" font-weight="700">${item.value}</text>
-                  <text x="50" y="54" text-anchor="middle" class="gauge-unit" fill="var(--text-secondary)" font-size="7">${unit}</text>
-                </svg>
+                ${window.renderGaugeSVG(item.value, unit, min, max, displayColor)}
               </div>
             </div>
             ${renderCardEditBar(widget, w)}
@@ -1154,8 +1170,8 @@ function applyGlobalSettings(data) {
   }
 }
 function updateCardState(nodeId, entityId, val, status, statusType) {
-  let matchedKey = Object.keys(cachedEntities).find((key) => {
-    const item = cachedEntities[key];
+  let matchedKey = Object.keys(cachedEntities).find((key2) => {
+    const item = cachedEntities[key2];
     return item.node_id === nodeId && item.entity_key === entityId;
   });
   if (!matchedKey) {
@@ -1177,42 +1193,89 @@ function updateCardState(nodeId, entityId, val, status, statusType) {
     if (status) cachedEntities[matchedKey].status = status;
     if (statusType) cachedEntities[matchedKey].status_type = statusType;
   }
-  const card = document.querySelector(`[data-node-id="${nodeId}"][data-entity-key="${entityId}"]`);
-  if (!card) return;
-  const valueType = card.getAttribute("data-value-type");
-  const unit = card.getAttribute("data-unit") || "";
-  if (status && statusType) {
-    const pill = card.querySelector(".status-pill");
-    if (pill) {
-      pill.textContent = status;
-      pill.className = `status-pill ${statusType}`;
-    }
-  }
-  const valText = card.querySelector(".card-value");
-  if (valText) {
-    if (valueType === "boolean") {
-      const isTrue = val === true || val === "true" || val === "ON";
-      valText.textContent = isTrue ? "ON" : "OFF";
-      card.classList.toggle("highlighted", isTrue);
-      const toggle = card.querySelector(".switch input");
-      if (toggle) toggle.checked = isTrue;
-    } else {
-      valText.innerHTML = `${val}<span class="card-unit"> ${unit}</span>`;
-      const slider = card.querySelector(".range-slider");
-      if (slider) slider.value = val;
-    }
-  }
-  const path = card.querySelector(".sparkline path");
-  if (path) {
-    const key = `${nodeId}-${entityId}`;
+  const matches = document.querySelectorAll(`[data-node-id="${nodeId}"][data-entity-key="${entityId}"]`);
+  if (!matches || matches.length === 0) return;
+  const key = `${nodeId}-${entityId}`;
+  const numVal = parseFloat(val);
+  let hasSparkline = false;
+  matches.forEach((el) => {
+    if (el.querySelector(".sparkline path")) hasSparkline = true;
+  });
+  if (hasSparkline) {
     if (!telemetryHistory[key]) telemetryHistory[key] = [];
-    telemetryHistory[key].push(parseFloat(val));
+    telemetryHistory[key].push(numVal);
     if (telemetryHistory[key].length > 12) {
       telemetryHistory[key].shift();
     }
-    const dAttr = getSparklinePath(telemetryHistory[key]);
-    path.setAttribute("d", dAttr);
   }
+  const sparkPathAttr = hasSparkline ? getSparklinePath(telemetryHistory[key]) : "";
+  matches.forEach((el) => {
+    const unit = el.getAttribute("data-unit") || "";
+    if (el.classList.contains("card-gauge")) {
+      const min = parseFloat(el.getAttribute("data-scale-min") || "0");
+      const max = parseFloat(el.getAttribute("data-scale-max") || "100");
+      const span = max - min || 100;
+      const isNum = !isNaN(numVal) && isFinite(numVal);
+      const pct = isNum ? Math.max(0, Math.min(1, (numVal - min) / span)) : 0;
+      const offset = (GAUGE_ARC_LENGTH * (1 - pct)).toFixed(2);
+      const arc = el.querySelector(".gauge-value-arc");
+      if (arc) arc.setAttribute("stroke-dashoffset", offset);
+      const textEl = el.querySelector(".gauge-text");
+      if (textEl) textEl.textContent = val !== void 0 && val !== null && val !== "" ? String(val) : "--";
+      if (status && statusType) {
+        const pill = el.querySelector(".status-pill");
+        if (pill) {
+          pill.textContent = status;
+          pill.className = `status-pill ${statusType}`;
+        }
+      }
+      return;
+    }
+    if (el.classList.contains("entity-row")) {
+      const stateEl = el.querySelector(".entity-row-state");
+      if (stateEl) {
+        if (val === true || val === "true" || val === "ON") stateEl.textContent = "ON";
+        else if (val === false || val === "false" || val === "OFF") stateEl.textContent = "OFF";
+        else stateEl.textContent = `${val}${unit ? " " + unit : ""}`;
+      }
+      return;
+    }
+    if (el.classList.contains("glance-item")) {
+      const stateEl = el.querySelector(".glance-item-state");
+      if (stateEl) {
+        if (val === true || val === "true" || val === "ON") stateEl.textContent = "ON";
+        else if (val === false || val === "false" || val === "OFF") stateEl.textContent = "OFF";
+        else stateEl.textContent = `${val}${unit ? " " + unit : ""}`;
+      }
+      return;
+    }
+    const valueType = el.getAttribute("data-value-type");
+    if (status && statusType) {
+      const pill = el.querySelector(".status-pill");
+      if (pill) {
+        pill.textContent = status;
+        pill.className = `status-pill ${statusType}`;
+      }
+    }
+    const valText = el.querySelector(".card-value");
+    if (valText) {
+      if (valueType === "boolean") {
+        const isTrue = val === true || val === "true" || val === "ON";
+        valText.textContent = isTrue ? "ON" : "OFF";
+        el.classList.toggle("highlighted", isTrue);
+        const toggle = el.querySelector(".switch input");
+        if (toggle) toggle.checked = isTrue;
+      } else {
+        valText.innerHTML = `${val}<span class="card-unit"> ${unit}</span>`;
+        const slider = el.querySelector(".range-slider");
+        if (slider) slider.value = val;
+      }
+    }
+    const path = el.querySelector(".sparkline path");
+    if (path && sparkPathAttr) {
+      path.setAttribute("d", sparkPathAttr);
+    }
+  });
   updateHealthSnapshot();
 }
 function getSparklinePath(values) {
@@ -3340,13 +3403,10 @@ function renderRealPreviewCard(widget) {
   if (type === "gauge") {
     const min = parseFloat(opts.min !== void 0 ? opts.min : 0);
     const max = parseFloat(opts.max !== void 0 ? opts.max : 100);
-    const span = max - min || 100;
-    const valNum = primaryItem ? parseFloat(primaryItem.value) || 0 : 50;
-    const pct = Math.max(0, Math.min(1, (valNum - min) / span));
-    const offset = 110 - pct * 110;
-    const dispVal2 = primaryItem ? primaryItem.value : "--";
+    const dispVal2 = primaryItem ? primaryItem.value : 50;
+    const svgHtml = typeof window.renderGaugeSVG === "function" ? window.renderGaugeSVG(dispVal2, resolvedUnit, min, max, color) : "";
     return `
-      <div class="card card-gauge grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:150px; margin:0; width:100%;">
+      <div class="card card-gauge grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:175px; margin:0; width:100%;">
         <div class="card-header">
           <div class="card-title-area">
             <span class="card-title" style="font-size:0.9rem;">${widget.title || primaryItem?.name || "Gauge Card"}</span>
@@ -3354,13 +3414,10 @@ function renderRealPreviewCard(widget) {
           </div>
           <span class="status-pill ${primaryItem?.status_type || "default"}">${primaryItem?.status || (primaryRef ? "Offline" : "Unbound")}</span>
         </div>
-        <div class="gauge-container" style="padding:4px 0;">
-          <svg viewBox="0 0 100 60" class="gauge-svg">
-            <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="var(--bg-primary)" stroke-width="8" stroke-linecap="round"/>
-            <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="${offset}"/>
-            <text x="50" y="44" text-anchor="middle" fill="var(--text-primary)" font-size="12" font-weight="700">${dispVal2}</text>
-            <text x="50" y="54" text-anchor="middle" fill="var(--text-secondary)" font-size="7">${resolvedUnit}</text>
-          </svg>
+        <div class="gauge-card-body">
+          <div class="gauge-container">
+            ${svgHtml}
+          </div>
         </div>
       </div>
     `;

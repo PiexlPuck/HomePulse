@@ -1191,13 +1191,12 @@ function renderRealPreviewCard(widget: any) {
   if (type === 'gauge') {
     const min = parseFloat(opts.min !== undefined ? opts.min : 0);
     const max = parseFloat(opts.max !== undefined ? opts.max : 100);
-    const span = (max - min) || 100;
-    const valNum = primaryItem ? (parseFloat(primaryItem.value) || 0) : 50;
-    const pct = Math.max(0, Math.min(1, (valNum - min) / span));
-    const offset = 110 - pct * 110;
-    const dispVal = primaryItem ? primaryItem.value : '--';
+    const dispVal = primaryItem ? primaryItem.value : 50;
+    const svgHtml = typeof window.renderGaugeSVG === 'function'
+      ? window.renderGaugeSVG(dispVal, resolvedUnit, min, max, color)
+      : '';
     return `
-      <div class="card card-gauge grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:150px; margin:0; width:100%;">
+      <div class="card card-gauge grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:175px; margin:0; width:100%;">
         <div class="card-header">
           <div class="card-title-area">
             <span class="card-title" style="font-size:0.9rem;">${widget.title || primaryItem?.name || 'Gauge Card'}</span>
@@ -1205,13 +1204,10 @@ function renderRealPreviewCard(widget: any) {
           </div>
           <span class="status-pill ${primaryItem?.status_type || 'default'}">${primaryItem?.status || (primaryRef ? 'Offline' : 'Unbound')}</span>
         </div>
-        <div class="gauge-container" style="padding:4px 0;">
-          <svg viewBox="0 0 100 60" class="gauge-svg">
-            <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="var(--bg-primary)" stroke-width="8" stroke-linecap="round"/>
-            <path d="M 15 50 A 40 40 0 0 1 85 50" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="110" stroke-dashoffset="${offset}"/>
-            <text x="50" y="44" text-anchor="middle" fill="var(--text-primary)" font-size="12" font-weight="700">${dispVal}</text>
-            <text x="50" y="54" text-anchor="middle" fill="var(--text-secondary)" font-size="7">${resolvedUnit}</text>
-          </svg>
+        <div class="gauge-card-body">
+          <div class="gauge-container">
+            ${svgHtml}
+          </div>
         </div>
       </div>
     `;
