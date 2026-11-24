@@ -1599,18 +1599,18 @@ function renderRealPreviewCard(widget: any) {
           : '';
         return `
           <div class="gauge-multi-tile">
-            <span class="gauge-tile-label">${item ? (item.name || item.entity_key) : `${r.nodeId}.${r.entityKey}`}</span>
             ${tileSvg}
+            <span class="gauge-tile-label">${item ? (item.name || item.entity_key) : `${r.nodeId}.${r.entityKey}`}</span>
           </div>
         `;
       }).join('');
       return `
-        <div class="card card-gauge card-gauge-multi grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:14px; min-height:175px; margin:0; width:100%;">
+        <div class="card card-gauge card-gauge-multi grid-w-1" style="border:1px solid var(--border-soft); border-radius:8px; background:var(--bg-secondary); padding:10px 12px; min-height:175px; margin:0; width:100%;">
           <div class="card-header">
             <div class="card-title-area">
               <span class="card-title" style="font-size:0.9rem;">${widget.title || 'Gauges Overview'}</span>
-              <span class="card-subtitle">${ents.length} gauges • live telemetry</span>
             </div>
+            <span class="status-pill default">${ents.length} Gauges</span>
           </div>
           <div class="gauge-card-body">
             <div class="gauge-multi-grid">

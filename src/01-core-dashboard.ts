@@ -592,14 +592,14 @@ window.renderGaugeSVG = function (rawValue: any, unit: string, min: number, max:
     : rawColor;
 
   return `
-    <svg viewBox="0 0 220 148" class="gauge-svg">
+    <svg viewBox="18 12 184 134" class="gauge-svg">
       <path d="M 30.13 131.07 A 85 85 0 1 1 189.87 131.07" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-dasharray="1.5 10.6" stroke-linecap="round"/>
-      <path d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="12" stroke-linecap="round"/>
-      <path class="gauge-value-arc" d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="${strokeColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${GAUGE_ARC_LENGTH}" stroke-dashoffset="${offset}" style="filter: drop-shadow(0 0 5px ${strokeColor});"/>
-      <text x="110" y="96" text-anchor="middle" class="gauge-text" font-size="28" font-weight="800">${displayVal}</text>
-      <text x="110" y="116" text-anchor="middle" class="gauge-unit" font-size="11" font-weight="600">${unit || ''}</text>
-      <text x="38" y="143" text-anchor="middle" class="gauge-bound">${safeMin}</text>
-      <text x="182" y="143" text-anchor="middle" class="gauge-bound">${safeMax}</text>
+      <path d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="13" stroke-linecap="round"/>
+      <path class="gauge-value-arc" d="M 38.58 127.99 A 76 76 0 1 1 181.42 127.99" fill="none" stroke="${strokeColor}" stroke-width="13" stroke-linecap="round" stroke-dasharray="${GAUGE_ARC_LENGTH}" stroke-dashoffset="${offset}" style="filter: drop-shadow(0 0 5px ${strokeColor});"/>
+      <text x="110" y="95" text-anchor="middle" class="gauge-text" font-size="30" font-weight="800">${displayVal}</text>
+      <text x="110" y="116" text-anchor="middle" class="gauge-unit" font-size="11.5" font-weight="600">${unit || ''}</text>
+      <text x="38" y="142" text-anchor="middle" class="gauge-bound">${safeMin}</text>
+      <text x="182" y="142" text-anchor="middle" class="gauge-bound">${safeMax}</text>
     </svg>
   `;
 };
@@ -979,8 +979,8 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
                  data-scale-min="${min}"
                  data-scale-max="${max}"
                  data-unit="${tileUnit}">
-              <span class="gauge-tile-label" title="Click to copy: ${sensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${sensorId}'); if(typeof showToast==='function') showToast('Copied ${sensorId}', 'info')">${item.name || item.entity_key}</span>
               ${window.renderGaugeSVG(item.value, tileUnit, min, max, tileColor)}
+              <span class="gauge-tile-label" title="Click to copy: ${sensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${sensorId}'); if(typeof showToast==='function') showToast('Copied ${sensorId}', 'info')">${item.name || item.entity_key}</span>
             </div>
           `;
         }).join('');
@@ -989,8 +989,8 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
           <div class="card-header">
             <div class="card-title-area">
               <span class="card-title">${widget.title || 'Gauges Overview'}</span>
-              <span class="card-subtitle">${boundEntities.length} gauges • live telemetry</span>
             </div>
+            <span class="status-pill default">${boundEntities.length} Gauges</span>
           </div>
           <div class="card-body gauge-card-body">
             <div class="gauge-multi-grid">
