@@ -17,20 +17,36 @@ import yaml
 import smtplib
 import secrets
 import hashlib
+import hmac
 from email.mime.text import MIMEText
 from email.header import Header as EmailHeader
-from plugins_manager import plugins_router, init_plugins_manager
+from core import CORE_API_VERSION
+from core.config import load_runtime_config
+from core.storage import InMemoryYamlRepository, PostgresRepository, StorageRepository
+from core.repeater import RepeaterEngine
+from core.api_v1 import create_v1_router
+from core.topology import TopologyGraph, TopologyCycleError, TopologyNotFoundError
+from core.alerting import CascadeAlertSuppressor
+from core.ipc import PluginTokenRegistry, PluginIPCBroker
+from core.registry import PluginRegistryStore
+from core.daemon_ingest import DaemonIngestEngine
+from core.pushover_escalation import PushoverEscalator
+from core.remediation import RemediationEngine
+from plugins_manager import plugins_router, init_plugins_manager, ingest_plugin_state
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("homepulse-backend")
 
 APP_VERSION = "0.0.2"
+runtime_config = load_runtime_config()
 
 app = FastAPI(title="HomePulse Backend")
 
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
     path = request.url.path
+    if path.startswith("/api/v1/"):
+        return await call_next(request)
     client_host = request.client.host if request.client else ""
     is_local_plugin_gateway = path.startswith("/api/plugins/gateway/") and client_host in ("127.0.0.1", "::1", "localhost")
     if path.startswith("/api/") and not (
@@ -51,48 +67,85 @@ async def api_key_middleware(request: Request, call_next):
         if is_gateway and not token:
             return JSONResponse(status_code=401, content={"detail": "X-API-Key header or api_key query parameter required in Gateway Mode."})
             
-        db_enabled = app_settings.get("gateway_db_enabled", "true") == "true"
-        if not db_pool or not db_enabled:
-            psk = app_settings.get("preshared_key", "")
-            if token == psk:
-                return await call_next(request)
-            return JSONResponse(status_code=401, content={"detail": "Database disabled. Preshared key required as API Key token."})
-            
-        try:
-            h = hashlib.sha256(token.encode()).hexdigest()
-            async with db_pool.acquire() as conn:
-                row = await conn.fetchrow("SELECT id FROM api_keys WHERE key_hash = $1;", h)
-                if not row:
-                    return JSONResponse(status_code=401, content={"detail": "Invalid API Key."})
-                await conn.execute("UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = $1;", row["id"])
-        except Exception as e:
-            logger.error(f"Error checking API key in middleware: {e}")
-            return JSONResponse(status_code=401, content={"detail": "Authentication verification failed."})
+        if not await verify_api_key(token):
+            return JSONResponse(status_code=401, content={"detail": "Invalid API Key."})
 
     return await call_next(request)
 
-# DB Connection Pool
+# DB Connection Pool, Storage Repository, Hierarchy Topology Graph, Plugin IPC & Registry
 db_pool = None
+storage_repo: StorageRepository = InMemoryYamlRepository(runtime_config.probes_config_path)
+topology_graph = TopologyGraph(pool_getter=lambda: db_pool)
+cascade_suppressor = CascadeAlertSuppressor(topology_graph)
+plugin_token_registry = PluginTokenRegistry()
+plugin_ipc_broker = PluginIPCBroker()
+plugin_registry_store = PluginRegistryStore(pool_getter=lambda: db_pool)
+pushover_escalator = PushoverEscalator(
+    pool_getter=lambda: db_pool,
+    api_base_url=os.getenv("HOMEPULSE_PUSHOVER_API_URL", "https://api.pushover.net/1"),
+)
 
 # Active WebSocket connections
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
+        self.v1_streams: Dict[WebSocket, set] = {}
+        self._v1_seq: int = 0
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
         logger.info(f"Client websocket connected. Active connections: {len(self.active_connections)}")
 
+    async def connect_v1(self, websocket: WebSocket, streams: Optional[set] = None):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        self.v1_streams[websocket] = set(streams or {"telemetry", "alerts", "audits"})
+        logger.info(f"Core v1 websocket connected. Active connections: {len(self.active_connections)}")
+
+    def set_v1_streams(self, websocket: WebSocket, streams: set):
+        if websocket in self.v1_streams:
+            self.v1_streams[websocket] = set(streams)
+
+    async def send_v1_event(self, websocket: WebSocket, stream: str, payload: dict):
+        allowed = self.v1_streams.get(websocket)
+        if allowed is not None and stream not in allowed:
+            return
+        self._v1_seq += 1
+        envelope = dict(payload)
+        envelope["seq"] = self._v1_seq
+        envelope["stream"] = stream
+        await websocket.send_json(envelope)
+
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
             logger.info(f"Client websocket disconnected. Active connections: {len(self.active_connections)}")
+        self.v1_streams.pop(websocket, None)
+
+    @staticmethod
+    def _infer_stream(message: dict) -> str:
+        ev = str(message.get("event", ""))
+        if ev in ("state_changed", "entity_update"):
+            return "telemetry"
+        if ev in ("audit_logged", "system_log"):
+            return "audits"
+        return "alerts"
 
     async def broadcast(self, message: dict):
+        stream = self._infer_stream(message)
         for connection in list(self.active_connections):
             try:
-                await connection.send_json(message)
+                if connection in self.v1_streams:
+                    if stream not in self.v1_streams[connection]:
+                        continue
+                    self._v1_seq += 1
+                    envelope = dict(message)
+                    envelope["seq"] = self._v1_seq
+                    envelope["stream"] = stream
+                    await connection.send_json(envelope)
+                else:
+                    await connection.send_json(message)
             except Exception as e:
                 logger.error(f"Error broadcasting to WS connection: {e}")
                 self.disconnect(connection)
@@ -230,6 +283,53 @@ app_settings = {
     "layout_compact": "false",
     "show_service_monitors": "false"
 }
+
+repeater_engine = RepeaterEngine(
+    repeater_id=runtime_config.repeater_id,
+    storage_repo_getter=lambda: storage_repo,
+    legacy_settings_getter=lambda: app_settings,
+    env_url=runtime_config.repeater_url,
+    env_secret=runtime_config.repeater_secret,
+    batch_size=runtime_config.repeater_batch_size,
+    flush_interval=runtime_config.repeater_flush_interval,
+    max_queue=runtime_config.repeater_max_queue,
+)
+
+def _daemon_repeater_enqueue(*args, **kwargs):
+    if runtime_config.mode in ("repeater", "hybrid") or app_settings.get("gateway_mode") == "true":
+        repeater_engine.enqueue(*args, **kwargs)
+
+daemon_ingest_engine = DaemonIngestEngine(
+    pool_getter=lambda: db_pool,
+    entity_states_getter=lambda: entity_states,
+    repeater_enqueue_fn=_daemon_repeater_enqueue,
+    critical_escalation_fn=pushover_escalator.dispatch_emergency_cve_alert,
+)
+remediation_engine = RemediationEngine(
+    pool_getter=lambda: db_pool,
+    ipc_broker_getter=lambda: plugin_ipc_broker,
+)
+
+async def verify_api_key(token: Optional[str]) -> bool:
+    if not token:
+        return False
+    if runtime_config.api_key and hmac.compare_digest(token, runtime_config.api_key):
+        return True
+    db_enabled = app_settings.get("gateway_db_enabled", "true") == "true"
+    if not db_pool or not db_enabled:
+        psk = app_settings.get("preshared_key", "")
+        return bool(psk) and hmac.compare_digest(token, psk)
+    try:
+        h = hashlib.sha256(token.encode()).hexdigest()
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT id FROM api_keys WHERE key_hash = $1;", h)
+            if not row:
+                return False
+            await conn.execute("UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = $1;", row["id"])
+            return True
+    except Exception as exc:
+        logger.error(f"Error verifying API key: {exc}")
+        return False
 
 # Global State for local virtual entities
 entity_states = {
@@ -603,17 +703,129 @@ async def setup_database_schema(conn):
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs (timestamp);")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_logs_entity_time ON telemetry_logs (entity_key, timestamp DESC);")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_system_audits_timestamp ON system_audits (timestamp);")
-        logger.info("hosts and node_dependencies database schema, indexes, and relationships verified.")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS repeater_targets (
+                id VARCHAR(64) PRIMARY KEY,
+                name VARCHAR(128) NOT NULL,
+                url TEXT NOT NULL,
+                secret TEXT DEFAULT '',
+                headers JSONB DEFAULT '{}'::JSONB,
+                enabled BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS topology_nodes (
+                node_uid VARCHAR(128) PRIMARY KEY,
+                node_kind VARCHAR(32) NOT NULL,
+                display_name VARCHAR(255) NOT NULL,
+                external_ref JSONB DEFAULT '{}'::JSONB,
+                liveness_entity_key VARCHAR(255),
+                health_state VARCHAR(32) DEFAULT 'unknown',
+                migration_lease_until TIMESTAMP,
+                metadata JSONB DEFAULT '{}'::JSONB,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS topology_edges (
+                id SERIAL PRIMARY KEY,
+                parent_uid VARCHAR(128) NOT NULL REFERENCES topology_nodes(node_uid) ON DELETE CASCADE,
+                child_uid VARCHAR(128) NOT NULL REFERENCES topology_nodes(node_uid) ON DELETE CASCADE,
+                relation VARCHAR(32) NOT NULL,
+                source VARCHAR(64) NOT NULL,
+                version BIGINT DEFAULT 1,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_topology_edge UNIQUE (parent_uid, child_uid, relation),
+                CONSTRAINT chk_no_self_edge CHECK (parent_uid <> child_uid)
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS topology_migration_events (
+                id BIGSERIAL PRIMARY KEY,
+                child_uid VARCHAR(128) NOT NULL REFERENCES topology_nodes(node_uid) ON DELETE CASCADE,
+                from_parent_uid VARCHAR(128),
+                to_parent_uid VARCHAR(128) NOT NULL,
+                reason VARCHAR(64) NOT NULL,
+                source VARCHAR(64) NOT NULL,
+                migrated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS plugin_repositories (
+                id VARCHAR(64) PRIMARY KEY,
+                name VARCHAR(128) NOT NULL,
+                registry_url TEXT NOT NULL,
+                trusted BOOLEAN DEFAULT FALSE,
+                enabled BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS enrolled_agents (
+                agent_id VARCHAR(128) PRIMARY KEY,
+                hostname VARCHAR(255) NOT NULL,
+                kid VARCHAR(64) NOT NULL,
+                ed25519_public_key_b64 TEXT NOT NULL,
+                aes_key_b64 TEXT NOT NULL,
+                enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS daemon_cve_reports (
+                id BIGSERIAL PRIMARY KEY,
+                host_uid VARCHAR(128) NOT NULL,
+                hostname VARCHAR(255) NOT NULL,
+                collected_at VARCHAR(64) NOT NULL,
+                upgradable_total INT DEFAULT 0,
+                security_updates INT DEFAULT 0,
+                critical_cve_count INT DEFAULT 0,
+                reboot_required BOOLEAN DEFAULT FALSE,
+                payload_json JSONB NOT NULL,
+                received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS pushover_receipts (
+                receipt_id VARCHAR(128) PRIMARY KEY,
+                host_uid VARCHAR(128) NOT NULL,
+                hostname VARCHAR(255) NOT NULL,
+                channel_name VARCHAR(128) NOT NULL,
+                api_token TEXT NOT NULL,
+                priority INT DEFAULT 2,
+                status VARCHAR(32) DEFAULT 'pending_ack',
+                acknowledged BOOLEAN DEFAULT FALSE,
+                acknowledged_at BIGINT,
+                expired BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS remediation_approvals (
+                request_id VARCHAR(64) PRIMARY KEY,
+                action_type VARCHAR(64) NOT NULL,
+                tier VARCHAR(32) NOT NULL,
+                target_plugin_id VARCHAR(128) NOT NULL,
+                target_node_uid VARCHAR(128) NOT NULL,
+                parameters JSONB DEFAULT '{}'::JSONB,
+                status VARCHAR(32) NOT NULL,
+                requested_by VARCHAR(128) NOT NULL,
+                requester_role VARCHAR(32) NOT NULL,
+                flow_id VARCHAR(64),
+                action_node_id VARCHAR(64),
+                approval_token_hash VARCHAR(128),
+                expires_at TIMESTAMP,
+                decided_by VARCHAR(128),
+                decision_reason TEXT,
+                decided_at TIMESTAMP,
+                ipc_seq BIGINT,
+                ipc_message_id VARCHAR(64),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        logger.info("hosts, node_dependencies, repeater_targets, topology, plugin_repositories, daemon/pushover, and remediation tables verified.")
     except Exception as hosts_err:
         logger.warning(f"Error establishing hosts and schemas: {hosts_err}")
-
-    # Rename Plex monitors to distinguish SSL and Ping metrics
-    try:
-        await conn.execute("UPDATE system_monitors SET name = 'Plex SSL Status' WHERE LOWER(name) = 'plex' AND type = 'ssl';")
-        await conn.execute("UPDATE system_monitors SET name = 'Plex Ping Status' WHERE LOWER(name) = 'plex' AND type = 'ping';")
-        logger.info("Renamed Plex monitor targets to differentiate engines.")
-    except Exception as plex_err:
-        logger.warning(f"Error updating Plex monitor names: {plex_err}")
 
     # Query built-in monitors to pre-register their entity states
     try:
@@ -717,7 +929,14 @@ async def setup_database_schema(conn):
 
 # 1. DB Init Routine
 async def init_db_pool():
-    global db_pool
+    global db_pool, storage_repo
+    if runtime_config.mode == "repeater":
+        logger.info("Running in DB-less repeater mode.")
+        storage_repo = InMemoryYamlRepository(runtime_config.probes_config_path)
+        for mon in await storage_repo.list_monitors():
+            register_memory_states(mon["id"], mon["name"])
+        return
+
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         logger.error("DATABASE_URL environment variable is required but missing or empty!")
@@ -729,6 +948,7 @@ async def init_db_pool():
             logger.info("Database connection pool established successfully.")
             async with db_pool.acquire() as conn:
                 await setup_database_schema(conn)
+            storage_repo = PostgresRepository(lambda: db_pool)
             return
         except Exception as e:
             logger.warning(f"Database setup wait loop (attempt {attempt+1}/10)... Error: {e}")
@@ -737,7 +957,9 @@ async def init_db_pool():
     asyncio.create_task(db_reconnection_watchdog())
 
 async def db_reconnection_watchdog():
-    global db_pool
+    global db_pool, storage_repo
+    if runtime_config.mode == "repeater":
+        return
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         return
@@ -749,6 +971,7 @@ async def db_reconnection_watchdog():
                 logger.info("Reconnection watchdog: Database connection pool established successfully.")
                 async with db_pool.acquire() as conn:
                     await setup_database_schema(conn)
+                storage_repo = PostgresRepository(lambda: db_pool)
                 logger.info("Reconnection watchdog: Database self-healing sync complete.")
                 break
             except Exception as e:
@@ -1126,16 +1349,34 @@ async def alerts_evaluator_task():
                                         should_notify = False
                                         logger.info(f"Skipping dispatch for rule {rid}, target {tk}, channel {cid} (cooldown active: {elapsed:.1f}s < {interval_secs}s)")
                                         
-                                # Smart Alert Suppression Check
+                                # Smart Alert Suppression & Consolidated Impact Check
+                                rule_message = message
                                 if should_notify:
-                                    is_parent_down, parent_label = await is_ancestor_parent_down(conn, tk)
-                                    if is_parent_down:
+                                    decision = cascade_suppressor.evaluate_dispatch(tk, is_firing=True, entity_states=entity_states)
+                                    action = decision["action"]
+                                    if action in ("suppress_child", "suppress_migrating"):
                                         should_notify = False
-                                        logger.info(f"Smart Alert Suppression: Skipping notification dispatch for target '{tk}' because parent '{parent_label}' is DOWN.")
+                                        reason_label = (
+                                            f"Parent node '{decision.get('root_cause_name')}' is down."
+                                            if action == "suppress_child"
+                                            else "Node is under active migration lease."
+                                        )
+                                        logger.info(f"Cascade Alert Suppression ({action}): Skipping rule dispatch for '{tk}' ({reason_label})")
                                         await conn.execute(
                                             "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
-                                            "warning", f"Alert dispatch for target '{info.get('name', tk)}' suppressed: Parent node '{parent_label}' is down."
+                                            "warning", f"Alert dispatch for target '{info.get('name', tk)}' suppressed: {reason_label}"
                                         )
+                                    elif action == "emit_consolidated":
+                                        rule_message = f"{message}\n\n{decision['impact']['summary_text']}"
+                                    elif decision.get("node_uid") is None:
+                                        is_parent_down, parent_label = await is_ancestor_parent_down(conn, tk)
+                                        if is_parent_down:
+                                            should_notify = False
+                                            logger.info(f"Smart Alert Suppression: Skipping notification dispatch for target '{tk}' because parent '{parent_label}' is DOWN.")
+                                            await conn.execute(
+                                                "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                                                "warning", f"Alert dispatch for target '{info.get('name', tk)}' suppressed: Parent node '{parent_label}' is down."
+                                            )
                                         
                                 if should_notify:
                                     chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
@@ -1143,7 +1384,7 @@ async def alerts_evaluator_task():
                                         c_type = chan["type"]
                                         c_cfg = json.loads(chan["config"]) if isinstance(chan["config"], str) else chan["config"]
                                         try:
-                                            await dispatch_notification(c_type, c_cfg, message, title)
+                                            await dispatch_notification(c_type, c_cfg, rule_message, title)
                                             await conn.execute("""
                                                 INSERT INTO alert_cooldowns (rule_id, target_key, channel_id, last_notified)
                                                 VALUES ($1, $2, $3, NOW())
@@ -1161,6 +1402,11 @@ async def alerts_evaluator_task():
                                 
                             # Clear cooldown
                             await conn.execute("DELETE FROM alert_cooldowns WHERE rule_id = $1 AND target_key = $2;", rid, tk)
+
+                            rec_decision = cascade_suppressor.evaluate_dispatch(tk, is_firing=False, entity_states=entity_states)
+                            if rec_decision["action"] == "suppress_recovery":
+                                logger.info(f"Cascade Alert Suppression: Skipping recovery dispatch for suppressed child '{tk}'.")
+                                continue
                             
                             title = f"✅ Alert [RESOLVED]: {rname}"
                             if info["is_monitor"]:
@@ -1229,6 +1475,7 @@ async def alerts_evaluator_task():
 
                     # Evaluate triggers to find starting node states
                     active_flows_firing = {} # action_node_id -> list of firing target_keys
+                    active_remediation_triggers = {} # remediation_node_id -> list of (orig_tkey, passed_gate)
                     
                     trigger_nodes = [n for n in nodes if n.get("type") in ("health_trigger", "sensor_trigger")]
                     for tn in trigger_nodes:
@@ -1261,13 +1508,13 @@ async def alerts_evaluator_task():
 
                         if is_trigger_active:
                             # DFS/BFS to trace active flow signal propagation
-                            queue = [(node_id, tkey)]
+                            queue = [(node_id, tkey, False)]
                             visited = set()
                             while queue:
-                                curr_id, orig_tkey = queue.pop(0)
-                                if curr_id in visited:
+                                curr_id, orig_tkey, passed_gate = queue.pop(0)
+                                if (curr_id, passed_gate) in visited:
                                     continue
-                                visited.add(curr_id)
+                                visited.add((curr_id, passed_gate))
                                 
                                 curr_node = nodes_by_id.get(curr_id)
                                 if not curr_node:
@@ -1276,6 +1523,11 @@ async def alerts_evaluator_task():
                                 if curr_node.get("type") == "notify_action":
                                     active_flows_firing.setdefault(curr_id, []).append(orig_tkey)
                                     continue
+                                if curr_node.get("type") == "remediation_action":
+                                    active_remediation_triggers.setdefault(curr_id, []).append((orig_tkey, passed_gate))
+                                    continue
+
+                                next_gate = passed_gate or (curr_node.get("type") == "approval_gate")
                                     
                                 for child_id in out_edges.get(curr_id, []):
                                     child_node = nodes_by_id.get(child_id)
@@ -1309,7 +1561,33 @@ async def alerts_evaluator_task():
                                         if not match:
                                             continue
                                             
-                                    queue.append((child_id, orig_tkey))
+                                    queue.append((child_id, orig_tkey, next_gate))
+
+                    # Evaluate remediation_action nodes through execution gating
+                    remediation_nodes = [n for n in nodes if n.get("type") == "remediation_action"]
+                    for rn in remediation_nodes:
+                        rn_id = rn["id"]
+                        rn_cfg = rn.get("config") or {}
+                        act_type = rn_cfg.get("action_type") or "remote_pkg_upgrade"
+                        tgt_plugin = rn_cfg.get("target_plugin_id") or "core"
+                        for orig_tkey, passed_gate in active_remediation_triggers.get(rn_id, []):
+                            if remediation_engine.has_open_pending_request(str(fid), rn_id, orig_tkey):
+                                continue
+                            try:
+                                await remediation_engine.propose_action(
+                                    action_type=act_type,
+                                    target_plugin_id=tgt_plugin,
+                                    target_node_uid=orig_tkey,
+                                    parameters={"flow_name": fname, "dry_run": bool(rn_cfg.get("dry_run", False))},
+                                    requested_by=f"flow:{fname}",
+                                    requester_role="system_flow",
+                                    flow_id=str(fid),
+                                    action_node_id=rn_id,
+                                    dry_run=bool(rn_cfg.get("dry_run", False)),
+                                    force_approval=passed_gate,
+                                )
+                            except Exception as rem_err:
+                                logger.error(f"Flow remediation action error ({fname}/{rn_id}): {rem_err}")
 
                     # Compare and trigger notifications
                     action_nodes = [n for n in nodes if n.get("type") == "notify_action"]
@@ -1331,9 +1609,20 @@ async def alerts_evaluator_task():
                         for tk in firing_tkeys:
                             if tk not in db_firing_tkeys:
                                 await conn.execute("INSERT INTO active_flow_alerts (flow_id, action_node_id, target_key) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;", fid, an_id, tk)
-                                
+
+                                flow_decision = cascade_suppressor.evaluate_dispatch(tk, is_firing=True, entity_states=entity_states)
+                                if flow_decision["action"] in ("suppress_child", "suppress_migrating"):
+                                    logger.info(f"Flow Cascade Suppression ({flow_decision['action']}): Skipping flow '{fname}' notify for '{tk}'.")
+                                    await conn.execute(
+                                        "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
+                                        "warning", f"Flow '{fname}' alert for '{tk}' suppressed ({flow_decision['action']})."
+                                    )
+                                    continue
+
                                 title = f"❗ Flow Alert [FIRING]: {fname}"
                                 message = f"Advanced Automation Flow '{fname}' has triggered alert on target '{tk}'!\n\nFlow: {fname}\nAction Node: {an_id}\nTarget: {tk}\nStatus: FIRING\n"
+                                if flow_decision["action"] == "emit_consolidated":
+                                    message += f"\n{flow_decision['impact']['summary_text']}\n"
                                 
                                 chan = await conn.fetchrow("SELECT type, config FROM notification_channels WHERE id = $1;", cid)
                                 if chan:
@@ -1349,6 +1638,11 @@ async def alerts_evaluator_task():
                         for tk in db_firing_tkeys:
                             if tk not in firing_tkeys:
                                 await conn.execute("DELETE FROM active_flow_alerts WHERE flow_id = $1 AND action_node_id = $2 AND target_key = $3;", fid, an_id, tk)
+
+                                flow_rec = cascade_suppressor.evaluate_dispatch(tk, is_firing=False, entity_states=entity_states)
+                                if flow_rec["action"] == "suppress_recovery":
+                                    logger.info(f"Flow Cascade Suppression: Skipping recovery dispatch for suppressed child '{tk}'.")
+                                    continue
                                 
                                 title = f"✅ Flow Alert [RESOLVED]: {fname}"
                                 message = f"Advanced Automation Flow '{fname}' target '{tk}' alert has resolved to normal.\n\nFlow: {fname}\nAction Node: {an_id}\nTarget: {tk}\nStatus: NORMAL\n"
@@ -1437,6 +1731,9 @@ async def save_telemetry_log(node_id: str, entity_key: str, value: Any):
                 _last_logged_telemetry[entity_key] = (val_str, now_ts)
         except Exception as e:
             logger.error(f"Error logging telemetry write: {e}")
+    elif storage_repo is not None and not storage_repo.is_persistent():
+        await storage_repo.append_telemetry(node_id, entity_key, val_str)
+        _last_logged_telemetry[entity_key] = (val_str, now_ts)
 
 
 async def consolidate_telemetry_history(conn, full_detail_days: int = 30):
@@ -1514,10 +1811,24 @@ async def consolidate_telemetry_history(conn, full_detail_days: int = 30):
 @app.on_event("startup")
 async def startup_event():
     await init_db_pool()
-    init_plugins_manager(db_pool, manager, entity_states)
+    await topology_graph.load_from_db()
+    await plugin_registry_store.load_from_db()
+    await daemon_ingest_engine.load_from_db()
+    await pushover_escalator.load_from_db()
+    await remediation_engine.load_from_db()
+    init_plugins_manager(
+        db_pool,
+        manager,
+        entity_states,
+        repeater_enqueue_fn=repeater_engine.enqueue,
+        mode=runtime_config.mode,
+        topology_graph_ref=topology_graph,
+        token_registry_ref=plugin_token_registry,
+    )
     asyncio.create_task(collect_system_statistics_task())
     asyncio.create_task(monitor_probers_task())
     asyncio.create_task(alerts_evaluator_task())
+    asyncio.create_task(repeater_engine.run_loop())
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -1603,14 +1914,27 @@ async def collect_system_statistics_task():
             await save_telemetry_log("core-mon", "database-latency", db_latency)
             await save_telemetry_log("core-mon", "database-storage-pct", storage_pct)
             
-            # Forward telemetry states updated to webhook
-            if app_settings.get("gateway_mode") == "true":
-                await forward_telemetry_webhook("cpu-utilization", entity_states["cpu-utilization"])
-                await forward_telemetry_webhook("memory-saturation", entity_states["memory-saturation"])
-                await forward_telemetry_webhook("network-throughput", entity_states["network-throughput"])
-                await forward_telemetry_webhook("database-status", entity_states["database-status"])
-                await forward_telemetry_webhook("database-latency", entity_states["database-latency"])
-                await forward_telemetry_webhook("database-storage-pct", entity_states["database-storage-pct"])
+            # Forward telemetry states updated to repeater / webhook
+            if runtime_config.mode in ("repeater", "hybrid") or app_settings.get("gateway_mode") == "true":
+                for metric_key in (
+                    "cpu-utilization",
+                    "memory-saturation",
+                    "network-throughput",
+                    "database-status",
+                    "database-latency",
+                    "database-storage-pct",
+                ):
+                    ent = entity_states[metric_key]
+                    repeater_engine.enqueue(
+                        "telemetry.state_changed",
+                        "core.stats",
+                        str(ent.get("node_id") or "core-mon"),
+                        metric_key,
+                        ent.get("value"),
+                        str(ent.get("value_type") or "float"),
+                        str(ent.get("unit") or ""),
+                        str(ent.get("status") or "unknown").lower(),
+                    )
             
             # Occasional systemic check audits
             if db_pool and db_status == "CONNECTED":
@@ -1877,25 +2201,33 @@ async def run_single_probe(monitor: dict):
         "graphic": "sparkline"
     }
     
-    if db_pool:
-        try:
-            async with db_pool.acquire() as conn:
-                await conn.execute(
-                    """UPDATE system_monitors 
-                       SET last_status = $1, last_latency = $2, last_checked = CURRENT_TIMESTAMP 
-                       WHERE id = $3;""",
-                    status_str, latency, mon_id
-                )
-        except Exception as db_err:
-            logger.error(f"Failed to record monitor {mon_id} results to DB: {db_err}")
-            
+    await storage_repo.record_monitor_result(mon_id, status_str, latency)
+
     await save_telemetry_log("monitors", f"monitor-{mon_id}-status", status_str)
     await save_telemetry_log("monitors", f"monitor-{mon_id}-latency", latency)
-    
-    # Forward to Gateway Webhook if in gateway mode
-    if app_settings.get("gateway_mode") == "true":
-        await forward_telemetry_webhook(f"monitor-{mon_id}-status", entity_states[f"monitor-{mon_id}-status"])
-        await forward_telemetry_webhook(f"monitor-{mon_id}-latency", entity_states[f"monitor-{mon_id}-latency"])
+
+    # Forward to Repeater / Gateway when in repeater/hybrid/gateway mode
+    if runtime_config.mode in ("repeater", "hybrid") or app_settings.get("gateway_mode") == "true":
+        repeater_engine.enqueue(
+            "telemetry.state_changed",
+            "core.prober",
+            f"svc:monitor:{mon_id}",
+            f"monitor-{mon_id}-status",
+            status_str,
+            "string",
+            "",
+            status_desc.lower(),
+        )
+        repeater_engine.enqueue(
+            "telemetry.state_changed",
+            "core.prober",
+            f"svc:monitor:{mon_id}",
+            f"monitor-{mon_id}-latency",
+            latency,
+            "float",
+            "ms",
+            status_desc.lower(),
+        )
             
     await manager.broadcast({
         "event": "state_changed",
@@ -1916,28 +2248,23 @@ async def run_single_probe(monitor: dict):
 
 
 async def monitor_probers_task():
-    global db_pool
     logger.info("Starting built-in system monitors prober background task...")
     
     last_check_tracker = {}
     
     while True:
         try:
-            if app_settings.get("gateway_mode") == "true":
-                await asyncio.sleep(5)
-                continue
-            if not db_pool:
+            if storage_repo.is_persistent() and not storage_repo.is_connected():
                 await asyncio.sleep(2)
                 continue
-                
-            async with db_pool.acquire() as conn:
-                monitors = await conn.fetch("SELECT id, name, type, target, check_interval, timeout, enabled FROM system_monitors;")
+
+            monitors = await storage_repo.list_monitors()
                 
             now = time.time()
             for m in monitors:
                 mid = m["id"]
                 interval = m["check_interval"]
-                enabled = m["enabled"] if "enabled" in m else True
+                enabled = m.get("enabled", True)
                 if not enabled:
                     continue
                 
@@ -1957,14 +2284,25 @@ app.include_router(plugins_router)
 # 4. Static serving routing
 @app.get("/")
 async def get_index():
+    if runtime_config.headless:
+        return JSONResponse(content={
+            "service": "HomePulse Core",
+            "mode": runtime_config.mode,
+            "headless": True,
+            "core_api_version": CORE_API_VERSION,
+        })
     return FileResponse("index.html")
 
 @app.get("/app.js")
 async def get_js():
+    if runtime_config.headless:
+        raise HTTPException(status_code=404, detail="UI disabled in headless mode")
     return FileResponse("app.js")
 
 @app.get("/style.css")
 async def get_css():
+    if runtime_config.headless:
+        raise HTTPException(status_code=404, detail="UI disabled in headless mode")
     return FileResponse("style.css")
 
 # 4. REST API Implementation
@@ -1973,14 +2311,16 @@ async def get_css():
 async def health_check():
     """
     General health check endpoint for Docker container check.
-    Verifies FastAPI is accepting requests and connection pool is healthy.
+    Verifies FastAPI is accepting requests and connection pool is healthy (or disabled in repeater mode).
     """
+    if runtime_config.mode == "repeater" and not db_pool:
+        return {"status": "healthy", "mode": "repeater", "database": "disabled"}
     if not db_pool:
         raise HTTPException(status_code=503, detail="Database connection pool unavailable")
     try:
         async with db_pool.acquire() as conn:
             await conn.execute("SELECT 1;")
-        return {"status": "healthy", "database": "connected"}
+        return {"status": "healthy", "mode": runtime_config.mode, "database": "connected"}
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=500, detail=f"Database connectivity check failed: {str(e)}")
@@ -2057,6 +2397,8 @@ async def post_control(node_id: str, entity_id: str, payload: ControlPayload):
 
 @app.get("/api/discovery/queue")
 async def get_discovery_queue():
+    if not runtime_config.enable_legacy_discovery:
+        raise HTTPException(status_code=501, detail="Legacy mDNS discovery is parked in backlog.")
     return JSONResponse(content=discovery_queue)
 
 class SettingsPayload(BaseModel):
@@ -2166,6 +2508,22 @@ async def create_node_dependency(payload: DependencyPayload):
     if payload.parent_target == payload.child_target:
         raise HTTPException(status_code=400, detail="Cannot assign a node as its own parent.")
     try:
+        if payload.parent_target not in topology_graph._nodes:
+            await topology_graph.upsert_node(
+                payload.parent_target,
+                topology_graph._infer_kind(payload.parent_target),
+                payload.parent_target,
+                liveness_entity_key=topology_graph._infer_liveness_key(payload.parent_target),
+            )
+        if payload.child_target not in topology_graph._nodes:
+            await topology_graph.upsert_node(
+                payload.child_target,
+                topology_graph._infer_kind(payload.child_target),
+                payload.child_target,
+                liveness_entity_key=topology_graph._infer_liveness_key(payload.child_target),
+            )
+        await topology_graph.add_edge(payload.parent_target, payload.child_target, relation="depends_on", source="manual")
+
         async with db_pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO node_dependencies (parent_target, child_target)
@@ -2178,6 +2536,8 @@ async def create_node_dependency(payload: DependencyPayload):
                 "info", f"Dependency established: Parent '{payload.parent_target}' -> Child '{payload.child_target}'"
             )
         return JSONResponse(content={"status": "created"})
+    except TopologyCycleError as cyc_err:
+        raise HTTPException(status_code=409, detail=str(cyc_err))
     except Exception as e:
         logger.error(f"Failed to create dependency: {e}")
         raise HTTPException(status_code=500, detail="Database error creating dependency.")
@@ -2188,7 +2548,10 @@ async def delete_node_dependency(dep_id: int):
         raise HTTPException(status_code=503, detail="Database connection not available")
     try:
         async with db_pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT parent_target, child_target FROM node_dependencies WHERE id = $1;", dep_id)
             await conn.execute("DELETE FROM node_dependencies WHERE id = $1;", dep_id)
+            if row:
+                await topology_graph.delete_edge(row["parent_target"], row["child_target"], relation="depends_on")
             await conn.execute(
                 "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
                 "warning", f"Dependency node link #{dep_id} removed by operator."
@@ -3686,6 +4049,31 @@ def register_memory_states(monitor_id: int, name: str):
         "graphic": "sparkline"
     }
 
+def remove_memory_states(monitor_id: int):
+    entity_states.pop(f"monitor-{monitor_id}-status", None)
+    entity_states.pop(f"monitor-{monitor_id}-latency", None)
+
+v1_router = create_v1_router(
+    get_runtime_config=lambda: runtime_config,
+    get_storage_repo=lambda: storage_repo,
+    get_repeater_engine=lambda: repeater_engine,
+    get_entity_states=lambda: entity_states,
+    verify_api_key_fn=verify_api_key,
+    ws_manager=manager,
+    register_monitor_state_fn=register_memory_states,
+    remove_monitor_state_fn=remove_memory_states,
+    get_topology_graph=lambda: topology_graph,
+    get_cascade_suppressor=lambda: cascade_suppressor,
+    get_plugin_token_registry=lambda: plugin_token_registry,
+    get_plugin_ipc_broker=lambda: plugin_ipc_broker,
+    get_plugin_registry_store=lambda: plugin_registry_store,
+    plugin_telemetry_ingest_fn=ingest_plugin_state,
+    get_daemon_ingest_engine=lambda: daemon_ingest_engine,
+    get_pushover_escalator=lambda: pushover_escalator,
+    get_remediation_engine=lambda: remediation_engine,
+)
+app.include_router(v1_router)
+
 
 class TogglePayload(BaseModel):
     enabled: bool
@@ -3918,6 +4306,9 @@ async def get_telemetry_logs_alias(
 
 @app.post("/api/discovery/approve/{node_id}")
 async def approve_node(node_id: str, payload: ApprovePayload):
+    if not runtime_config.enable_legacy_discovery:
+        raise HTTPException(status_code=501, detail="Legacy mDNS discovery is parked in backlog.")
+
     expected_key = app_settings.get("preshared_key", "device_pin_12345")
     if payload.preshared_key != expected_key:
         raise HTTPException(status_code=401, detail="Authentication failed: Invalid device PIN/Token.")
@@ -3945,52 +4336,20 @@ async def approve_node(node_id: str, payload: ApprovePayload):
                 )
                 await conn.execute(
                     "INSERT INTO system_audits (type, message) VALUES ($1, $2);",
-                    "success", f"mDNS node approved and authenticated: {node_id}"
+                    "success", f"Node approved and authenticated: {node_id}"
                 )
         except Exception as e:
             logger.error(f"Failed to log approved node: {e}")
-
-    # Add as active entity grid
-    # Let's add its telemetry endpoint
-    entity_states[f"{node_id}-power"] = {
-        "node_id": node_id,
-        "entity_key": "power",
-        "name": f"{found_node['name']} Power",
-        "type": "sensor",
-        "value_type": "float",
-        "unit": "W",
-        "value": 12.4,
-        "status": "Optimal",
-        "status_type": "optimal",
-        "tags": "main,power",
-        "icon": "zap",
-        "color": "#10b981",
-        "graphic": "sparkline"
-    }
-
-    # Add a toggle control for the plug
-    entity_states[f"{node_id}-toggle"] = {
-        "node_id": node_id,
-        "entity_key": "toggle",
-        "name": f"{found_node['name']} State",
-        "type": "control",
-        "value_type": "boolean",
-        "unit": "",
-        "value": True,
-        "status": "Optimal",
-        "status_type": "optimal",
-        "tags": "main,power",
-        "icon": "power"
-    }
 
     # Broadcast logs
     await manager.broadcast({
         "event": "audit_logged",
         "type": "success",
-        "message": f"mDNS discovery target approved and integrated: {node_id}"
+        "message": f"Discovery target approved and integrated: {node_id}"
     })
 
-    return {"status": "approved", "node_id": node_id, "access_token": "hp_active_tok_8471b8fa"}
+    generated_token = "hp_node_" + secrets.token_hex(20)
+    return {"status": "approved", "node_id": node_id, "access_token": generated_token}
 
 # 5. Client WebSocket Connection Route
 @app.websocket("/api/ws/client")

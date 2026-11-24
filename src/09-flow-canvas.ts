@@ -126,9 +126,15 @@ window.spawnWorkspaceNode = function (type, x = 120, y = 120) {
   } else if (type === 'compare_condition') {
     name = "Compare Cond.";
     config = { property: "status", operator: "==", value: "" };
+  } else if (type === 'approval_gate') {
+    name = "Approval Gate";
+    config = { required_role: "architect", ttl_seconds: 900 };
   } else if (type === 'notify_action') {
     name = "Dispatch Alarm";
     config = { channel_id: "" };
+  } else if (type === 'remediation_action') {
+    name = "Remediation";
+    config = { action_type: "remote_pkg_upgrade", target_plugin_id: "", dry_run: false };
   }
 
   // Smart Node Cascading: Offset coordinates if a node already exists in close proximity
@@ -170,9 +176,13 @@ window.renderFlowWorkspace = function () {
       desc = node.config.target_key ? `Sensor: ${node.config.target_key}` : '(No Sensor)';
     } else if (node.type === 'compare_condition') {
       desc = `${node.config.property} ${node.config.operator} ${node.config.value || '?'}`;
+    } else if (node.type === 'approval_gate') {
+      desc = `Gate: ${node.config.required_role || 'architect'} (${node.config.ttl_seconds || 900}s)`;
     } else if (node.type === 'notify_action') {
       const chan = window.cachedChannels.find(c => c.id == node.config.channel_id);
       desc = chan ? `Notify: ${chan.name}` : '(No Channel)';
+    } else if (node.type === 'remediation_action') {
+      desc = `${node.config.action_type || 'remote_pkg_upgrade'} -> ${node.config.target_plugin_id || '?'}`;
     }
 
     el.innerHTML = `
@@ -184,7 +194,7 @@ window.renderFlowWorkspace = function () {
     `;
 
     // Append Input Dot (Left side) if applicable
-    if (node.type === 'compare_condition' || node.type === 'notify_action') {
+    if (node.type === 'compare_condition' || node.type === 'approval_gate' || node.type === 'notify_action' || node.type === 'remediation_action') {
       const inPort = document.createElement('div');
       inPort.className = 'node-port input-port';
       inPort.dataset.nodeId = node.id;
@@ -192,7 +202,7 @@ window.renderFlowWorkspace = function () {
     }
 
     // Append Output Dot (Right side) if applicable
-    if (node.type === 'health_trigger' || node.type === 'sensor_trigger' || node.type === 'compare_condition') {
+    if (node.type === 'health_trigger' || node.type === 'sensor_trigger' || node.type === 'compare_condition' || node.type === 'approval_gate') {
       const outPort = document.createElement('div');
       outPort.className = 'node-port output-port';
       outPort.dataset.nodeId = node.id;
@@ -453,6 +463,19 @@ window.showNodeProperties = function (nodeId) {
         <input type="text" id="prop-compare-val" value="${node.config.value || ''}" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
       </div>
     `;
+  } else if (node.type === 'approval_gate') {
+    html += `
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label>Required Approver Role</label>
+        <select id="prop-gate-role" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
+          <option value="architect" selected>Architect (Mandatory for Tier 2/3)</option>
+        </select>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label>Approval TTL (Seconds)</label>
+        <input type="number" id="prop-gate-ttl" value="${node.config.ttl_seconds || 900}" min="30" max="86400" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
+      </div>
+    `;
   } else if (node.type === 'notify_action') {
     let chanOptions = `<option value="">-- Choose Notification Channel --</option>`;
     window.cachedChannels.forEach(c => {
@@ -465,6 +488,24 @@ window.showNodeProperties = function (nodeId) {
         <select id="prop-channel-id" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
           ${chanOptions}
         </select>
+      </div>
+    `;
+  } else if (node.type === 'remediation_action') {
+    html += `
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label>Remediation Action Type</label>
+        <select id="prop-rem-action" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
+          <option value="plugin_restart" ${node.config.action_type === 'plugin_restart' ? 'selected' : ''}>Tier 1: Restart Plugin</option>
+          <option value="remote_pkg_upgrade" ${node.config.action_type === 'remote_pkg_upgrade' ? 'selected' : ''}>Tier 2: Remote Package Upgrade (Gated)</option>
+          <option value="remote_service_restart" ${node.config.action_type === 'remote_service_restart' ? 'selected' : ''}>Tier 2: Remote Service Restart (Gated)</option>
+          <option value="hypervisor_vm_power" ${node.config.action_type === 'hypervisor_vm_power' ? 'selected' : ''}>Tier 3: Hypervisor VM Power (Gated)</option>
+          <option value="hypervisor_vm_migrate" ${node.config.action_type === 'hypervisor_vm_migrate' ? 'selected' : ''}>Tier 3: Hypervisor VM Migrate (Gated)</option>
+          <option value="cluster_remediation" ${node.config.action_type === 'cluster_remediation' ? 'selected' : ''}>Tier 3: Cluster Remediation (Gated)</option>
+        </select>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label>Target Plugin ID</label>
+        <input type="text" id="prop-rem-plugin" value="${node.config.target_plugin_id || ''}" placeholder="e.g. proxmox-ve-pack" style="background:#221d16; color:#fff; border:1px solid var(--border-soft); padding:6px; border-radius:4px; font-size:0.75rem;">
       </div>
     `;
   }
@@ -520,8 +561,14 @@ window.updateWorkspaceNodeConfig = function (nodeId) {
     node.config.property = document.getElementById('prop-compare-property').value;
     node.config.operator = document.getElementById('prop-compare-op').value;
     node.config.value = document.getElementById('prop-compare-val').value.trim();
+  } else if (node.type === 'approval_gate') {
+    node.config.required_role = document.getElementById('prop-gate-role').value;
+    node.config.ttl_seconds = parseInt(document.getElementById('prop-gate-ttl').value || '900', 10);
   } else if (node.type === 'notify_action') {
     node.config.channel_id = document.getElementById('prop-channel-id').value;
+  } else if (node.type === 'remediation_action') {
+    node.config.action_type = document.getElementById('prop-rem-action').value;
+    node.config.target_plugin_id = document.getElementById('prop-rem-plugin').value.trim();
   }
 
   // Refresh descriptive texts immediately
@@ -537,9 +584,13 @@ window.updateWorkspaceNodeConfig = function (nodeId) {
         desc = node.config.target_key ? `Sensor: ${node.config.target_key}` : '(No Sensor)';
       } else if (node.type === 'compare_condition') {
         desc = `${node.config.property} ${node.config.operator} ${node.config.value || '?'}`;
+      } else if (node.type === 'approval_gate') {
+        desc = `Gate: ${node.config.required_role || 'architect'} (${node.config.ttl_seconds || 900}s)`;
       } else if (node.type === 'notify_action') {
         const chan = window.cachedChannels.find(c => c.id == node.config.channel_id);
         desc = chan ? `Notify: ${chan.name}` : '(No Channel)';
+      } else if (node.type === 'remediation_action') {
+        desc = `${node.config.action_type || 'remote_pkg_upgrade'} -> ${node.config.target_plugin_id || '?'}`;
       }
       descEl.textContent = desc;
     }
@@ -617,7 +668,7 @@ window.initFlowWorkspaceListeners = function () {
 
       if (targetNodeId) {
         const tgtNode = window.flowNodes.find(n => n.id === targetNodeId);
-        if (tgtNode && (tgtNode.type === 'compare_condition' || tgtNode.type === 'notify_action')) {
+        if (tgtNode && (tgtNode.type === 'compare_condition' || tgtNode.type === 'approval_gate' || tgtNode.type === 'notify_action' || tgtNode.type === 'remediation_action')) {
           const sourceNodeId = flowConnectingSourcePort.nodeId;
           if (sourceNodeId && targetNodeId !== sourceNodeId) {
             const alreadyLinked = window.flowEdges.some(edge => edge.source === sourceNodeId && edge.target === targetNodeId);

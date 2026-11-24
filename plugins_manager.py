@@ -3,13 +3,17 @@ import sys
 import json
 import asyncio
 import logging
+import secrets
 import shutil
+import signal
 import subprocess
 import urllib.request
 import urllib.error
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
+from core.manifest_validator import validate_plugin_directory
+from core.sandbox import build_sandboxed_env, make_resource_limiter
 
 logger = logging.getLogger("homepulse-plugins")
 
@@ -17,6 +21,10 @@ logger = logging.getLogger("homepulse-plugins")
 db_pool = None
 ws_manager = None
 entity_states = None
+repeater_enqueue = None
+runtime_mode = "storage"
+topology_graph = None
+token_registry = None
 
 # Tracks active plugin subprocesses: plugin_id -> subprocess.Popen
 active_processes: Dict[str, subprocess.Popen] = {}
@@ -160,16 +168,31 @@ def _enrich_plugin_entity(ent: Dict[str, Any], plugin_id: Optional[str] = None) 
 
     return ent
 
-def init_plugins_manager(pool, manager, states):
-    global db_pool, ws_manager, entity_states, watchdog_task
+def init_plugins_manager(
+    pool,
+    manager,
+    states,
+    repeater_enqueue_fn=None,
+    mode="storage",
+    topology_graph_ref=None,
+    token_registry_ref=None,
+):
+    global db_pool, ws_manager, entity_states, watchdog_task, repeater_enqueue, runtime_mode, topology_graph, token_registry
     db_pool = pool
     ws_manager = manager
     entity_states = states
+    repeater_enqueue = repeater_enqueue_fn
+    runtime_mode = mode
+    topology_graph = topology_graph_ref
+    token_registry = token_registry_ref
     
     # Run async startup tasks
     asyncio.create_task(db_migration_and_startup())
 
 async def db_migration_and_startup():
+    if runtime_mode == "repeater" and db_pool is None:
+        logger.info("Plugins manager running in DB-less repeater mode; skipping DB table setup.")
+        return
     logger.info("Initializing plugins database table and startup daemon...")
     for attempt in range(10):
         if db_pool is not None:
@@ -292,6 +315,67 @@ def read_stream(stream, plugin_id, level):
         except:
             pass
 
+def _extract_manifest_permissions_and_ipc(manifest: Dict[str, Any]):
+    raw_perms = manifest.get("permissions") or []
+    if manifest.get("schema_version") == "homepulse.manifest.v2":
+        perms = {str(p) for p in raw_perms}
+    else:
+        legacy_map = {
+            "network_outbound": "network:outbound",
+            "host_metrics": "host:metrics",
+        }
+        perms = {legacy_map.get(str(p), str(p)) for p in raw_perms}
+        perms.update({"telemetry:publish", "topology:report"})
+
+    ipc_block = manifest.get("ipc") or {}
+    publishes = set()
+    subscribes = set()
+    if isinstance(ipc_block, dict):
+        for item in ipc_block.get("publishes") or []:
+            topic = item.get("topic") if isinstance(item, dict) else item
+            if topic:
+                publishes.add(str(topic))
+        for item in ipc_block.get("subscribes") or []:
+            topic = item.get("topic") if isinstance(item, dict) else item
+            if topic:
+                subscribes.add(str(topic))
+    return perms, publishes, subscribes
+
+
+def _load_local_manifest(plugin_dir: str) -> Optional[Dict[str, Any]]:
+    for fname in ("manifest.yaml", "manifest.yml", "manifest.json"):
+        mpath = os.path.join(plugin_dir, fname)
+        if os.path.isfile(mpath):
+            with open(mpath, "r", encoding="utf-8") as fh:
+                if fname.endswith((".yaml", ".yml")):
+                    import yaml
+                    return yaml.safe_load(fh.read())
+                return json.load(fh)
+    return None
+
+
+def _verify_gateway_plugin_identity(request: Optional[Request], claimed_plugin_id: Optional[str]) -> Optional[str]:
+    if token_registry is None:
+        return claimed_plugin_id
+    tok = None
+    if request is not None:
+        tok = request.headers.get("X-Plugin-Token")
+        if not tok:
+            auth_hdr = request.headers.get("Authorization", "")
+            if auth_hdr.lower().startswith("bearer "):
+                tok = auth_hdr[7:].strip()
+    if tok:
+        session = token_registry.authenticate(tok)
+        if session is None:
+            raise HTTPException(status_code=401, detail="Invalid plugin token.")
+        if claimed_plugin_id and claimed_plugin_id != session.plugin_id:
+            raise HTTPException(status_code=403, detail="Plugin token does not match claimed plugin_id.")
+        return session.plugin_id
+    if claimed_plugin_id and token_registry.has_active_token(claimed_plugin_id):
+        raise HTTPException(status_code=401, detail="Active plugin requires X-Plugin-Token authentication.")
+    return claimed_plugin_id
+
+
 async def start_plugin(plugin_id: str, config: Any):
     # Stop compile/running process if already active
     await stop_plugin(plugin_id)
@@ -303,49 +387,58 @@ async def start_plugin(plugin_id: str, config: Any):
             logger.error(f"Failed to parse JSON config string for plugin {plugin_id}: {e}")
             config = {}
             
-    plugin_dir = os.path.join(PLUGINS_DIR, plugin_id)
+    plugin_dir = os.path.realpath(os.path.join(PLUGINS_DIR, plugin_id))
     if not os.path.isdir(plugin_dir):
         logger.error(f"Cannot start plugin {plugin_id}: Directory does not exist.")
         return False
         
-    manifest_path = os.path.join(plugin_dir, "manifest.json")
-    if not os.path.isfile(manifest_path):
-        logger.error(f"Cannot start plugin {plugin_id}: manifest.json not found.")
-        return False
-        
     try:
-        with open(manifest_path, 'r') as f:
-            manifest = json.load(f)
-        entrypoint = manifest.get("entrypoint", "main.py")
-        script_path = os.path.join(plugin_dir, entrypoint)
-        
-        if not os.path.isfile(script_path):
-            logger.error(f"Cannot start plugin {plugin_id}: Entrypoint {script_path} not found.")
+        manifest = _load_local_manifest(plugin_dir)
+        if not manifest:
+            logger.error(f"Cannot start plugin {plugin_id}: manifest not found.")
+            return False
+
+        runtime_block = manifest.get("runtime") if isinstance(manifest.get("runtime"), dict) else {}
+        entrypoint = runtime_block.get("entrypoint") or manifest.get("entrypoint", "main.py")
+        script_path = os.path.realpath(os.path.join(plugin_dir, entrypoint))
+        if os.path.commonpath([plugin_dir, script_path]) != plugin_dir or not os.path.isfile(script_path):
+            logger.error(f"Cannot start plugin {plugin_id}: Invalid entrypoint {script_path}.")
             return False
             
         # Determine interpreter (virtualenv python or system python)
-        venv_python = os.path.join(plugin_dir, "venv", "bin", "python3")
-        interpreter = venv_python if os.path.isfile(venv_python) else sys.executable
+        venv_dir = os.path.join(plugin_dir, "venv")
+        venv_python = os.path.join(venv_dir, "bin", "python3")
+        venv_bin = os.path.join(venv_dir, "bin") if os.path.isfile(venv_python) else None
+        interpreter = venv_python if venv_bin else sys.executable
         
-        # Prepare environment
-        env = os.environ.copy()
-        # Inject config values as environment variables (prefixed with PLUGIN_)
-        for k, v in config.items():
-            env[f"PLUGIN_{k.upper()}"] = str(v)
-            
-        # Inject API Gateway configs
-        env["HOMEPULSE_API_URL"] = "http://localhost:8000/api/plugins/gateway"
-        env["PLUGIN_ID"] = plugin_id
-        env["PYTHONUNBUFFERED"] = "1"
+        perms, publishes, subscribes = _extract_manifest_permissions_and_ipc(manifest)
+        if token_registry is not None:
+            plugin_token = token_registry.mint_token(plugin_id, perms, publishes=publishes, subscribes=subscribes)
+        else:
+            plugin_token = "hp_plug_" + secrets.token_hex(20)
+
+        # Build isolated environment without leaking host secrets (DATABASE_URL, SECRET_KEY, etc.)
+        env = build_sandboxed_env(
+            plugin_id=plugin_id,
+            plugin_token=plugin_token,
+            config=config if isinstance(config, dict) else {},
+            api_url="http://127.0.0.1:8000/api/plugins/gateway",
+            ipc_url="http://127.0.0.1:8000/api/v1/ipc",
+            plugin_dir=plugin_dir,
+            venv_bin=venv_bin,
+        )
+        sandbox_cfg = runtime_block.get("sandbox") if isinstance(runtime_block.get("sandbox"), dict) else {}
+        max_mem_mb = int(sandbox_cfg.get("max_memory_mb", 256))
         
-        logger.info(f"Spawning subprocess for plugin {plugin_id} with {interpreter}...")
+        logger.info(f"Spawning sandboxed subprocess for plugin {plugin_id} with {interpreter}...")
         proc = subprocess.Popen(
             [interpreter, "-u", script_path],
             env=env,
             cwd=plugin_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            preexec_fn=make_resource_limiter(max_memory_mb=max_mem_mb),
         )
         active_processes[plugin_id] = proc
         
@@ -445,11 +538,16 @@ async def stop_or_idle_plugin_entities(plugin_id: str, status_val: str = "stoppe
                     })
 
 async def stop_plugin(plugin_id: str):
+    if token_registry is not None:
+        token_registry.revoke_token(plugin_id)
     proc = active_processes.pop(plugin_id, None)
     if proc:
         logger.info(f"Stopping plugin process {plugin_id}...")
         try:
-            proc.terminate()
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except Exception:
+                proc.terminate()
             # Wait up to 3 seconds for graceful shutdown
             for _ in range(30):
                 if proc.poll() is not None:
@@ -457,7 +555,10 @@ async def stop_plugin(plugin_id: str):
                 await asyncio.sleep(0.1)
             if proc.poll() is None:
                 logger.warning(f"Plugin {plugin_id} did not terminate, killing it...")
-                proc.kill()
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except Exception:
+                    proc.kill()
         except Exception as e:
             logger.error(f"Error stopping plugin process {plugin_id}: {e}")
             
@@ -726,13 +827,17 @@ async def install_plugin(plugin_id: str):
 
         await asyncio.to_thread(_download_plugin_files)
                             
-        # Successfully written. Let's read main manifest
-        manifest_path = os.path.join(target_dir, "manifest.json")
-        if not os.path.isfile(manifest_path):
-            raise HTTPException(status_code=400, detail="Plugin missing manifest.json after download.")
-            
-        with open(manifest_path, 'r', encoding='utf-8') as f:
-            manifest = json.load(f)
+        # Successfully written. Run fail-closed manifest review BEFORE compiling venv / pip install
+        manifest = _load_local_manifest(target_dir)
+        if not manifest:
+            raise HTTPException(status_code=400, detail="Plugin missing manifest after download.")
+
+        review = validate_plugin_directory(target_dir, manifest=manifest)
+        if manifest.get("schema_version") == "homepulse.manifest.v2" and not review["valid"]:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "Plugin failed manifest review", "errors": review["errors"]},
+            )
             
         p_name = manifest.get("name", plugin_id)
         p_version = manifest.get("version", "1.0.0")
@@ -750,6 +855,9 @@ async def install_plugin(plugin_id: str):
                 """, plugin_id, p_name, p_version)
                 
         return {"status": "success", "message": f"Plugin {p_name} downloaded successfully. Environment setup in background."}
+    except HTTPException:
+        shutil.rmtree(target_dir, ignore_errors=True)
+        raise
     except Exception as e:
         logger.error(f"Failed to install plugin {plugin_id}: {e}")
         shutil.rmtree(target_dir, ignore_errors=True)
@@ -856,19 +964,15 @@ async def uninstall_plugin(plugin_id: str):
             
     return {"status": "success", "message": f"Plugin {plugin_id} uninstalled successfully."}
 
-# LOCAL GATEWAY APIRoutes for plugin processes
-@plugins_router.post("/gateway/state")
-async def gateway_post_state(payload: Dict[str, Any]):
-    """Receives entity metrics and telemetry from child processes."""
-    # Required keys in payload: entity_key, value, name, type (e.g. sensor)
+async def ingest_plugin_state(plugin_id: Optional[str], payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Ingests plugin entity state into cache, optional PostgreSQL, repeater, and WebSocket."""
     entity_key = payload.get("entity_key")
     if not entity_key:
         raise HTTPException(status_code=400, detail="Missing key entity_key in payload.")
-        
-    plugin_id = payload.get("node_id")
-    if entity_key == "status" and plugin_id:
-        entity_key = f"plugin-{plugin_id}-status"
-        # Translate ONLINE/OFFLINE to ON/OFF for binary_sensor compatibility
+
+    effective_pid = plugin_id or payload.get("node_id")
+    if entity_key == "status" and effective_pid:
+        entity_key = f"plugin-{effective_pid}-status"
         val = payload.get("value")
         if val == "ONLINE":
             payload["value"] = "ON"
@@ -878,20 +982,25 @@ async def gateway_post_state(payload: Dict[str, Any]):
     if entity_states is not None:
         existing_ent = entity_states.get(entity_key, {})
         existing_attrs = existing_ent.get("attributes", {}) if isinstance(existing_ent.get("attributes"), dict) else {}
-        new_attrs = payload.get("attributes", {})
+        new_attrs = payload.get("attributes") or {}
         merged_attrs = {**existing_attrs, **new_attrs}
+        node_label = effective_pid or "plugins"
 
         entity_states[entity_key] = _enrich_plugin_entity({
-            "node_id": payload.get("node_id", "plugins"),
+            "node_id": node_label,
             "entity_key": entity_key,
-            "name": payload.get("name", entity_key.replace("-", " ").title()) if entity_key != f"plugin-{plugin_id}-status" else f"Plugin: {plugin_id.replace('-', ' ').title()}",
+            "name": payload.get("name") or (
+                f"Plugin: {node_label.replace('-', ' ').title()}"
+                if entity_key == f"plugin-{effective_pid}-status"
+                else entity_key.replace("-", " ").title()
+            ),
             "type": payload.get("type", "sensor"),
             "value": payload.get("value"),
             "value_type": payload.get("value_type", "string"),
-            "attributes": merged_attrs
-        }, plugin_id)
-        
-        if db_pool and plugin_id:
+            "attributes": merged_attrs,
+        }, effective_pid)
+
+        if db_pool and effective_pid:
             try:
                 attrs_json = json.dumps(merged_attrs)
                 async with db_pool.acquire() as conn:
@@ -902,32 +1011,56 @@ async def gateway_post_state(payload: Dict[str, Any]):
                             value = EXCLUDED.value,
                             attributes = EXCLUDED.attributes,
                             updated_at = NOW();
-                    """, entity_key, plugin_id, payload.get("node_id"), entity_states[entity_key]["name"], payload.get("type"), str(payload.get("value")), payload.get("value_type", "string"), attrs_json)
-                    
-                    # Log historic telemetry for sensors and binary sensors
+                    """, entity_key, effective_pid, node_label, entity_states[entity_key]["name"], payload.get("type", "sensor"), str(payload.get("value")), payload.get("value_type", "string"), attrs_json)
+
                     val_str = str(payload.get("value"))
                     from main import save_telemetry_log
-                    await save_telemetry_log(payload.get("node_id", "plugins"), entity_key, val_str)
-                        
-                    from main import app_settings, forward_telemetry_webhook
-                    if app_settings.get("gateway_mode") == "true":
-                        await forward_telemetry_webhook(entity_key, entity_states[entity_key])
+                    await save_telemetry_log(node_label, entity_key, val_str)
             except Exception as dberr:
                 logger.error(f"Error saving plugin entity state to DB: {dberr}")
-                
+
+        try:
+            from main import app_settings
+            should_forward = runtime_mode in ("repeater", "hybrid") or app_settings.get("gateway_mode") == "true"
+        except Exception:
+            should_forward = runtime_mode in ("repeater", "hybrid")
+
+        if should_forward and repeater_enqueue is not None:
+            ent = entity_states[entity_key]
+            repeater_enqueue(
+                "telemetry.state_changed",
+                f"plugin.{effective_pid or 'unknown'}",
+                str(ent.get("node_id") or "plugins"),
+                entity_key,
+                ent.get("value"),
+                str(ent.get("value_type") or "string"),
+                str(ent.get("unit") or ""),
+                str(ent.get("status") or "unknown").lower(),
+            )
+
         if ws_manager is not None:
             await ws_manager.broadcast({
                 "event": "entity_update",
-                "data": entity_states[entity_key]
+                "data": entity_states[entity_key],
             })
-    return {"status": "success"}
+    return {"status": "success", "entity_key": entity_key}
+
+
+# LOCAL GATEWAY APIRoutes for plugin processes
+@plugins_router.post("/gateway/state")
+async def gateway_post_state(payload: Dict[str, Any], request: Request):
+    """Receives entity metrics and telemetry from child processes."""
+    claimed_pid = payload.get("node_id")
+    verified_pid = _verify_gateway_plugin_identity(request, claimed_pid)
+    return await ingest_plugin_state(verified_pid, payload)
 
 @plugins_router.post("/gateway/logs")
-async def gateway_post_logs(payload: Dict[str, Any]):
+async def gateway_post_logs(payload: Dict[str, Any], request: Request):
     """Receives trace logs from running plugin daemons."""
     message = payload.get("message")
     level = payload.get("level", "INFO").upper()
-    plugin_name = payload.get("plugin_id", "unknown-plugin")
+    claimed_name = payload.get("plugin_id")
+    plugin_name = _verify_gateway_plugin_identity(request, claimed_name) or "unknown-plugin"
     
     log_line = f"[{plugin_name}] [{level}] {message}"
     if level == "ERROR":
@@ -978,3 +1111,98 @@ async def kill_plugin_payload(plugin_id: str):
     # Update state of all plugin entities to stopped
     await stop_or_idle_plugin_entities(plugin_id, "stopped")
     return {"status": "success", "message": f"Plugin {plugin_id} force-terminated."}
+
+
+@plugins_router.post("/gateway/topology")
+async def gateway_post_topology(payload: Dict[str, Any], request: Request):
+    """Allows plugins to upsert typed hierarchy nodes and edges."""
+    if topology_graph is None:
+        raise HTTPException(status_code=503, detail="Topology graph unavailable.")
+
+    plugin_id = _verify_gateway_plugin_identity(request, payload.get("plugin_id")) or "unknown"
+    source = f"plugin:{plugin_id}"
+    nodes_saved = 0
+    edges_saved = 0
+
+    try:
+        for n in payload.get("nodes") or []:
+            if not isinstance(n, dict) or not n.get("node_uid"):
+                continue
+            await topology_graph.upsert_node(
+                node_uid=n["node_uid"],
+                node_kind=n.get("node_kind", "service"),
+                display_name=n.get("display_name") or n["node_uid"],
+                external_ref=n.get("external_ref"),
+                liveness_entity_key=n.get("liveness_entity_key"),
+                health_state=n.get("health_state", "unknown"),
+                metadata=n.get("metadata"),
+            )
+            nodes_saved += 1
+
+        for e in payload.get("edges") or []:
+            if not isinstance(e, dict) or not e.get("parent_uid") or not e.get("child_uid"):
+                continue
+            await topology_graph.add_edge(
+                parent_uid=e["parent_uid"],
+                child_uid=e["child_uid"],
+                relation=e.get("relation", "hosts"),
+                source=source,
+            )
+            edges_saved += 1
+    except ValueError as exc:
+        status_code = 409 if exc.__class__.__name__ == "TopologyCycleError" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return {"status": "success", "nodes_saved": nodes_saved, "edges_saved": edges_saved}
+
+
+@plugins_router.post("/gateway/topology/migration-start")
+async def gateway_topology_migration_start(payload: Dict[str, Any], request: Request):
+    """Starts a live-migration grace lease for a child node."""
+    if topology_graph is None:
+        raise HTTPException(status_code=503, detail="Topology graph unavailable.")
+    child_uid = payload.get("child_uid")
+    if not child_uid:
+        raise HTTPException(status_code=400, detail="child_uid is required.")
+    plugin_id = _verify_gateway_plugin_identity(request, payload.get("plugin_id")) or "unknown"
+    try:
+        node = await topology_graph.start_migration(
+            child_uid=child_uid,
+            to_parent_uid=payload.get("to_parent_uid"),
+            lease_seconds=int(payload.get("lease_seconds", 120)),
+            source=f"plugin:{plugin_id}",
+        )
+        return {"status": "migrating", "node": node}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        status_code = 409 if exc.__class__.__name__ == "TopologyCycleError" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc))
+
+
+@plugins_router.post("/gateway/topology/rebind")
+async def gateway_topology_rebind(payload: Dict[str, Any], request: Request):
+    """Atomically rebinds a child node to a new parent hypervisor/host."""
+    if topology_graph is None:
+        raise HTTPException(status_code=503, detail="Topology graph unavailable.")
+    child_uid = payload.get("child_uid")
+    to_parent_uid = payload.get("to_parent_uid")
+    if not child_uid or not to_parent_uid:
+        raise HTTPException(status_code=400, detail="child_uid and to_parent_uid are required.")
+    plugin_id = _verify_gateway_plugin_identity(request, payload.get("plugin_id")) or "unknown"
+    try:
+        ev = await topology_graph.rebind_parent(
+            child_uid=child_uid,
+            to_parent_uid=to_parent_uid,
+            relation=payload.get("relation", "hosts"),
+            reason=payload.get("reason", "live_migration"),
+            source=f"plugin:{plugin_id}",
+        )
+        return {"status": "rebound", "migration": ev}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        status_code = 409 if exc.__class__.__name__ == "TopologyCycleError" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc))
