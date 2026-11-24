@@ -7,7 +7,7 @@
   <title>HomePulse Dashboard</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>">
-  <link rel="stylesheet" href="style.css?v=4.2">
+  <link rel="stylesheet" href="style.css?v=4.3">
 </head>
 
 <body>
@@ -1759,6 +1759,7 @@
                 <label for="edit-entity-search" id="edit-entity-picker-label">Target Entity</label>
                 <span id="edit-entity-picker-hint" style="font-size:0.68rem; color:var(--text-secondary);">Select 1 entity</span>
               </div>
+              <div id="edit-selected-entities-chips" class="entity-selected-chips"></div>
               <input type="text" id="edit-entity-search" class="modal-input" placeholder="Search by name or entity ID (e.g. core-mon.cpu-utilization)..." oninput="filterEditEntityList(this.value)">
               <div id="edit-entity-list" class="entity-picker-list">
                 <!-- Dynamically populated -->
@@ -2157,7 +2158,7 @@
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Main interaction logic -->
-    <script src="app.js?v=4.2"></script>
+    <script src="app.js?v=4.3"></script>
 
     <!-- Modals moved to body-level to escape overflow stacking context -->
     <!-- Add Dependency Link Modal Overlay -->

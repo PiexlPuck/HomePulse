@@ -562,6 +562,21 @@ function setupFallbackMocks() {
 const GAUGE_ARC_LENGTH = 291.82;
 window.GAUGE_ARC_LENGTH = GAUGE_ARC_LENGTH;
 
+function getCardColSpan(w: number) {
+  const num = Number(w) || 1;
+  if (num === 0.5) return 1;
+  if (num >= 3) return 8;
+  if (num === 2) return 4;
+  return 2;
+}
+window.getCardColSpan = getCardColSpan;
+
+function getCardRowSpan(h: number) {
+  const num = parseInt(String(h || 1), 10);
+  return isNaN(num) || num < 1 ? 1 : Math.min(4, num);
+}
+window.getCardRowSpan = getCardRowSpan;
+
 window.renderGaugeSVG = function (rawValue: any, unit: string, min: number, max: number, color: string) {
   const safeMin = isNaN(Number(min)) ? 0 : Number(min);
   const safeMax = isNaN(Number(max)) ? 100 : Number(max);
@@ -620,7 +635,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
     if (!widget.options || typeof widget.options !== 'object') {
       widget.options = {};
     }
-    if (widget.entity && typeof widget.entity === 'string') {
+    if (widget.entity && typeof widget.entity === 'string' && (!Array.isArray(widget.entities) || widget.entities.length === 0)) {
       const ref = window.resolveSensorIdToEntityRef(widget.entity);
       if (ref) {
         widget.entities = [ref];
@@ -638,17 +653,38 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
   // Preserve the plus-circle add placeholder
   const placeholder = grid.querySelector('.card-placeholder');
 
-  // Clear existing cards
-  const existingCards = grid.querySelectorAll('.card:not(.card-placeholder)');
+  // Clear existing cards and any edit drop overlay elements
+  const existingCards = grid.querySelectorAll('.card:not(.card-placeholder), .grid-drop-cell, .grid-drop-preview');
   existingCards.forEach(c => c.remove());
 
-  // Helper: Unified Edit Mode card toolbar
-  const renderCardEditBar = (widget: any, currentWidth: number) => {
-    const nextWidth = currentWidth === 0.5 ? 1 : (currentWidth === 1 ? 2 : (currentWidth === 2 ? 3 : 0.5));
+  // Helper: Unified Edit Mode card toolbar with direct size selector popover
+  const renderCardEditBar = (widget: any, currentWidth: number, currentHeight: number = 1) => {
+    const wOpts = [0.5, 1, 2, 3];
+    const hOpts = [1, 2];
+    const widthBtns = wOpts.map(val =>
+      `<button type="button" class="size-opt-btn ${currentWidth === val ? 'active' : ''}" onclick="event.stopPropagation(); setWidgetSize('${widget.id}', ${val}, null)">${val}x</button>`
+    ).join('');
+    const heightBtns = hOpts.map(val =>
+      `<button type="button" class="size-opt-btn ${currentHeight === val ? 'active' : ''}" onclick="event.stopPropagation(); setWidgetSize('${widget.id}', null, ${val})">${val}h</button>`
+    ).join('');
+    const sizeLabel = currentHeight > 1 ? `${currentWidth}x·${currentHeight}h` : `${currentWidth}x`;
+
     return `
     <div class="card-edit-bar">
-      <button type="button" class="card-edit-btn edit-handle-btn" title="Drag to reorder"><i data-lucide="grip-horizontal"></i></button>
-      <button type="button" class="card-edit-btn width-btn" onclick="event.stopPropagation(); cycleWidgetWidth('${widget.id}')" title="Cycle width (${currentWidth}x -> ${nextWidth}x)">${currentWidth}x</button>
+      <button type="button" class="card-edit-btn edit-handle-btn" title="Drag anywhere onto the grid"><i data-lucide="grip-horizontal"></i></button>
+      <div class="card-size-menu-wrap">
+        <button type="button" class="card-edit-btn width-btn" onclick="event.stopPropagation(); toggleCardSizeMenu('${widget.id}')" title="Choose card size">${sizeLabel} ▾</button>
+        <div class="card-size-popover" id="size-menu-${widget.id}" onclick="event.stopPropagation()">
+          <div class="size-popover-row">
+            <span class="size-popover-label">Width</span>
+            <div class="size-popover-btns">${widthBtns}</div>
+          </div>
+          <div class="size-popover-row">
+            <span class="size-popover-label">Height</span>
+            <div class="size-popover-btns">${heightBtns}</div>
+          </div>
+        </div>
+      </div>
       <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')" title="Edit Card"><i data-lucide="sliders"></i></button>
       <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'yaml')" title="Edit Card YAML"><i data-lucide="code"></i></button>
       <button type="button" class="card-edit-btn" onclick="event.stopPropagation(); duplicateWidget('${widget.id}')" title="Duplicate Card"><i data-lucide="copy"></i></button>
@@ -693,9 +729,27 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
     // Apply sizing options classes (supports 0.5x half-width subcolumn and 1x/2x/3x spans)
     const w = parseFloat(widget.options.gridWidth) || 1;
     const h = parseInt(widget.options.gridHeight, 10) || 1;
+    const colSpan = getCardColSpan(w);
+    const rowSpan = getCardRowSpan(h);
+    cardEl.dataset.widgetId = widget.id;
+    cardEl.dataset.colSpan = String(colSpan);
+    cardEl.dataset.rowSpan = String(rowSpan);
+
     if (w === 0.5) cardEl.classList.add('grid-w-05');
     else if (w > 1) cardEl.classList.add(`grid-w-${w}`);
     if (h > 1) cardEl.classList.add(`grid-h-${h}`);
+
+    const rawCol = parseInt(widget.options.gridCol, 10);
+    const rawRow = parseInt(widget.options.gridRow, 10);
+    if (Number.isFinite(rawCol) && rawCol >= 1 && Number.isFinite(rawRow) && rawRow >= 1) {
+      const clampedCol = Math.max(1, Math.min(9 - colSpan, rawCol));
+      const clampedRow = Math.max(1, rawRow);
+      cardEl.setAttribute('data-grid-pos', 'true');
+      cardEl.style.setProperty('--grid-col', String(clampedCol));
+      cardEl.style.setProperty('--grid-col-span', String(colSpan));
+      cardEl.style.setProperty('--grid-row', String(clampedRow));
+      cardEl.style.setProperty('--grid-row-span', String(rowSpan));
+    }
 
     if (widget.type === 'error') {
       cardEl.style.background = '#f59e0b';
@@ -757,7 +811,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
             <span>No entity bound</span>
             <button type="button" class="btn btn-secondary" style="padding:4px 10px; font-size:0.7rem;" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')">Configure Card</button>
           </div>
-          ${renderCardEditBar(widget, w)}
+          ${renderCardEditBar(widget, w, h)}
         `;
       } else {
         const matchedKey = Object.keys(entitiesMap).find(key => {
@@ -785,9 +839,9 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
           let headerHTML = `
             <div class="card-header">
               <div class="card-title-area">
-                <span class="card-title">${displayName}</span>
+                <span class="card-title" style="cursor:pointer;" title="Click to copy: ${sensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${sensorId}'); if(typeof showToast==='function') showToast('Copied ${sensorId}', 'info')">${displayName}</span>
                 <span class="card-subtitle">${item.node_id}.local</span>
-                <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${sensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${sensorId}'); if(typeof showToast==='function') showToast('Copied ${sensorId}', 'info')">Entity ID: ${sensorId}</span>
+                <span class="card-subtitle card-subtitle-id" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${sensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${sensorId}'); if(typeof showToast==='function') showToast('Copied ${sensorId}', 'info')">Entity ID: ${sensorId}</span>
               </div>
               <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
             </div>
@@ -868,7 +922,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
               <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
               <span>Entity unavailable or offline</span>
             </div>
-            ${renderCardEditBar(widget, w)}
+            ${renderCardEditBar(widget, w, h)}
           `;
         }
       }
@@ -891,7 +945,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
             <span>No entity bound</span>
             <button type="button" class="btn btn-secondary" style="padding:4px 10px; font-size:0.7rem;" onclick="event.stopPropagation(); openCardEditor('${widget.id}', 'ui')">Configure Card</button>
           </div>
-          ${renderCardEditBar(widget, w)}
+          ${renderCardEditBar(widget, w, h)}
         `;
       } else if (boundEntities.length > 1) {
         cardEl.classList.add('card-gauge-multi');
@@ -940,7 +994,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
               ${tilesHtml}
             </div>
           </div>
-          ${renderCardEditBar(widget, w)}
+          ${renderCardEditBar(widget, w, h)}
         `;
       } else {
         const eRef = boundEntities[0];
@@ -966,21 +1020,22 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
           const unit = widget.options.unit !== undefined ? widget.options.unit : resolvedGaugeUnit;
           const gaugeSensorId = window.getSensorIdForEntity(item.node_id, item.entity_key, item.name, item.type);
 
+          const displayTitle = widget.title || item.name || item.entity_key;
+
           cardEl.innerHTML = `
-            <div class="card-header">
-              <div class="card-title-area">
-                <span class="card-title">${widget.title || item.name || item.entity_key}</span>
-                <span class="card-subtitle">${item.node_id}.local • Gauge</span>
-                <span class="card-subtitle" style="font-size:0.62rem; opacity:0.65; margin-top:2px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; cursor:pointer;" title="Click to copy: ${gaugeSensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${gaugeSensorId}'); if(typeof showToast==='function') showToast('Copied ${gaugeSensorId}', 'info')">Entity ID: ${gaugeSensorId}</span>
-              </div>
-              <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
-            </div>
             <div class="card-body gauge-card-body">
               <div class="gauge-container">
                 ${window.renderGaugeSVG(item.value, unit, min, max, displayColor)}
               </div>
             </div>
-            ${renderCardEditBar(widget, w)}
+            <div class="gauge-card-footer">
+              <div class="gauge-footer-meta">
+                <span class="card-title gauge-footer-title" title="Click to copy: ${gaugeSensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${gaugeSensorId}'); if(typeof showToast==='function') showToast('Copied ${gaugeSensorId}', 'info')">${displayTitle}</span>
+                <span class="card-subtitle gauge-footer-sub" title="Click to copy: ${gaugeSensorId}" onclick="event.stopPropagation(); navigator.clipboard?.writeText('${gaugeSensorId}'); if(typeof showToast==='function') showToast('Copied ${gaugeSensorId}', 'info')">${item.node_id}.local • <code>${gaugeSensorId}</code></span>
+              </div>
+              <span class="status-pill ${item.status_type || 'default'}">${item.status || 'Stable'}</span>
+            </div>
+            ${renderCardEditBar(widget, w, h)}
           `;
         } else {
           cardEl.classList.add('unavailable');
@@ -996,7 +1051,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
               <i data-lucide="alert-circle" style="width:20px; height:20px; color:#ef4444; margin-bottom:6px;"></i>
               <span>Entity unavailable or offline</span>
             </div>
-            ${renderCardEditBar(widget, w)}
+            ${renderCardEditBar(widget, w, h)}
           `;
         }
       }
@@ -1012,7 +1067,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
         <div style="display: flex; align-items: center; width: 100%; height: 100%;">
           <span style="font-size: 1.05rem; font-weight: 700; color: ${titleColor};">${widget.title || 'Section Title'}</span>
         </div>
-        ${renderCardEditBar(widget, w)}
+        ${renderCardEditBar(widget, w, h)}
       `;
     }
 
@@ -1071,7 +1126,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
             ${rowsHTML || '<div style="color:var(--text-secondary); text-align:center; padding:10px; font-size:0.8rem;">No entities bound — click Edit in Edit Mode to pick entities</div>'}
           </div>
         </div>
-        ${renderCardEditBar(widget, w)}
+        ${renderCardEditBar(widget, w, h)}
       `;
     }
 
@@ -1108,7 +1163,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
             ${itemsHTML || '<div style="color:var(--text-secondary); grid-column:1/-1; text-align:center; font-size:0.8rem;">No items</div>'}
           </div>
         </div>
-        ${renderCardEditBar(widget, w)}
+        ${renderCardEditBar(widget, w, h)}
       `;
     }
 
@@ -1160,7 +1215,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
             ${snapshotNoticeText}
           </div>
         </div>
-        ${renderCardEditBar(widget, w)}
+        ${renderCardEditBar(widget, w, h)}
       `;
     }
 
@@ -1197,7 +1252,7 @@ function buildDashboardCards(entitiesMap: Record<string, TelemetryEntity>) {
             <!-- Dynamically populated -->
           </div>
         </div>
-        ${renderCardEditBar(widget, w)}
+        ${renderCardEditBar(widget, w, h)}
       `;
     }
 

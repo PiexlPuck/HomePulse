@@ -36,6 +36,8 @@ interface DashboardWidgetOptions {
   graphic?: string;
   gridWidth?: number;
   gridHeight?: number;
+  gridCol?: number;
+  gridRow?: number;
   subtitle?: string;
   align?: string;
   [key: string]: any;

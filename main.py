@@ -2328,6 +2328,10 @@ def _normalize_card_dict(raw_card: dict, default_tab: str, idx: int) -> dict:
         options["gridWidth"] = raw_card["gridWidth"]
     if "gridHeight" in raw_card and "gridHeight" not in options:
         options["gridHeight"] = raw_card["gridHeight"]
+    if "gridCol" in raw_card and "gridCol" not in options:
+        options["gridCol"] = raw_card["gridCol"]
+    if "gridRow" in raw_card and "gridRow" not in options:
+        options["gridRow"] = raw_card["gridRow"]
 
     return {
         "id": w_id,
