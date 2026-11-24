@@ -498,7 +498,8 @@ window.renderGaugeSVG = function(rawValue, unit, min, max, color) {
   const pct = isNum ? Math.max(0, Math.min(1, (numericVal - safeMin) / span)) : 0;
   const offset = (GAUGE_ARC_LENGTH * (1 - pct)).toFixed(2);
   const displayVal = rawValue !== void 0 && rawValue !== null && rawValue !== "" ? rawValue : "--";
-  const strokeColor = color || "var(--color-optimal)";
+  const rawColor = (color || "var(--color-optimal)").trim();
+  const strokeColor = rawColor.startsWith("var(") && !rawColor.includes(",") ? rawColor.replace(/\)$/, ", #10b981)") : rawColor;
   return `
     <svg viewBox="0 0 220 148" class="gauge-svg">
       <path d="M 30.13 131.07 A 85 85 0 1 1 189.87 131.07" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-dasharray="1.5 10.6" stroke-linecap="round"/>
